@@ -1,0 +1,5 @@
+*.raw
+*.log
+*.bin
+*.exe
+__pycache__/

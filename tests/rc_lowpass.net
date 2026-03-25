@@ -1,0 +1,8 @@
+* RC Lowpass Filter
+V1 vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+R1 vo vi 1k
+C1 vo 0 1u IC=0
+.tran 0 50m 0 20.8333u
+.options plotwinsize=0
+.backanno
+.end
