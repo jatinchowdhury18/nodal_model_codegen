@@ -1,5 +1,6 @@
 *.raw
 *.log
 *.bin
+*.wav
 *.exe
 __pycache__/

@@ -1,4 +1,5 @@
 #pragma once
+
 struct Params {
     float R1;
     float C1;
