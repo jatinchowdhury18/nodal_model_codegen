@@ -1,0 +1,13 @@
+* RC Lowpass Filter
+V1 vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+C21 vi vl 220n IC=0
+C22 vl vo 220n IC=0
+L1 vl 0 3h IC=0
+R9 vo 0 5.1k
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+Escaled vo_scaled 0 value = {V(vo)*0.2}
+.wav "vout.wav" 32 48k vo_scaled
+.options plotwinsize=0
+.backanno
+.end

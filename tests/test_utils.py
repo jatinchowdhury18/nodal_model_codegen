@@ -22,9 +22,9 @@ def run_spice(netlist_file):
         netlist_file
     ])
 
-def read_wav(wav_file):
+def read_wav(wav_file, scale = 1):
     fs, v = wavfile.read(wav_file)
-    v = v.astype(np.float32) / 2147483648.0
+    v = scale * v.astype(np.float32) / 2147483648.0
     return fs, v
 
 def write_bin(x, bin_file):

@@ -45,6 +45,40 @@ def parse_netlist(path):
     return elements, inputs
 
 
+def generate_params_struct(elements):
+    code = "struct Params {\n"
+    for name, el in zip(elements.keys(), elements.values()):
+        # @TODO: "combo" elements will need more logic here
+        # @TODO: compile-time constants for "fixed" elements?
+        code += f"    float {name};\n"
+    code += "};\n"
+    return code
+
+def generate_state_struct(elements):
+    code = "struct State {\n"
+    states = []
+    for name, el in zip(elements.keys(), elements.values()):
+        # @TODO: "combo" elements
+        kind = el[0]
+        if kind == Element_Type.CAPACITOR or kind == Element_Type.INDUCTOR:
+            states.append(f"z{name}")
+            code += f"    float {states[-1]};\n"
+    code += "};\n"
+    return code, states
+
+def generate_impedance_defs(elements):
+    code = ""
+    for name, el in zip(elements.keys(), elements.values()):
+        # @TODO: "combo" elements
+        kind = el[0]
+        if kind == Element_Type.RESISTOR:
+            code += f"const auto g{name} = 1.0f / params.{name};\n"
+        elif kind == Element_Type.CAPACITOR:
+            code += f"const auto g{name} = 2.0f * sample_rate * params.{name};\n"
+        elif kind == Element_Type.INDUCTOR:
+            code += f"const auto g{name} = 1.0f / (2.0f * sample_rate * params.{name});\n"
+    return code + "\n"
+
 def netlist_codegen(netlist_file, cpp_header_file):
     print(f"Generating {cpp_header_file} from netlist: {netlist_file}")
 
@@ -57,51 +91,42 @@ def netlist_codegen(netlist_file, cpp_header_file):
     # print(inner_code)
 
     with open(cpp_header_file, 'w') as f:
-        f.write("#pragma once\n\n")
-        f.write("struct Params {\n")
-        for name, el in zip(elements.keys(), elements.values()):
-            # @TODO: "combo" elements will need more logic here
-            # @TODO: compile-time constants for "fixed" elements?
-            f.write(f"    float {name};\n")
-        f.write("};\n\n")
-
-        f.write("struct State {\n")
-        states = []
-        for name, el in zip(elements.keys(), elements.values()):
-            # @TODO: "combo" elements
-            kind = el[0]
-            if kind == Element_Type.CAPACITOR or kind == Element_Type.INDUCTOR:
-                states.append(f"z{name}")
-                f.write(f"    float {states[-1]};\n")
-        f.write("};\n\n")
-
         def indent(text, prefix="    "):
             return "\n".join(prefix + line for line in text.splitlines())
 
+        f.write("#pragma once\n\n")
+
+        params_struct_code = generate_params_struct(elements)
+        f.write(params_struct_code + "\n")
+
+        states_struct_code, states = generate_state_struct(elements)
+        f.write(states_struct_code + "\n")
+
         f.write("static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)\n")
         f.write("{\n")
-        for name, el in zip(elements.keys(), elements.values()):
-            # @TODO: inductor and "combo" elements
-            kind = el[0]
-            if kind == Element_Type.RESISTOR:
-                f.write(f"    const auto g{name} = 1.0f / params.{name};\n")
-            elif kind == Element_Type.CAPACITOR:
-                f.write(f"    const auto g{name} = 2.0f * sample_rate * params.{name};\n")
-        f.write("\n" + indent(outer_code) + "\n\n")
+
+        f.write(indent(generate_impedance_defs(elements)) + "\n")
+        f.write(indent(outer_code) + "\n\n")
+
         f.write("    for (int ch = 0; ch < num_channels; ++ch)\n")
         f.write("    {\n")
+
         for state in states:
             f.write(f"        auto {state} = state[ch].{state};\n")
+
         f.write("        for (int n = 0; n < num_samples; ++n)\n")
         f.write("        {\n")
+
         # @TODO: multiple inputs
         f.write(f"            const auto {inputs[0]} = input[ch][n];\n\n")
         f.write(indent(inner_code, "            ") + "\n\n")
         # @TODO: multiple outputs
         f.write(f"            output[ch][n] = {outputs[0]};\n")
+
         f.write("        }\n")
         for state in states:
             f.write(f"        state[ch].{state} = {state};\n")
+
         f.write("    }\n")
         f.write("}\n")
 

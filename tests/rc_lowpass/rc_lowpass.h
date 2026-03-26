@@ -13,7 +13,7 @@ static void compute (const float* const* input, float** output, int num_channels
 {
     const auto gR1 = 1.0f / params.R1;
     const auto gC1 = 2.0f * sample_rate * params.C1;
-
+    
     const auto temp3 = gC1 + gR1;
     const auto temp4 = 1/temp3;
 
