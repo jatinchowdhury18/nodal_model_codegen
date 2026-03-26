@@ -1,3 +1,8 @@
+.zed/
+.vscode/
+.focus-config
+*.raddbg_project
+
 *.raw
 *.log
 *.bin

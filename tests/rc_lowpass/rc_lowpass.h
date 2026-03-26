@@ -6,7 +6,7 @@ struct Params {
 };
 
 struct State {
-    float zC1;
+    float zC1 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)

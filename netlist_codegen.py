@@ -13,6 +13,9 @@ def parse_netlist(path):
             if not line or line.startswith("*") or line.startswith("."):
                 continue
 
+            if "netlist_skip" in line:
+                continue
+
             tokens = re.split(r"\s+", line)
             name = tokens[0]
             n1, n2 = tokens[1], tokens[2]
@@ -25,6 +28,10 @@ def parse_netlist(path):
                 etype = Element_Type.CAPACITOR
             elif prefix == "L":
                 etype = Element_Type.INDUCTOR
+            elif prefix == "E":
+                etype = Element_Type.AMP
+                elements[name] = [etype, tokens[1], tokens[4], tokens[3]]
+                continue
             elif prefix == "V":
                 # treat voltage source as input node
                 inputs.append(n1)
@@ -50,7 +57,9 @@ def generate_params_struct(elements):
     for name, el in zip(elements.keys(), elements.values()):
         # @TODO: "combo" elements will need more logic here
         # @TODO: compile-time constants for "fixed" elements?
-        code += f"    float {name};\n"
+        kind = el[0]
+        if kind == Element_Type.RESISTOR or kind == Element_Type.CAPACITOR or kind == Element_Type.INDUCTOR:
+            code += f"    float {name};\n"
     code += "};\n"
     return code
 
@@ -62,7 +71,7 @@ def generate_state_struct(elements):
         kind = el[0]
         if kind == Element_Type.CAPACITOR or kind == Element_Type.INDUCTOR:
             states.append(f"z{name}")
-            code += f"    float {states[-1]};\n"
+            code += f"    float {states[-1]} {{}};\n"
     code += "};\n"
     return code, states
 
@@ -84,6 +93,8 @@ def netlist_codegen(netlist_file, cpp_header_file):
 
     elements, inputs = parse_netlist(netlist_file)
     outputs = ['vo']
+    # print(elements)
+    # print(inputs)
 
     outer_code, inner_code = solve_and_codegen(elements, inputs, outputs, return_code = True)
     # print(outer_code)

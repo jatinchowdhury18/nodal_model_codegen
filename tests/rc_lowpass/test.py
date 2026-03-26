@@ -21,17 +21,19 @@ cpp_vout = read_bin("output.bin")
 error = (cpp_vout - vout)
 max_err = np.max(np.abs(error))
 print(f"Max Error: {max_err}")
+assert max_err < 0.05
 
 # Plot
-plt.figure()
-time = np.arange(len(vin)) / fs
-plt.plot(time, vin)
-plt.plot(time, vout)
-plt.plot(time, cpp_vout, '--')
-plt.grid()
+if "plot" in sys.argv:
+    plt.figure()
+    time = np.arange(len(vin)) / fs
+    plt.plot(time, vin)
+    plt.plot(time, vout)
+    plt.plot(time, cpp_vout, '--')
+    plt.grid()
 
-# plt.figure()
-# plt.plot(error)
-# plt.grid()
+    # plt.figure()
+    # plt.plot(error)
+    # plt.grid()
 
-plt.show()
+    plt.show()

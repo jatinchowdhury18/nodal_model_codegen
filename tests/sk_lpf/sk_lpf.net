@@ -1,0 +1,27 @@
+* Sallen-Key Low-Pass Filter
+
+Vin vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+
+* RC network
+R1 vi n1 10k
+R2 n1 n2 10k
+C1 n2 0 100n IC=0
+C2 vo n1 100n IC=0
+
+* Op-amp (ideal voltage-controlled voltage source)
+Eop vo 0 n2 n3 1e6
+
+* Feedback network (sets gain > 1 for resonance)
+Rf vo n3 8k
+Rg n3 0 6k
+
+* Load
+Rload vo 0 100k
+
+Escaled vo_scaled 0 value = {V(vo)*0.2} ; netlist_skip
+
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo_scaled)
+.options plotwinsize=0
+.end

@@ -8,9 +8,9 @@ struct Params {
 };
 
 struct State {
-    float zC21;
-    float zC22;
-    float zL1;
+    float zC21 {};
+    float zC22 {};
+    float zL1 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)

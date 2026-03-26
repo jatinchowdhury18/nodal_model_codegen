@@ -7,14 +7,14 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 cleanup()
 
 # Run LTspice
-run_spice("res_highpass.net")
+run_spice("sk_lpf.net")
 fs, vin = read_wav("vin.wav")
 fs, vout = read_wav("vout.wav", scale=5)
 write_bin(vin, "input.bin")
 
 # Generate C++ code
-netlist_codegen("res_highpass.net", "res_highpass.h")
-compile_run_cpp("res_highpass")
+netlist_codegen("sk_lpf.net", "sk_lpf.h")
+compile_run_cpp("sk_lpf")
 cpp_vout = read_bin("output.bin")
 
 # Compute error
