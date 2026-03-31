@@ -4,9 +4,15 @@ set -e
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
+if [[ "$OSTYPE" == "win32" || "$OSTYPE" == "msys" ]]; then
+   python_exe="python"
+else
+   python_exe="python3"
+fi
+
 test () {
    test="$1"
-   python3 ${SCRIPT_DIR}/${test}/test.py
+   ${python_exe} ${SCRIPT_DIR}/${test}/test.py
 }
 
 test rc_lowpass

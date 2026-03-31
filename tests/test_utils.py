@@ -3,10 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 
+import platform
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from netlist_codegen import netlist_codegen
+
+system = platform.system()
+if system == "Windows":
+    ltspice_exe = os.path.expanduser("~") + "/AppData/Local/Programs/ADI/LTspice/LTspice.exe"
+elif system == "Darwin":
+    ltspice_exe = r"/Applications/LTspice.app/Contents/MacOS/LTspice"
 
 def cleanup():
     os.system("rm -f *.bin")
@@ -17,7 +24,7 @@ def cleanup():
 
 def run_spice(netlist_file):
     subprocess.run([
-        r"/Applications/LTspice.app/Contents/MacOS/LTspice",
+        ltspice_exe,
         "-b",
         netlist_file
     ])
@@ -39,6 +46,7 @@ def compile_run_cpp(name):
         "clang",
         f"{name}.cpp",
         "--std=c++20",
+        "-D_CRT_SECURE_NO_WARNINGS",
         "-o",
         f"{name}.exe"
     ])
