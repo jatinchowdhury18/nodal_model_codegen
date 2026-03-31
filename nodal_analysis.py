@@ -10,13 +10,158 @@ class Element_Type(Enum):
     RC_SERIES = 5
     RC_PARALLEL = 6
 
+class Combo_Op_Type(Enum):
+    SUM = 1
+    RECIP_SUM = 2
+
+def reduce_circuit(elements, inputs, outputs):
+    def get_expr(n, el):
+        expr = n
+        if len(el) > 3: expr = el[3]
+        return expr
+
+    def add_sum(n1, n2, el1, el2):
+        expr1 = get_expr(n1, el1)
+        expr2 = get_expr(n2, el2)
+        return (Combo_Op_Type.SUM, expr1, expr2)
+
+    def add_recip_sum(n1, n2, el1, el2):
+        expr1 = get_expr(n1, el1)
+        expr2 = get_expr(n2, el2)
+        return (Combo_Op_Type.RECIP_SUM, expr1, expr2)
+
+    def reduce_series(elements, inputs, outputs):
+        def make_rc_series(n_res, el_res, other_res, n_cap, el_cap, other_cap):
+            print(f"Combining series resistor and capacitor: {n_res} + {n_cap}")
+            new_name = f"{n_res}{n_cap}"
+            elements[new_name] = [Element_Type.RC_SERIES, other_res, other_cap, {f"{n_res}": get_expr(n_res, el_res), f"{n_cap}": get_expr(n_cap, el_cap)}]
+
+        # Build a map: node -> list of all elements connected to that node
+        node_map = {}
+        for name, el in elements.items():
+            connections = el[1:3]
+            if el[0] == Element_Type.AMP: connections = el[1:4]
+            for node in connections:
+                node_map.setdefault(node, []).append(name)
+
+        # Only reduce if the node is not input/output/ground and has exactly two elements connected
+        for node, connected in node_map.items():
+            if node in inputs or node in outputs or node == "0":
+                continue
+            if len(connected) == 2:
+                n1, n2 = connected
+                el1, el2 = elements[n1], elements[n2]
+                other1 = el1[2] if el1[1] == node else el1[1]
+                other2 = el2[2] if el2[1] == node else el2[1]
+                if el1[0] == Element_Type.RESISTOR and el2[0] == Element_Type.RESISTOR:
+                    print(f"Combining series resistors: {n1} + {n2}")
+                    new_name = f"{n1}{n2}"
+                    elements[new_name] = [Element_Type.RESISTOR, other1, other2, add_sum(n1, n2, el1, el2)]
+                    del elements[n1]
+                    del elements[n2]
+                    break
+                if el1[0] == Element_Type.CAPACITOR and el2[0] == Element_Type.CAPACITOR:
+                    print(f"Combining series capacitors: {n1} + {n2}")
+                    new_name = f"{n1}{n2}"
+                    elements[new_name] = [Element_Type.CAPACITOR, other1, other2, add_recip_sum(n1, n2, el1, el2)]
+                    del elements[n1]
+                    del elements[n2]
+                    break
+                if el1[0] == Element_Type.RESISTOR and el2[0] == Element_Type.CAPACITOR:
+                    make_rc_series(n1, el1, other1, n2, el2, other2)
+                    del elements[n1]
+                    del elements[n2]
+                    break
+                if el1[0] == Element_Type.CAPACITOR and el2[0] == Element_Type.RESISTOR:
+                    make_rc_series(n2, el2, other2, n1, el1, other1)
+                    del elements[n1]
+                    del elements[n2]
+                    break
+        return elements
+
+    def reduce_parallel(elements):
+        # Map (node1, node2) -> list of resistor names (order nodes for uniqueness)
+        res_pair_map = {}
+        cap_pair_map = {}
+        for name, el in elements.items():
+            if el[0] == Element_Type.RESISTOR:
+                n1, n2 = el[1], el[2]
+                key = tuple(sorted([n1, n2]))
+                res_pair_map.setdefault(key, []).append(name)
+            if el[0] == Element_Type.CAPACITOR:
+                n1, n2 = el[1], el[2]
+                key = tuple(sorted([n1, n2]))
+                cap_pair_map.setdefault(key, []).append(name)
+
+        # R || R
+        for (n1, n2), names in res_pair_map.items():
+            if len(names) > 1:
+                nA, nB = names[:2]
+                print(f"Combining parallel resistors: {nA} || {nB}")
+                expr = add_recip_sum(nA, nB, elements[nA], elements[nB])
+                new_name = f"{nA}{nB}"
+                elements[new_name] = [Element_Type.RESISTOR, n1, n2, expr]
+                del elements[nA]
+                del elements[nB]
+                return elements
+
+        # C || C
+        for (n1, n2), names in cap_pair_map.items():
+            if len(names) > 1:
+                nA, nB = names[:2]
+                print(f"Combining parallel capacitors: {nA} || {nB}")
+                expr = add_sum(nA, nB, elements[nA], elements[nB])
+                new_name = f"{nA}{nB}"
+                elements[new_name] = [Element_Type.CAPACITOR, n1, n2, expr]
+                del elements[nA]
+                del elements[nB]
+                return elements
+
+        # R || C
+        for key in set(res_pair_map.keys()) & set(cap_pair_map.keys()):
+            res_names = res_pair_map[key]
+            cap_names = cap_pair_map[key]
+            if res_names and cap_names:
+                res_name = res_names[0]
+                cap_name = cap_names[0]
+                n1, n2 = key
+                print(f"Combining parallel resistor and capacitor: {res_name} || {cap_name}")
+                elements[f"{res_name}{cap_name}"] = [
+                    Element_Type.RC_PARALLEL,
+                    n1,
+                    n2,
+                    {
+                        f"{res_name}": get_expr(res_name, elements[res_name]),
+                        f"{cap_name}": get_expr(cap_name, elements[cap_name])
+                    }
+                ]
+                del elements[res_name]
+                del elements[cap_name]
+                return elements
+
+        return elements
+
+    prev_elements_count = 0
+    while len(elements) != prev_elements_count:
+        prev_elements_count = len(elements)
+        # Reduction: R + R or C + C
+        elements = reduce_series(elements, inputs, outputs)
+        # Reduction: R || R or C || C
+        elements = reduce_parallel(elements)
+
+    return elements
+
+
 def generate_kcl_equations(elements, inputs):
     eqn_nodes = set()
     for el in elements.values():
-        # for node_idx in range(1, len(el))
-        eqn_nodes.update(el[1:])
+        eqn_nodes.update(
+            n for n in el[1:]
+            if not isinstance(n, (tuple, dict))
+        )
     eqn_nodes.remove("0")
     eqn_nodes.difference_update(inputs)
+    eqn_nodes = list(eqn_nodes)
 
     equations = []
     for _ in eqn_nodes:
@@ -27,43 +172,7 @@ def generate_kcl_equations(elements, inputs):
     solve_vars = list(eqn_nodes)
     for name, el in zip(elements.keys(), elements.values()):
         kind = el[0]
-        if kind == Element_Type.AMP:
-            out_node = el[1]
-            neg_node = el[2]
-            pos_node = el[3]
-            for idx, node in enumerate(eqn_nodes):
-                if node == out_node: equations[idx][0].append(f"i{name}") # current is entering this node
-            solve_vars.append(f"i{name}")
-
-            if pos_node == "0":
-                # print(f"Settings {neg_node} to 0")
-                voltages.append(f"{neg_node} -> 0")
-                solve_vars.remove(neg_node)
-                for key, el in zip(elements.keys(), elements.values()):
-                    for node_idx, node in enumerate(el):
-                        if node == neg_node:
-                            el[node_idx] = "0"
-                            elements[key] == el
-            elif neg_node == "0":
-                # print(f"Settings {pos_node} to 0")
-                voltages.append(f"{pos_node} -> 0")
-                solve_vars.remove(pos_node)
-                for key, el in zip(elements.keys(), elements.values()):
-                    for node_idx, node in enumerate(el):
-                        if node == pos_node:
-                            el[node_idx] = "0"
-                            elements[key] == el
-            else:
-                # print(f"Settings {pos_node} to {neg_node}")
-                voltages.append(f"{pos_node} -> {neg_node}")
-                solve_vars.remove(pos_node)
-                for key, el in zip(elements.keys(), elements.values()):
-                    for node_idx, node in enumerate(el):
-                        if node == pos_node:
-                            el[node_idx] = neg_node
-                            elements[key] == el
-
-        else:
+        if kind != Element_Type.AMP:
             pos_node = el[1]
             neg_node = el[2]
             for idx, node in enumerate(eqn_nodes):
@@ -83,14 +192,48 @@ def generate_kcl_equations(elements, inputs):
                 current_str += f"g{name} * ({pos_node} - {neg_node}) - z{name}"
             currents.append(current_str)
 
+    def substitute_node(node_to_sub, replacement_node):
+        for key, el in zip(elements.keys(), elements.values()):
+            for node_idx, node in enumerate(el):
+                if node == node_to_sub:
+                    el[node_idx] = replacement_node
+                    elements[key] == el
+
+    for name, el in zip(elements.keys(), elements.values()):
+        kind = el[0]
+        if kind == Element_Type.AMP:
+            out_node = el[1]
+            neg_node = el[2]
+            pos_node = el[3]
+            for idx, node in enumerate(eqn_nodes):
+                if node == out_node: equations[idx][0].append(f"i{name}") # current is entering this node
+            solve_vars.append(f"i{name}")
+
+            if pos_node == "0":
+                # print(f"Settings {neg_node} to 0")
+                voltages.append(f"{neg_node} -> 0")
+                solve_vars.remove(neg_node)
+                substitute_node(neg_node, "0")
+            elif neg_node == "0":
+                # print(f"Settings {pos_node} to 0")
+                voltages.append(f"{pos_node} -> 0")
+                solve_vars.remove(pos_node)
+                substitute_node(pos_node, "0")
+            else:
+                # print(f"Settings {pos_node} to {neg_node}")
+                voltages.append(f"{pos_node} -> {neg_node}")
+                solve_vars.remove(pos_node)
+                substitute_node(pos_node, neg_node)
+
     assert(len(solve_vars) == len(eqn_nodes))
 
     equation_strings = []
-    for eqn in equations:
+    for idx, eqn in enumerate(equations):
         # if len(eqn[0]) == 0 and len(eqn[1]) == 0: continue
         new_equation = " + ".join(eqn[0]) if len(eqn[0]) > 0 else "0"
         new_equation += " == "
         new_equation += " + ".join(eqn[1]) if len(eqn[1]) > 0 else "0"
+        new_equation += f" (*{eqn_nodes[idx]}*)"
         equation_strings.append(new_equation)
 
     assert(len(solve_vars) == len(equation_strings))
@@ -203,7 +346,10 @@ def process_codegen(oex, elements, inputs, gen_vars):
 
     return "\n".join(ool_code_str), "\n".join(code_str)
 
-def solve_and_codegen(elements, inputs, outputs, return_code=False, out_file=None):
+def solve_and_codegen(elements, inputs, outputs, return_code=False, out_file=None, reduce=True):
+    if reduce:
+        elements = reduce_circuit(elements, inputs, outputs)
+
     solve_vars, mm_eqns = generate_kcl_equations(elements, inputs)
     print(f"Solving for variables: {solve_vars}")
     gen_vars, mm_exprs = generate_expressions(elements, outputs, solve_vars)
@@ -218,6 +364,7 @@ def solve_and_codegen(elements, inputs, outputs, return_code=False, out_file=Non
         capture_output=True,
         text=True
     )
+    # print(result)
 
     stdout_parts = result.stdout.split('\n')
     print(f"# Multiplies: {stdout_parts[0]}")
@@ -236,4 +383,4 @@ def solve_and_codegen(elements, inputs, outputs, return_code=False, out_file=Non
             f.write(inner_code)
 
     if return_code:
-        return outer_code, inner_code
+        return elements, outer_code, inner_code

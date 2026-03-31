@@ -9,6 +9,7 @@ C1 n2 0 100n IC=0
 C2 vo n1 100n IC=0
 
 * Op-amp (ideal voltage-controlled voltage source)
+* [out, 0, pos, neg, gain]
 Eop vo 0 n2 n3 1e6
 
 * Feedback network (sets gain > 1 for resonance)

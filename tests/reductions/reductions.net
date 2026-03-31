@@ -1,0 +1,19 @@
+* Reductions circuit
+V1 vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+C0 vi v1 1u IC=0
+R0 vi v1 1k
+C1 v1 v10 5u IC=0
+C1p v1 v10 5.1u IC=0
+C2 v10 v2 1u IC=0
+C3 v2 v3 1.5u IC=0
+R1 v3 v4 5k
+R1p v3 v4 5.1k
+R2 v4 v5 1k
+R3 v5 vo 1.5k
+Rl vo  0 10k
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end

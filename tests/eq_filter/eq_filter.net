@@ -1,0 +1,37 @@
+* EQ Filter
+
+V1 vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+* V1 vi 0 AC 1
+R33 vi va8 4.75k
+R37 vo10 va8 4.75k
+R35 va8 vo 4.75k
+R40 vo v33 3.5k ; {1k + lg*25k} ; var "gain"
+R39 vi v33 23.5k ; {1k + (1-lg)*25k} ; var "gain"
+R66 vo10 v33 12k
+R41 v33 0 1.8k
+R38 v33 0 4.7k
+R44 vn9 0 1k
+R47 v36 va10 750
+R48 va10 vo10 3.3k
+R43 va9 v36 25.1k ; {5.1k + lf*50k} ; var "LF"
+C18 va9 v36 33n IC=0
+C19 va9 v36 47n IC=0
+R45 vn9 vr45 1k
+C20 vr45 v36 100u IC=0
+R42 v37 va9 24.3k ; {4.3k + lf*50k} ; var "LF"
+C16 v33 v37 33n IC=0
+C17 v33 v37 47n IC=0
+
+E8 vo 0 va8 0 1e6
+E9 v36 0 va9 vn9 1e6
+E10 vo10 0 va10 0 1e6
+
+Escaled vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip
+
+.tran 0 80m 0 20.0u
+* .ac dec 100 10 20k
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end

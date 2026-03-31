@@ -8,4 +8,6 @@
 *.bin
 *.wav
 *.exe
+*.pdf
+*.dSYM
 __pycache__/

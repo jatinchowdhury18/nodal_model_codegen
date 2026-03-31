@@ -15,9 +15,15 @@ struct State {
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
     const auto gC21 = 2.0f * sample_rate * params.C21;
+    
     const auto gC22 = 2.0f * sample_rate * params.C22;
+    
     const auto gL1 = 1.0f / (2.0f * sample_rate * params.L1);
+    
     const auto gR9 = 1.0f / params.R9;
     
     const auto temp3 = gC21 + gL1;
