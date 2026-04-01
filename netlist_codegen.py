@@ -2,8 +2,28 @@ from nodal_analysis import *
 import re
 
 def parse_netlist(path):
+    def parse_value(val_str):
+        multipliers = {
+            'f': 1e-15,
+            'p': 1e-12,
+            'n': 1e-9,
+            'u': 1e-6,
+            'm': 1e-3,
+            'k': 1e3,
+            'M': 1e6,
+            'g': 1e9,
+            'G': 1e9,
+        }
+        match = re.fullmatch(r'([0-9.]+)\s*([fpnumkKMG]|meg)?', val_str.strip())
+        if not match:
+            return None
+        num, suffix = match.groups()
+        factor = multipliers.get(suffix.lower(), 1) if suffix else 1
+        return float(num) * factor
+
     elements = {}
     inputs = []
+    values = {}
 
     with open(path) as f:
         for line in f:
@@ -19,6 +39,9 @@ def parse_netlist(path):
             tokens = re.split(r"\s+", line)
             name = tokens[0]
             n1, n2 = tokens[1], tokens[2]
+            value = parse_value(tokens[3])
+            if value is not None:
+                values[name] = value
             prefix = name[0].upper()
 
             # Map LTspice → your Element_Type
@@ -49,10 +72,10 @@ def parse_netlist(path):
 
     outputs = list(all_nodes - set(inputs))
 
-    return elements, inputs
+    return elements, inputs, values
 
 
-def generate_params_struct(elements):
+def generate_params_struct(elements, values):
     def extract_param_names(expr):
         """Recursively yield all string (leaf) names from a nested tuple expression."""
         if isinstance(expr, str):
@@ -61,6 +84,11 @@ def generate_params_struct(elements):
             for item in expr[1:]:  # skip the operation at expr[0]
                 yield from extract_param_names(item)
 
+    def write_value(name):
+        if name in values:
+            return f"    float {name} = {values[name]:.3e}f;\n"
+        else:
+            return f"    float {name};\n"
 
     code = "struct Params {\n"
     for name, el in zip(elements.keys(), elements.values()):
@@ -69,17 +97,17 @@ def generate_params_struct(elements):
         kind = el[0]
         if kind == Element_Type.RESISTOR or kind == Element_Type.CAPACITOR or kind == Element_Type.INDUCTOR:
             if len(el) == 3:
-                code += f"    float {name};\n"
+                code += write_value(name)
             else:
                 for pname in set(extract_param_names(el[3])):
-                    code += f"    float {pname};\n"
+                    code += write_value(pname)
         if kind == Element_Type.RC_SERIES or kind == Element_Type.RC_PARALLEL:
             rc_internals = el[3]
             res_name, cap_name = list(rc_internals.keys())[:2]
             for pname in set(extract_param_names(rc_internals[res_name])):
-                code += f"    float {pname};\n"
+                code += write_value(pname)
             for pname in set(extract_param_names(rc_internals[cap_name])):
-                code += f"    float {pname};\n"
+                code += write_value(pname)
 
     code += "};\n"
     return code
@@ -151,7 +179,7 @@ def generate_impedance_defs(elements):
 def netlist_codegen(netlist_file, cpp_header_file, reduce_circuit=True):
     print(f"Generating {cpp_header_file} from netlist: {netlist_file}")
 
-    elements, inputs = parse_netlist(netlist_file)
+    elements, inputs, values = parse_netlist(netlist_file)
     outputs = ['vo']
     # print(elements)
     # print(inputs)
@@ -167,7 +195,7 @@ def netlist_codegen(netlist_file, cpp_header_file, reduce_circuit=True):
 
         f.write("#pragma once\n\n")
 
-        params_struct_code = generate_params_struct(elements)
+        params_struct_code = generate_params_struct(elements, values)
         f.write(params_struct_code + "\n")
 
         states_struct_code, states = generate_state_struct(elements)

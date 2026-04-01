@@ -1,10 +1,10 @@
 #pragma once
 
 struct Params {
-    float C21;
-    float C22;
+    float C21 = 2.200e-07f;
+    float C22 = 2.200e-07f;
     float L1;
-    float R9;
+    float R9 = 5.100e+03f;
 };
 
 struct State {

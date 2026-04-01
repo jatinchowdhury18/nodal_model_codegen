@@ -1,8 +1,8 @@
 #pragma once
 
 struct Params {
-    float R1;
-    float C1;
+    float R1 = 1.000e+03f;
+    float C1 = 1.000e-06f;
 };
 
 struct State {

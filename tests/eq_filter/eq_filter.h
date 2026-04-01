@@ -1,25 +1,25 @@
 #pragma once
 
 struct Params {
-    float R33;
-    float R37;
-    float R35;
-    float R40;
-    float R39;
-    float R66;
-    float R44;
-    float R47;
-    float R48;
-    float R45;
-    float C20;
-    float R38;
-    float R41;
-    float R42;
-    float C17;
-    float C16;
-    float R43;
-    float C19;
-    float C18;
+    float R33 = 4.750e+03f;
+    float R37 = 4.750e+03f;
+    float R35 = 4.750e+03f;
+    float R40 = 3.500e+03f;
+    float R39 = 2.350e+04f;
+    float R66 = 1.200e+04f;
+    float R44 = 1.000e+03f;
+    float R47 = 7.500e+02f;
+    float R48 = 3.300e+03f;
+    float R45 = 1.000e+03f;
+    float C20 = 1.000e-04f;
+    float R38 = 4.700e+03f;
+    float R41 = 1.800e+03f;
+    float R42 = 2.430e+04f;
+    float C16 = 3.300e-08f;
+    float C17 = 4.700e-08f;
+    float R43 = 2.510e+04f;
+    float C18 = 3.300e-08f;
+    float C19 = 4.700e-08f;
 };
 
 struct State {

@@ -45,25 +45,10 @@ int main()
     const auto fs = 48000.0f;
 
     Params params = {
-        .R33 = 4.75e3,
-        .R37 = 4.75e3,
-        .R35 = 4.75e3,
         .R40 = 3.5e3,
         .R39 = 23.5e3,
-        .R66 = 12.0e3,
-        .R41 = 1.8e3,
-        .R38 = 4.7e3,
-        .R44 = 1.0e3,
-        .R47 = 750,
-        .R48 = 3.3e3,
         .R43 = 25.1e3,
-        .C18 = 33e-9,
-        .C19 = 47e-9,
-        .R45 = 1.0e3,
-        .C20 = 100e-6,
         .R42 = 24.3e3,
-        .C16 = 33e-9,
-        .C17 = 47e-9,
     };
     State state {};
     compute (&input, &output, 1, (int) count, params, &state, fs);

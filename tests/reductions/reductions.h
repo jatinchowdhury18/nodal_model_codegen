@@ -1,17 +1,17 @@
 #pragma once
 
 struct Params {
-    float Rl;
-    float R0;
-    float C0;
-    float R1p;
-    float R1;
-    float R2;
-    float R3;
-    float C1;
-    float C3;
-    float C2;
-    float C1p;
+    float Rl = 1.000e+04f;
+    float R0 = 1.000e+03f;
+    float C0 = 1.000e-06f;
+    float R1 = 5.000e+03f;
+    float R1p = 5.100e+03f;
+    float R3 = 1.500e+03f;
+    float R2 = 1.000e+03f;
+    float C1p = 5.100e-06f;
+    float C1 = 5.000e-06f;
+    float C3 = 1.500e-06f;
+    float C2 = 1.000e-06f;
 };
 
 struct State {
