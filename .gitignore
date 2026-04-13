@@ -10,4 +10,7 @@
 *.exe
 *.pdf
 *.dSYM
+.build/
 __pycache__/
+
+jai-solve/solve
