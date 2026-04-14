@@ -10,6 +10,8 @@
 *.exe
 *.pdf
 *.dSYM
+*.pdb
+*.rdi
 .build/
 __pycache__/
 

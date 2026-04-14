@@ -13,7 +13,7 @@ fs, vout = read_wav("vout.wav")
 write_bin(vin, "input.bin")
 
 # Generate C++ code
-netlist_codegen("rc_lowpass.net", "rc_lowpass.h")
+# netlist_codegen("rc_lowpass.net", "rc_lowpass.h")
 compile_run_cpp("rc_lowpass")
 cpp_vout = read_bin("output.bin")
 
