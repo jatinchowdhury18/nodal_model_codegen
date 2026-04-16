@@ -1,10 +1,10 @@
 #pragma once
 
 struct Params {
-    float C21 = 2.200e-07f;
-    float C22 = 2.200e-07f;
-    float L1;
-    float R9 = 5.100e+03f;
+    float C21 = 2.2e-07f;
+    float C22 = 2.2e-07f;
+    float L1 = 3.0e+00f;
+    float R9 = 5.1e+03f;
 };
 
 struct State {
@@ -26,14 +26,6 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto gR9 = 1.0f / params.R9;
     
-    const auto temp3 = gC21 + gL1;
-    const auto temp4 = gC22*temp3;
-    const auto temp5 = gC21 + gC22 + gL1;
-    const auto temp6 = temp5*gR9;
-    const auto temp7 = temp4 + temp6;
-    const auto temp8 = 1/temp7;
-    const auto temp17 = gC22 + gR9;
-
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC21 = state[ch].zC21;
@@ -43,30 +35,16 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto temp13 = zC21 + zL1;
-            const auto temp9 = gL1*zC22;
-            const auto temp10 = -(gC22*vi);
-            const auto temp11 = temp10 + zC22;
-            const auto temp12 = gC21*temp11;
-            const auto temp14 = gC22*temp13;
-            const auto temp15 = temp9 + temp12 + temp14;
-            const auto temp18 = gC21*temp17*vi;
-            const auto temp19 = -(gC22*temp13);
-            const auto temp20 = -zC22;
-            const auto temp21 = zC21 + temp20 + zL1;
-            const auto temp22 = -(gR9*temp21);
-            const auto temp23 = temp18 + temp19 + temp22;
+            const auto vo = (((((-(gR9 * 0)) - (-zC22)) * (((-gC21) - gC22) - gL1)) - ((((-(gL1 * 0)) + zL1) - (((gC21 * vi) - zC21) - (-zC22))) * gC22)) / ((((-gC22) - gR9) * (((-gC21) - gC22) - gL1)) - (gC22 * gC22)));
+            const auto vl = ((((((-(gL1 * 0)) + zL1) - (((gC21 * vi) - zC21) - (-zC22))) * ((((-gC22) - gR9) * (((-gC21) - gC22) - gL1)) - (gC22 * gC22))) - (((((-(gR9 * 0)) - (-zC22)) * (((-gC21) - gC22) - gL1)) - ((((-(gL1 * 0)) + zL1) - (((gC21 * vi) - zC21) - (-zC22))) * gC22)) * gC22)) / (((((-gC21) - gC22) - gL1) * ((((-gC22) - gR9) * (((-gC21) - gC22) - gL1)) - (gC22 * gC22))) - (((gC22 * (((-gC21) - gC22) - gL1)) - ((((-gC21) - gC22) - gL1) * gC22)) * gC22)));
+            const auto tC21 = (gC21 * (vi - vl));
+            const auto tC22 = (gC22 * (vl - vo));
+            const auto tL1 = (gL1 * (vl - 0));
             
-            const auto vo = -(temp8*temp15);
-            const auto tC21 = gC21*(vi - temp8*temp23);
-            const auto tC22 = gC22*(temp8*temp15 + temp8*temp23);
-            const auto tL1 = gL1*temp8*temp23;
-            
-            zC21 = 2 * tC21 - zC21;
-            zC22 = 2 * tC22 - zC22;
-            zL1 = 2 * tL1 + zL1;
+            zC21 = 2 * tC21 - zC21;zC22 = 2 * tC22 - zC22;zL1 = 2 * tL1 + zL1;
 
             output[ch][n] = vo;
+
         }
         state[ch].zC21 = zC21;
         state[ch].zC22 = zC22;

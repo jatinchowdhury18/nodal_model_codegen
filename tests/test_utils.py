@@ -7,7 +7,7 @@ import platform
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from netlist_codegen import netlist_codegen
+# from netlist_codegen import netlist_codegen
 
 system = platform.system()
 if system == "Windows":
@@ -40,6 +40,13 @@ def write_bin(x, bin_file):
 
 def read_bin(bin_file):
     return np.fromfile(bin_file, dtype=np.float32)
+
+def netlist_codegen(netlist_file, header_file):
+    subprocess.run([
+        "../../jai-solve/netlist_codegen.exe",
+        netlist_file,
+        header_file
+    ])
 
 def compile_run_cpp(name):
     subprocess.run([

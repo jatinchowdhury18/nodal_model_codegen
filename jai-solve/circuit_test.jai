@@ -21,20 +21,7 @@ main :: () {
         Element.{"R1", .RESISTOR, make_arr(string.["vo", "vi"]) },
         Element.{"C1", .CAPACITOR, make_arr(string.["vo", "0"]) },
     ];
-    solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
-
-    for eqn : equations print(Solve.print_expr(eqn, exprs));
-    print("\n[ ");
-    for var : solve_vars print("%, ", exprs[var]);
-    print("]\n");
-
-    solutions := Solve.solve(equations, solve_vars, *exprs);
-    for var, idx : solve_vars {
-        print("% = %\n", exprs[var].name, Solve.print_expr(solutions[idx], exprs));
-    }
-    gen_vars := generate_expressions(circuit, .["vo"], solve_vars, solutions, *exprs);
-
+    code := solve_and_codegen(circuit, .["vi"], .["vo"]);
     print("-----------\n");
-    code := codegen(circuit, gen_vars, exprs);
     print(code);
 }

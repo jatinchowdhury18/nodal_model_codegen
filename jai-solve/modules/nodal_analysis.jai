@@ -210,3 +210,20 @@ codegen :: (elements: [] Element, gen_vars: [] Expr_ID, exprs: [] Expr) -> strin
 
     return builder_to_string(*builder);
 }
+
+solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> string {
+    solve_vars, equations, exprs := generate_kcl_equations(elements, inputs);
+
+    // for eqn : equations print(print_expr(eqn, exprs));
+    // print("\n[ ");
+    // for var : solve_vars print("%, ", exprs[var]);
+    // print("]\n");
+
+    solutions := solve(equations, solve_vars, *exprs);
+    // for var, idx : solve_vars {
+    //     print("% = %\n", exprs[var].name, print_expr(solutions[idx], exprs));
+    // }
+    gen_vars := generate_expressions(elements, outputs, solve_vars, solutions, *exprs);
+
+    return codegen(elements, gen_vars, exprs);
+}
