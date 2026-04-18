@@ -5,7 +5,6 @@ Element_Type :: enum {
     RESISTOR;
     CAPACITOR;
     INDUCTOR;
-    // @TODO: implement stuff for these elements...
     AMP;
     RC_SERIES;
     RC_PARALLEL;
@@ -76,55 +75,54 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
     }
 
+    // @TODO: I'm not sure this is doing anything?
+    substitute_node :: (node_to_sub: string, replacement_node: string) #expand {
+        for *el : elements {
+            for node, node_idx : el.terminals {
+                if node == node_to_sub {
+                    el.terminals[node_idx] = replacement_node;
+                }
+            }
+        }
+    }
+
     // just op-amps
     for el : elements {
         if el.type != .AMP continue;
-        // @TODO: op-amp stuff here...
+        out_node := el.terminals[0];
+        neg_node := el.terminals[1];
+        pos_node := el.terminals[2];
+
+        current_symbol := expr_symbol(tprint("i%", el.name), *exprs);
+        for node, idx : eqn_nodes {
+            if node == out_node  equations[idx] = combine(equations[idx], current_symbol, .ADD, *exprs); // current entering this node
+        }
+        array_add(*solve_vars, current_symbol);
+
+        if pos_node == "0" {
+            print("Setting % → 0\n", neg_node);
+            array_add(*voltages, .{ expr_symbol(neg_node, *exprs), expr_const(0, *exprs) });
+            array_unordered_remove_by_value(*solve_vars, expr_symbol(neg_node, *exprs));
+            substitute_node(neg_node, "0");
+        } else if neg_node == "0" {
+            print("Setting % → 0\n", pos_node);
+            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), expr_const(0, *exprs) });
+            array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
+            substitute_node(pos_node, "0");
+        } else {
+            print("Setting % → %\n", pos_node, neg_node);
+            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), expr_symbol(neg_node, *exprs) });
+            array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
+            substitute_node(pos_node, neg_node);
+        }
     }
 
     // substitute current and voltage expressions
-    for current_sub : currents exprs[current_sub.id] = exprs[current_sub.replace_id];
-    for voltage_sub : voltages exprs[voltage_sub.id] = exprs[voltage_sub.replace_id];
+    for current_sub : currents  substitute(current_sub.id, current_sub.replace_id, *exprs);
+    for voltage_sub : voltages  substitute(voltage_sub.id, voltage_sub.replace_id, *exprs);
 
     return solve_vars, equations, exprs;
 }
-
-// def generate_kcl_equations(elements, inputs):
-//     def substitute_node(node_to_sub, replacement_node):
-//         for key, el in zip(elements.keys(), elements.values()):
-//             for node_idx, node in enumerate(el):
-//                 if node == node_to_sub:
-//                     el[node_idx] = replacement_node
-//                     elements[key] == el
-
-//     for name, el in zip(elements.keys(), elements.values()):
-//         kind = el[0]
-//         if kind == Element_Type.AMP:
-//             out_node = el[1]
-//             neg_node = el[2]
-//             pos_node = el[3]
-//             for idx, node in enumerate(eqn_nodes):
-//                 if node == out_node: equations[idx][0].append(f"i{name}") # current is entering this node
-//             solve_vars.append(f"i{name}")
-
-//             if pos_node == "0":
-//                 # print(f"Settings {neg_node} to 0")
-//                 voltages.append(f"{neg_node} -> 0")
-//                 solve_vars.remove(neg_node)
-//                 substitute_node(neg_node, "0")
-//             elif neg_node == "0":
-//                 # print(f"Settings {pos_node} to 0")
-//                 voltages.append(f"{pos_node} -> 0")
-//                 solve_vars.remove(pos_node)
-//                 substitute_node(pos_node, "0")
-//             else:
-//                 # print(f"Settings {pos_node} to {neg_node}")
-//                 voltages.append(f"{pos_node} -> {neg_node}")
-//                 solve_vars.remove(pos_node)
-//                 substitute_node(pos_node, neg_node)
-
-//     assert(len(solve_vars) == len(eqn_nodes))
-//     return solve_vars, f"eqn = ({{ {", ".join(equation_strings)} }} /. {{ {", ".join(currents)} }} /. {{ {", ".join(voltages)} }})"
 
 generate_expressions :: (elements: [] Element,
                          outputs: [] string,
@@ -198,13 +196,13 @@ codegen :: (elements: [] Element, gen_vars: [] Expr_ID, exprs: [] Expr) -> strin
     for el : elements {
         if el.type == {
             case .CAPACITOR;
-                print_to_builder(*builder, "z%1 = 2 * t%1 - z%1;", el.name);
+                print_to_builder(*builder, "z%1 = 2 * t%1 - z%1;\n", el.name);
             case .INDUCTOR;
-                print_to_builder(*builder, "z%1 = 2 * t%1 + z%1;", el.name);
+                print_to_builder(*builder, "z%1 = 2 * t%1 + z%1;\n", el.name);
             case .RC_SERIES;
-                print_to_builder(*builder, "z%1 = g%1 * (1 - gn%1) * v%1 + gn%1 * z%1; // RC series", el.name);
+                print_to_builder(*builder, "z%1 = g%1 * (1 - gn%1) * v%1 + gn%1 * z%1; // RC series\n", el.name);
             case .RC_PARALLEL;
-                print_to_builder(*builder, "z%1 = gz%1 * v%1 - z%1; // RC parallel", el.name);
+                print_to_builder(*builder, "z%1 = gz%1 * v%1 - z%1; // RC parallel\n", el.name);
         }
     }
 
@@ -214,15 +212,18 @@ codegen :: (elements: [] Element, gen_vars: [] Expr_ID, exprs: [] Expr) -> strin
 solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> string {
     solve_vars, equations, exprs := generate_kcl_equations(elements, inputs);
 
-    // for eqn : equations print(print_expr(eqn, exprs));
-    // print("\n[ ");
+    // for eqn : equations print("%\n", print_expr(eqn, exprs));
+    // print("[ ");
     // for var : solve_vars print("%, ", exprs[var]);
     // print("]\n");
+    // print("# EXPRS: %\n", exprs.count);
+    // print("%\n", elements);
 
     solutions := solve(equations, solve_vars, *exprs);
     // for var, idx : solve_vars {
     //     print("% = %\n", exprs[var].name, print_expr(solutions[idx], exprs));
     // }
+    // print("# EXPRS: %\n", exprs.count);
     gen_vars := generate_expressions(elements, outputs, solve_vars, solutions, *exprs);
 
     return codegen(elements, gen_vars, exprs);

@@ -1,6 +1,7 @@
 #import "Basic";
 
 Expr_Kind :: enum {
+    NULL;
     CONST;
     SYMBOL;
     NEG; // unary; operand is `left`
@@ -63,6 +64,20 @@ expr_add :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.AD
 expr_sub :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.SUB, expr_symbol(a, exprs), expr_symbol(b, exprs), exprs); }
 expr_mul :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.MUL, expr_symbol(a, exprs), expr_symbol(b, exprs), exprs); }
 expr_div :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.DIV, expr_symbol(a, exprs), expr_symbol(b, exprs), exprs); }
+
+substitute :: (old_expr: Expr_ID, new_expr: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+    if exprs.*[new_expr].kind == .SYMBOL {
+        exprs.*[old_expr] = .{ kind = .NULL };
+        for *expr : exprs.* {
+            if expr.left == old_expr  expr.left = new_expr;
+            if expr.right == old_expr expr.right = new_expr;
+        }
+        return new_expr;
+    }
+
+    exprs.*[old_expr] = exprs.*[new_expr];
+    return new_expr;
+}
 
 //==================================================
 
@@ -263,6 +278,7 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
 solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [..] Expr_ID {
     n := equations.count;
     assert(n == solve_for.count, "Need one equation per unknown!");
+    print("Solving %1x%1 equation\n", n);
 
     // Build n x (n+1) augmented matrix [A | rhs], stored row-major.
     //   A[i][j]  = coefficient of solve_for[j] in equation i

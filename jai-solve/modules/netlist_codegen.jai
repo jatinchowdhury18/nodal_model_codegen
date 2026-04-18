@@ -233,10 +233,10 @@ netlist_codegen :: (netlist_str: string) -> string {
     // @TODO: multiple inputs
     append(*builder, tprint("            const auto % = input[ch][n];\n\n", inputs[0]));
 
-    append(*builder, tprint("%\n\n", indent(loop_code, "            ")));
+    append(*builder, tprint("%\n", indent(loop_code, "            ")));
 
     // @TODO: multiple outputs
-    append(*builder, tprint("            output[ch][n] = %;\n\n", outputs[0]));
+    append(*builder, tprint("            output[ch][n] = %;\n", outputs[0]));
     append(*builder, "        }\n");
 
     for state : states append(*builder, tprint("        state[ch].%1 = %1;\n", state));

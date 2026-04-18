@@ -12,8 +12,10 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 system = platform.system()
 if system == "Windows":
     ltspice_exe = os.path.expanduser("~") + "/AppData/Local/Programs/ADI/LTspice/LTspice.exe"
+    codegen_exe = "../../jai-solve/netlist_codegen.exe"
 elif system == "Darwin":
     ltspice_exe = r"/Applications/LTspice.app/Contents/MacOS/LTspice"
+    codegen_exe = "../../jai-solve/netlist_codegen"
 
 def cleanup():
     os.system("rm -f *.bin")
@@ -43,7 +45,7 @@ def read_bin(bin_file):
 
 def netlist_codegen(netlist_file, header_file):
     subprocess.run([
-        "../../jai-solve/netlist_codegen.exe",
+        codegen_exe,
         netlist_file,
         header_file
     ])

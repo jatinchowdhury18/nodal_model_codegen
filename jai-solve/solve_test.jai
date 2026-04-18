@@ -29,9 +29,13 @@ main :: () {
 
         // Overwrite the symbol's slot with the root of the replacement expression.
         // All existing references to the symbol ID automatically see the new value.
-        exprs[iR1] = exprs[expr_mul("gR1", expr_sub("vo", "vi", *exprs), *exprs)];
-        exprs[iC1] = exprs[expr_sub(expr_mul("gC1", "vo", *exprs), "zC1", *exprs)];
+        substitute(iR1, expr_mul("gR1", expr_sub("vo", "vi", *exprs), *exprs), *exprs);
+        substitute(iC1, expr_sub(expr_mul("gC1", "vo", *exprs), "zC1", *exprs), *exprs);
+        zC := substitute(expr_symbol("zC1", *exprs), expr_symbol("zC", *exprs), *exprs);
+        // print("%\n", print_expr(zC, exprs));
         print("%\n", print_expr(expr, exprs));
+        // for expr : exprs print("%, ", expr);
+        // print("\n");
     }
 
     { // test linearize: gR1*(vo - vi) + (gC1*vo - zC1) in terms of {vo, vi}
