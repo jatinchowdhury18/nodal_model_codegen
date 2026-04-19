@@ -212,10 +212,11 @@ codegen :: (elements: [] Element, gen_vars: [] Expr_ID, exprs: [] Expr) -> strin
 solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> string {
     solve_vars, equations, exprs := generate_kcl_equations(elements, inputs);
 
-    // for eqn : equations print("%\n", print_expr(eqn, exprs));
-    // print("[ ");
-    // for var : solve_vars print("%, ", exprs[var]);
-    // print("]\n");
+    // for eqn : equations print("% == 0,\n", print_expr(eqn, exprs));
+    // print("{ ");
+    // for var : solve_vars print("%, ", exprs[var].name);
+    // print("}\n");
+    // print("---------------------------\n");
     // print("# EXPRS: %\n", exprs.count);
     // print("%\n", elements);
 

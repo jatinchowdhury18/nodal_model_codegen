@@ -200,12 +200,8 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
                 exprs.*[e] = .{ kind = .CONST, value = -child.value }; // -C     → CONST(-C)
             } else if child.kind == .NEG {
                 exprs.*[e] = exprs.*[child.left];                       // -(-x)  → x
-            } else if child.kind == .ADD {
-                na := expr_neg(child.left,  exprs);                     // -(a+b) → (-a) + (-b)
-                nb := expr_neg(child.right, exprs);
-                fold(na, exprs);
-                fold(nb, exprs);
-                exprs.*[e] = .{ kind = .ADD, left = na, right = nb };
+            // NOTE: -(a+b) is intentionally NOT distributed to (-a)+(-b).
+            // Keeping it factored enables (-a)/(-b)->a/b and (-a)-b->-(a+b) to fire.
             } else if child.kind == .SUB {
                 exprs.*[e] = .{ kind = .SUB, left = child.right, right = child.left }; // -(a-b) → b-a
             }
@@ -235,10 +231,42 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
             if expr.kind == .ADD {
                 if left.kind  == .CONST && left.value  == 0 { exprs.*[e] = right; return; } // 0 + x → x
                 if right.kind == .CONST && right.value == 0 { exprs.*[e] = left;  return; } // x + 0 → x
+                // (-a) + (-b) → -(a+b) : factor out shared negation
+                if left.kind == .NEG && right.kind == .NEG {
+                    inner := expr_bin(.ADD, left.left, right.left, exprs);
+                    fold(inner, exprs);
+                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    return;
+                }
+                // a + (-b) → a - b : normalize to SUB form
+                if right.kind == .NEG {
+                    exprs.*[e] = .{ kind = .SUB, left = expr.left, right = right.left };
+                    fold(e, exprs);
+                    return;
+                }
+                // (-a) + b → b - a : normalize so the NEG term is on the right
+                if left.kind == .NEG {
+                    exprs.*[e] = .{ kind = .SUB, left = expr.right, right = left.left };
+                    fold(e, exprs);
+                    return;
+                }
             }
             if expr.kind == .SUB {
                 if right.kind == .CONST && right.value == 0 { exprs.*[e] = left;  return; } // x - 0 → x
                 if left.kind  == .CONST && left.value  == 0 { exprs.*[e] = .{ kind = .NEG, left = expr.right }; return; } // 0 - x → -x
+                // a - (-b) → a + b : eliminate double sign
+                if right.kind == .NEG {
+                    exprs.*[e] = .{ kind = .ADD, left = expr.left, right = right.left };
+                    fold(e, exprs);
+                    return;
+                }
+                // (-a) - b → -(a+b) : factor out negation from left operand
+                if left.kind == .NEG {
+                    inner := expr_bin(.ADD, left.left, expr.right, exprs);
+                    fold(inner, exprs);
+                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    return;
+                }
             }
             if expr.kind == .MUL {
                 if left.kind  == .CONST && left.value  ==  0 { exprs.*[e] = left;  return; } // 0 * x → 0
@@ -266,6 +294,26 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
             }
             if expr.kind == .DIV {
                 if right.kind == .CONST && right.value == 1 { exprs.*[e] = left; return; } // x / 1 → x
+                // (-a) / (-b) → a / b : cancel double negation (check this before single-NEG cases)
+                if left.kind == .NEG && right.kind == .NEG {
+                    exprs.*[e] = .{ kind = .DIV, left = left.left, right = right.left };
+                    fold(e, exprs);
+                    return;
+                }
+                // (-a) / b → -(a/b) : move negation outside the division
+                if left.kind == .NEG {
+                    inner := expr_bin(.DIV, left.left, expr.right, exprs);
+                    fold(inner, exprs);
+                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    return;
+                }
+                // a / (-b) → -(a/b) : move negation outside the division
+                if right.kind == .NEG {
+                    inner := expr_bin(.DIV, expr.left, right.left, exprs);
+                    fold(inner, exprs);
+                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    return;
+                }
             }
     }
 }
@@ -325,6 +373,11 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [.
             if factor == NO_EXPR  continue; // already zero
 
             for j: 0..cols-1 {
+                if j == col {
+                    // factor*pivot - pivot*factor is always exactly 0; set directly.
+                    mat[row * cols + j] = NO_EXPR;
+                    continue;
+                }
                 a  := mat[row * cols + j];
                 b  := mat[col * cols + j];
                 // new = a*pivot - b*factor  (fraction-free: no division introduced)
@@ -359,7 +412,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [.
 //==================================================
 simplify :: (e: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
     // @TODO: better stuff here...
-    fold(e, exprs);
+    // fold(e, exprs);
     return e;
 }
 

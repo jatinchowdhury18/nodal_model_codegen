@@ -88,9 +88,9 @@ generate_params_struct :: (elements: [] Element,
 
     write_value :: (name: string) -> string #expand {
         for val : values {
-            if val.name == name return tprint("    float % = %f;\n", name, val.value);
+            if val.name == name return tprint("    double % = %f;\n", name, val.value);
         }
-        return tprint("    float %;\n", name);
+        return tprint("    double %;\n", name);
     }
 
     builder: String_Builder;
@@ -127,7 +127,7 @@ generate_state_struct :: (elements: [] Element) -> string, [] string {
             case .RC_SERIES; #through;
             case .RC_PARALLEL;
                 array_add(*states, tprint("z%", el.name));
-                append(*builder, tprint("    float % {};\n", states[states.count-1]));
+                append(*builder, tprint("    double % {};\n", states[states.count-1]));
         }
     }
 
