@@ -412,7 +412,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [.
 //==================================================
 simplify :: (e: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
     // @TODO: better stuff here...
-    // fold(e, exprs);
+    fold(e, exprs);
     return e;
 }
 

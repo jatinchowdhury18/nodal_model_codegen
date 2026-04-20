@@ -1,12 +1,12 @@
 #pragma once
 
 struct Params {
-    float R1 = 1.0e+03f;
-    float C1 = 1.0e-06f;
+    double R1 = 1.0e+03f;
+    double C1 = 1.0e-06f;
 };
 
 struct State {
-    float zC1 {};
+    double zC1 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -25,13 +25,12 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto vo = ((((-(gC1 * 0)) - zC1) - (gR1 * vi)) / ((-gR1) - gC1));
+            const auto vo = (((gR1 * vi) + zC1) / (gR1 + gC1));
             const auto tC1 = (gC1 * (vo - 0));
             
             zC1 = 2 * tC1 - zC1;
 
             output[ch][n] = vo;
-
         }
         state[ch].zC1 = zC1;
     }

@@ -56,7 +56,7 @@ def compile_run_cpp(name):
         f"{name}.cpp",
         "--std=c++20",
         "-D_CRT_SECURE_NO_WARNINGS",
-        "-g",
+        # "-g",
         "-o",
         f"{name}.exe"
     ])

@@ -1,18 +1,18 @@
 #pragma once
 
 struct Params {
-    float R1 = 1.0e+04f;
-    float R2 = 1.0e+04f;
-    float C1 = 9.999999e-08f;
-    float C2 = 9.999999e-08f;
-    float Rf = 8.0e+03f;
-    float Rg = 6.0e+03f;
-    float Rload = 1.0e+05f;
+    double R1 = 1.0e+04f;
+    double R2 = 1.0e+04f;
+    double C1 = 9.999999e-08f;
+    double C2 = 9.999999e-08f;
+    double Rf = 8.0e+03f;
+    double Rg = 6.0e+03f;
+    double Rload = 1.0e+05f;
 };
 
 struct State {
-    float zC1 {};
-    float zC2 {};
+    double zC1 {};
+    double zC2 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -42,10 +42,10 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto vo = (((((((-(gC1 * 0)) - zC1) * (((-gR1) - gR2) + (-gC2))) - (((-(gR1 * vi)) + zC2) * gR2)) * ((-(((-gRf) - gRg) * (gC2 * gR2))) - (((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)) * gRf))) - ((((gRg * 0) * (gC2 * gR2)) - (((((-(gC1 * 0)) - zC1) * (((-gR1) - gR2) + (-gC2))) - (((-(gR1 * vi)) + zC2) * gR2)) * gRf)) * ((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)))) / ((-((gC2 * gR2) * ((-(((-gRf) - gRg) * (gC2 * gR2))) - (((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)) * gRf)))) - (((-(gRf * (gC2 * gR2))) - (-((gC2 * gR2) * gRf))) * ((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)))));
-            const auto n3 = ((((gRg * 0) * (gC2 * gR2)) - (((((-(gC1 * 0)) - zC1) * (((-gR1) - gR2) + (-gC2))) - (((-(gR1 * vi)) + zC2) * gR2)) * gRf)) / ((-(((-gRf) - gRg) * (gC2 * gR2))) - (((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)) * gRf)));
+            const auto vo = (-(((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf))) + ((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gRf) * (((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)))) / ((gC2 * gR2) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf)))));
+            const auto n3 = (-((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gRf) / (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf))));
             const auto tC1 = (gC1 * (n3 - 0));
-            const auto n1 = (((((-(((-(gR1 * vi)) + zC2) * (gC2 * gR2))) - (((((-(gC1 * 0)) - zC1) * (((-gR1) - gR2) + (-gC2))) - (((-(gR1 * vi)) + zC2) * gR2)) * gC2)) * ((-(((-gRf) - gRg) * (gC2 * gR2))) - (((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)) * gRf))) - ((((gRg * 0) * (gC2 * gR2)) - (((((-(gC1 * 0)) - zC1) * (((-gR1) - gR2) + (-gC2))) - (((-(gR1 * vi)) + zC2) * gR2)) * gRf)) * ((-(gR2 * (gC2 * gR2))) - (((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)) * gC2)))) / ((((-((((-gR1) - gR2) + (-gC2)) * (gC2 * gR2))) - (((gR2 * (((-gR1) - gR2) + (-gC2))) - ((((-gR1) - gR2) + (-gC2)) * gR2)) * gC2)) * ((-(((-gRf) - gRg) * (gC2 * gR2))) - (((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)) * gRf))) - (-((((gR2 * (((-gR1) - gR2) + (-gC2))) - ((((-gR1) - gR2) + (-gC2)) * gR2)) * gRf) * ((-(gR2 * (gC2 * gR2))) - (((((-gR2) - gC1) * (((-gR1) - gR2) + (-gC2))) - (gR2 * gR2)) * gC2))))));
+            const auto n1 = (-((((((zC2 - (gR1 * vi)) * (gC2 * gR2)) + (((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gC2)) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf))) + ((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gRf) * ((gR2 * (gC2 * gR2)) + ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gC2)))) / ((((gR1 + gR2) + gC2) * (gC2 * gR2)) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf)))));
             const auto tC2 = (gC2 * (vo - n1));
             
             zC1 = 2 * tC1 - zC1;

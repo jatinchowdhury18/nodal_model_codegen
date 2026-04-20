@@ -50,6 +50,8 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
         pos_node := el.terminals[0];
         neg_node := el.terminals[1];
         current_symbol := expr_symbol(tprint("i%", el.name), *exprs);
+        pos_node_symbol := ifx pos_node == "0" then expr_const(0, *exprs) else expr_symbol(pos_node, *exprs);
+        neg_node_symbol := ifx neg_node == "0" then expr_const(0, *exprs) else expr_symbol(neg_node, *exprs);
 
         for node, idx : eqn_nodes {
             if node == pos_node equations[idx] = combine(equations[idx], current_symbol, .SUB, *exprs); // current leaving this node
@@ -61,15 +63,15 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
         state_symbol := expr_symbol(tprint("z%", el.name), *exprs);
         if el.type == {
             case .RESISTOR;
-                current_expr = expr_mul(impedance_symbol, expr_sub(pos_node, neg_node, *exprs), *exprs);
+                current_expr = expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs);
             case .CAPACITOR;
-                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node, neg_node, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
             case .INDUCTOR;
-                current_expr = expr_add(expr_mul(impedance_symbol, expr_sub(pos_node, neg_node, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_add(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
             case .RC_SERIES;
-                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node, neg_node, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
             case .RC_PARALLEL;
-                current_expr = expr_add(expr_mul(impedance_symbol, expr_sub(pos_node, neg_node, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_add(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
         }
         // assert(current_expr != NO_EXPR);
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
