@@ -18,6 +18,12 @@ Element :: struct {
     terminals: [..] string;
 };
 
+// A generated variable: a named expression that will become a C++ `const auto`.
+Gen_Var :: struct {
+    name:    string;
+    expr_id: Expr_ID;
+}
+
 generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID, []Expr_ID, [..]Expr {
     eqn_nodes: [..] string;
 
@@ -77,7 +83,7 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
     }
 
-    // @TODO: I'm not sure this is doing anything?
+    // @TODO: I am not sure this is doing anything?
     substitute_node :: (node_to_sub: string, replacement_node: string) #expand {
         for *el : elements {
             for node, node_idx : el.terminals {
@@ -130,12 +136,11 @@ generate_expressions :: (elements: [] Element,
                          outputs: [] string,
                          solve_vars: [] Expr_ID,
                          solutions: [] Expr_ID,
-                         exprs: *[..] Expr) -> [] Expr_ID {
-    gen_vars: [..] Expr_ID;
+                         exprs: *[..] Expr) -> [] Gen_Var {
+    gen_vars: [..] Gen_Var;
 
     add_gen_var :: (name: string, e: Expr_ID) #expand {
-        array_add(*gen_vars, e);
-        exprs.*[gen_vars[gen_vars.count-1]].name = name;
+        array_add(*gen_vars, Gen_Var.{ name = name, expr_id = e });
     }
 
     add_expression_for_node :: (node: string) #expand {
@@ -143,7 +148,7 @@ generate_expressions :: (elements: [] Element,
         found_solve_var, solve_idx := array_find(solve_vars, node_symbol);
         if !found_solve_var  return;
 
-        for var : gen_vars  if exprs.*[var].name == node  return;
+        for gv : gen_vars  if gv.name == node  return;
         add_gen_var(node, simplify(solutions[solve_idx], exprs));
     }
 
@@ -161,7 +166,6 @@ generate_expressions :: (elements: [] Element,
                 add_expression_for_node(neg_node);
 
                 expr_name := tprint("t%", el.name);
-
                 add_gen_var(expr_name, expr_mul(tprint("g%", el.name), expr_sub(pos_node, neg_node, exprs), exprs));
 
             case .RC_SERIES; #through;
@@ -176,58 +180,86 @@ generate_expressions :: (elements: [] Element,
         }
     }
 
-    // for var : gen_vars print("%, ", exprs.*[var]);
     return gen_vars;
 }
 
-codegen :: (elements: [] Element, gen_vars: [] Expr_ID, exprs: [] Expr) -> string {
-    // @TODO: in loop  and out of loop temporaries
-    // loop_variant_vars = inputs
-    // for name, el in zip(elements.keys(), elements.values()):
-    //     if el[0] == Element_Type.CAPACITOR or el[0] == Element_Type.INDUCTOR \
-    //         or el[0] == Element_Type.RC_SERIES or el[0] == Element_Type.RC_PARALLEL:
-    //         loop_variant_vars.append(f"z{name}")
-
-    builder: String_Builder;
-
-    for var : gen_vars {
-        print_to_builder(*builder, "const auto % = %;\n", exprs[var].name, print_expr(var, exprs));
+// Build the set of base loop-variant symbol names: inputs + state variables.
+build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
+    names: [..] string;
+    for inp : inputs  array_add(*names, inp);
+    for el : elements {
+        if el.type == .CAPACITOR || el.type == .INDUCTOR
+           || el.type == .RC_SERIES || el.type == .RC_PARALLEL {
+            array_add(*names, tprint("z%", el.name));
+        }
     }
-    print_to_builder(*builder, "\n");
+    return names;
+}
+
+// Generate code for the given gen_vars and CSE temporaries.
+//
+// Returns two strings:
+//   outer_code — loop-invariant CSE temporaries (hoist outside the sample loop)
+//   inner_code — loop-variant CSE temps + gen_var assignments + state updates
+codegen :: (elements: [] Element, inputs: [] string,
+            gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
+            exprs: [] Expr) -> (string, string) {
+
+    variant_base := build_variant_base(elements, inputs);
+
+    // Accumulate names of CSE temps that are loop-variant so we can propagate
+    // variant-ness through the (topologically ordered) temp list.
+    variant_cse_names: [..] string;
+
+    outer_builder: String_Builder;
+    inner_builder: String_Builder;
+
+    for cv : cse_vars {
+        if expr_is_loop_variant(cv.expr_id, exprs, variant_base, variant_cse_names) {
+            array_add(*variant_cse_names, cv.name);
+            print_to_builder(*inner_builder, "const auto % = %;\n", cv.name, print_expr(cv.expr_id, exprs));
+        } else {
+            print_to_builder(*outer_builder, "const auto % = %;\n", cv.name, print_expr(cv.expr_id, exprs));
+        }
+    }
+
+    // All gen_vars are loop-variant (they ultimately depend on the input signal
+    // or circuit state) — emit them all in the inner (per-sample) section.
+    print_to_builder(*inner_builder, "\n");
+    for gv : gen_vars {
+        print_to_builder(*inner_builder, "const auto % = %;\n", gv.name, print_expr(gv.expr_id, exprs));
+    }
+    print_to_builder(*inner_builder, "\n");
 
     for el : elements {
         if el.type == {
             case .CAPACITOR;
-                print_to_builder(*builder, "z%1 = 2 * t%1 - z%1;\n", el.name);
+                print_to_builder(*inner_builder, "z%1 = 2 * t%1 - z%1;\n", el.name);
             case .INDUCTOR;
-                print_to_builder(*builder, "z%1 = 2 * t%1 + z%1;\n", el.name);
+                print_to_builder(*inner_builder, "z%1 = 2 * t%1 + z%1;\n", el.name);
             case .RC_SERIES;
-                print_to_builder(*builder, "z%1 = g%1 * (1 - gn%1) * v%1 + gn%1 * z%1; // RC series\n", el.name);
+                print_to_builder(*inner_builder, "z%1 = g%1 * (1 - gn%1) * v%1 + gn%1 * z%1; // RC series\n", el.name);
             case .RC_PARALLEL;
-                print_to_builder(*builder, "z%1 = gz%1 * v%1 - z%1; // RC parallel\n", el.name);
+                print_to_builder(*inner_builder, "z%1 = gz%1 * v%1 - z%1; // RC parallel\n", el.name);
         }
     }
 
-    return builder_to_string(*builder);
+    return builder_to_string(*outer_builder), builder_to_string(*inner_builder);
 }
 
-solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> string {
+solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> (string, string) {
     solve_vars, equations, exprs := generate_kcl_equations(elements, inputs);
 
-    // for eqn : equations print("% == 0,\n", print_expr(eqn, exprs));
-    // print("{ ");
-    // for var : solve_vars print("%, ", exprs[var].name);
-    // print("}\n");
-    // print("---------------------------\n");
-    // print("# EXPRS: %\n", exprs.count);
-    // print("%\n", elements);
-
     solutions := solve(equations, solve_vars, *exprs);
-    // for var, idx : solve_vars {
-    //     print("% = %\n", exprs[var].name, print_expr(solutions[idx], exprs));
-    // }
-    // print("# EXPRS: %\n", exprs.count);
+
     gen_vars := generate_expressions(elements, outputs, solve_vars, solutions, *exprs);
 
-    return codegen(elements, gen_vars, exprs);
+    // Collect gen_var expression IDs for CSE.
+    gen_var_ids: [..] Expr_ID;
+    for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
+
+    cse_vars := cse(gen_var_ids, *exprs);
+
+    outer_code, inner_code := codegen(elements, inputs, gen_vars, cse_vars, exprs);
+    return outer_code, inner_code;
 }

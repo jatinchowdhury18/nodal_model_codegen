@@ -204,7 +204,8 @@ netlist_codegen :: (netlist_str: string) -> string {
     // print("%\n", values);
 
     outputs := string.["vo"];
-    loop_code := solve_and_codegen(elements, inputs, outputs);
+    outer_code, loop_code := solve_and_codegen(elements, inputs, outputs);
+    // print("%\n", outer_code);
     // print("%\n", loop_code);
 
     builder: String_Builder;
@@ -222,7 +223,7 @@ netlist_codegen :: (netlist_str: string) -> string {
     append(*builder, "{\n");
 
     append(*builder, indent(generate_impedance_defs(elements)));
-    // append(*builder, indent(outer_code)); @TODO
+    if outer_code.count > 0  append(*builder, indent(outer_code));
 
     append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n");
     append(*builder, "    {\n");

@@ -2,14 +2,6 @@
 Solve :: #import "solve";
 #import "Basic";
 
-// RC Lowpass Filter
-// circuit: {
-//   'R1': [<Element_Type.RESISTOR: 1>, 'vo', 'vi'],
-//   'C1': [<Element_Type.CAPACITOR: 2>, 'vo', '0']
-// }
-// inputs: ['vi']
-// outputs: ['vo']
-
 make_arr :: (list: [] $T) -> [..] T {
     dest: [..] T;
     array_copy (*dest, list);
@@ -21,7 +13,12 @@ main :: () {
         Element.{"R1", .RESISTOR, make_arr(string.["vo", "vi"]) },
         Element.{"C1", .CAPACITOR, make_arr(string.["vo", "0"]) },
     ];
-    code := solve_and_codegen(circuit, .["vi"], .["vo"]);
+    outer_code, inner_code := solve_and_codegen(circuit, .["vi"], .["vo"]);
     print("-----------\n");
-    print(code);
+    if outer_code.count > 0 {
+        print("// OUTER LOOP\n");
+        print(outer_code);
+    }
+    print("// INNER LOOP\n");
+    print(inner_code);
 }

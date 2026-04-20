@@ -751,3 +751,4 @@ print_expr :: (e: Expr_ID, exprs: [] Expr) -> string {
     expr_to_builder(*builder, e, exprs);
     return builder_to_string(*builder);
 }
+#load "cse.jai";
