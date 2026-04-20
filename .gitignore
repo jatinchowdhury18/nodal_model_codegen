@@ -15,5 +15,5 @@
 .build/
 __pycache__/
 
-jai-solve/solve_test
+jai-solve/*_test
 jai-solve/netlist_codegen

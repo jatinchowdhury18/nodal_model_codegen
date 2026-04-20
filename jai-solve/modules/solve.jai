@@ -410,11 +410,313 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [.
 }
 
 //==================================================
+// Simplification helpers
+
+// Euclidean GCD.
+gcd :: (a: s64, b: s64) -> s64 {
+    a = ifx a < 0 then -a else a;
+    b = ifx b < 0 then -b else b;
+    while b != 0 { t := b;  b = a % b;  a = t; }
+    return a;
+}
+
+// Deep structural equality: are two sub-trees the same formula?
+exprs_equal :: (a: Expr_ID, b: Expr_ID, exprs: [] Expr) -> bool {
+    if a == b  return true;
+    ea := exprs[a];
+    eb := exprs[b];
+    if ea.kind != eb.kind  return false;
+    if ea.kind == .CONST   return ea.value == eb.value;
+    if ea.kind == .SYMBOL  return ea.name == eb.name;
+    if ea.kind == .NEG     return exprs_equal(ea.left, eb.left, exprs);
+    return exprs_equal(ea.left, eb.left, exprs) && exprs_equal(ea.right, eb.right, exprs);
+}
+
+// Rational product form:  (int_num / int_denom) * ∏ sym_num / ∏ sym_denom
+// Invariant: int_denom >= 1,  gcd(|int_num|, int_denom) == 1.
+Flat :: struct {
+    int_num:   s64;
+    int_denom: s64;
+    sym_num:   [..] Expr_ID;
+    sym_denom: [..] Expr_ID;
+}
+
+// Decompose a MUL/DIV/NEG/CONST/SYMBOL sub-tree into Flat product form.
+// ADD/SUB nodes are treated as opaque atomic symbolic factors.
+flatten :: (e: Expr_ID, exprs: [] Expr) -> Flat {
+    f: Flat;
+    f.int_num   = 1;
+    f.int_denom = 1;
+    expr := exprs[e];
+    if expr.kind == {
+        case .NULL;   f.int_num = 0;
+        case .CONST;  f.int_num = expr.value;
+        case .SYMBOL; array_add(*f.sym_num, e);
+
+        case .NEG;
+            inner := flatten(expr.left, exprs);
+            f.int_num   = -inner.int_num;
+            f.int_denom =  inner.int_denom;
+            f.sym_num   =  inner.sym_num;
+            f.sym_denom =  inner.sym_denom;
+
+        case .MUL;
+            a := flatten(expr.left,  exprs);
+            b := flatten(expr.right, exprs);
+            f.int_num   = a.int_num   * b.int_num;
+            f.int_denom = a.int_denom * b.int_denom;
+            for s: a.sym_num   array_add(*f.sym_num,   s);
+            for s: b.sym_num   array_add(*f.sym_num,   s);
+            for s: a.sym_denom array_add(*f.sym_denom, s);
+            for s: b.sym_denom array_add(*f.sym_denom, s);
+
+        case .DIV;
+            a := flatten(expr.left,  exprs);
+            b := flatten(expr.right, exprs);
+            // (a.n/a.d) / (b.n/b.d)  =  (a.n * b.d) / (a.d * b.n)
+            f.int_num   = a.int_num   * b.int_denom;
+            f.int_denom = a.int_denom * b.int_num;
+            for s: a.sym_num   array_add(*f.sym_num,   s);
+            for s: b.sym_denom array_add(*f.sym_num,   s);
+            for s: a.sym_denom array_add(*f.sym_denom, s);
+            for s: b.sym_num   array_add(*f.sym_denom, s);
+
+        case;  // ADD, SUB: treat as one opaque symbolic factor
+            array_add(*f.sym_num, e);
+    }
+    // Normalize: keep int_denom > 0 and reduce by GCD.
+    if f.int_denom < 0 { f.int_num = -f.int_num;  f.int_denom = -f.int_denom; }
+    g := gcd(ifx f.int_num < 0 then -f.int_num else f.int_num, f.int_denom);
+    if g > 1 { f.int_num /= g;  f.int_denom /= g; }
+    return f;
+}
+
+// Left-associative product:  coeff * syms[0] * syms[1] * ...
+// Returns expr_const(1, exprs) when coeff == 1 and syms is empty.
+build_product :: (coeff: s64, syms: [] Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+    result := NO_EXPR;
+    if coeff != 1 || syms.count == 0  result = expr_const(coeff, exprs);
+    for s: syms {
+        if result == NO_EXPR  result = s;
+        else                  result = expr_bin(.MUL, result, s, exprs);
+    }
+    if result == NO_EXPR  result = expr_const(1, exprs);
+    return result;
+}
+
+// Reconstruct an expression from a Flat.  Caller should fold() afterwards if needed.
+rebuild_flat :: (f: Flat, exprs: *[..] Expr) -> Expr_ID {
+    if f.int_num == 0  return expr_const(0, exprs);
+    negative  := f.int_num < 0;
+    abs_coeff := ifx negative then -f.int_num else f.int_num;
+    num_expr  := build_product(abs_coeff, f.sym_num, exprs);
+    result: Expr_ID;
+    if f.int_denom == 1 && f.sym_denom.count == 0 {
+        result = num_expr;
+    } else {
+        denom_expr := build_product(f.int_denom, f.sym_denom, exprs);
+        result = expr_bin(.DIV, num_expr, denom_expr, exprs);
+    }
+    if negative  result = expr_neg(result, exprs);
+    return result;
+}
+
+// Try to exactly divide expression `num` by `factor`.
+//
+// For ADD / SUB / NEG nodes: recurses and requires every branch to succeed.
+// For leaf / product nodes:  uses Flat arithmetic to verify exact divisibility.
+//
+// Returns (true, result_id) on success, (false, NO_EXPR) on failure.
+// On failure the expression array may contain a few unreachable scratch nodes;
+// those are harmless and will not be printed.
+try_cancel :: (num: Expr_ID, factor: Expr_ID, exprs: *[..] Expr) -> (bool, Expr_ID) {
+    expr := exprs.*[num];
+
+    if expr.kind == .NEG {
+        ok, inner := try_cancel(expr.left, factor, exprs);
+        if ok  return true, expr_neg(inner, exprs);
+        return false, NO_EXPR;
+    }
+
+    if expr.kind == .ADD || expr.kind == .SUB {
+        ok_l, res_l := try_cancel(expr.left,  factor, exprs);
+        if !ok_l  return false, NO_EXPR;
+        ok_r, res_r := try_cancel(expr.right, factor, exprs);
+        if !ok_r  return false, NO_EXPR;
+        return true, expr_bin(expr.kind, res_l, res_r, exprs);
+    }
+
+    // Leaf / product node: use Flat arithmetic.
+    nf := flatten(num,    exprs.*);
+    df := flatten(factor, exprs.*);
+
+    // Integer part: (nf.n / nf.d) / (df.n / df.d) = (nf.n * df.d) / (nf.d * df.n).
+    // Must reduce to an exact integer (reduced denominator == 1).
+    new_n := nf.int_num   * df.int_denom;
+    new_d := nf.int_denom * df.int_num;
+    if new_d == 0  return false, NO_EXPR;
+    if new_d < 0 { new_n = -new_n;  new_d = -new_d; }
+    {
+        g := gcd(ifx new_n < 0 then -new_n else new_n, new_d);
+        if g > 0 { new_n /= g;  new_d /= g; }
+    }
+    if new_d != 1  return false, NO_EXPR;  // not exact
+
+    // Symbolic part:
+    //   combined_n = nf.sym_num   ∪ df.sym_denom
+    //   combined_d = nf.sym_denom ∪ df.sym_num
+    // Cross-cancel matching pairs (one entry from combined_d with one from combined_n).
+    // Success condition: every factor that came from df.sym_num must be cancelled.
+    combined_n: [..] Expr_ID;
+    combined_d: [..] Expr_ID;
+    for s: nf.sym_num    array_add(*combined_n, s);
+    for s: df.sym_denom  array_add(*combined_n, s);
+    for s: nf.sym_denom  array_add(*combined_d, s);
+    for s: df.sym_num    array_add(*combined_d, s);
+
+    used_n: [..] bool;
+    used_d: [..] bool;
+    for _: 0..combined_n.count-1  array_add(*used_n, false);
+    for _: 0..combined_d.count-1  array_add(*used_d, false);
+
+    for i: 0..combined_d.count-1 {
+        if used_d[i]  continue;
+        for j: 0..combined_n.count-1 {
+            if used_n[j]  continue;
+            if exprs_equal(combined_d[i], combined_n[j], exprs.*) {
+                used_d[i] = true;
+                used_n[j] = true;
+                break;
+            }
+        }
+    }
+
+    // Every factor from df.sym_num (the last df.sym_num.count entries of combined_d)
+    // must have been cancelled.
+    for i: nf.sym_denom.count .. combined_d.count - 1 {
+        if !used_d[i]  return false, NO_EXPR;
+    }
+
+    result_f: Flat;
+    result_f.int_num   = new_n;
+    result_f.int_denom = 1;
+    for i: 0..combined_n.count-1  if !used_n[i]  array_add(*result_f.sym_num,   combined_n[i]);
+    for i: 0..combined_d.count-1  if !used_d[i]  array_add(*result_f.sym_denom, combined_d[i]);
+    return true, rebuild_flat(result_f, exprs);
+}
+
+// Simplify a DIV node in-place by cancelling common symbolic and integer factors
+// between numerator and denominator.
+simplify_div :: (e: Expr_ID, exprs: *[..] Expr) {
+    expr := exprs.*[e];
+    num  := expr.left;
+    den  := expr.right;
+
+    // a / a  →  1
+    if exprs_equal(num, den, exprs.*) {
+        exprs.*[e] = .{ kind = .CONST, value = 1 };
+        return;
+    }
+
+    den_flat := flatten(den, exprs.*);
+    if den_flat.int_num == 0  return;  // degenerate denominator; leave as-is
+
+    cur_num := num;
+
+    // Cancel symbolic denominator factors from the numerator one-by-one.
+    remaining_sym: [..] Expr_ID;
+    for sym: den_flat.sym_num {
+        ok, new_num := try_cancel(cur_num, sym, exprs);
+        if ok  cur_num = new_num;
+        else   array_add(*remaining_sym, sym);
+    }
+
+    // Try to cancel the integer coefficient of the denominator (exact division).
+    remaining_int := den_flat.int_num;  // > 0 after fold normalises sign
+    if den_flat.int_denom == 1 && remaining_int > 1 {
+        int_factor := expr_const(remaining_int, exprs);
+        ok, new_num := try_cancel(cur_num, int_factor, exprs);
+        if ok { cur_num = new_num;  remaining_int = 1; }
+    }
+
+    // Partial integer GCD: if the numerator is a plain CONST, reduce by GCD.
+    if den_flat.int_denom == 1 && remaining_int > 1 {
+        cur_expr := exprs.*[cur_num];
+        if cur_expr.kind == .CONST && cur_expr.value != 0 {
+            abs_val := ifx cur_expr.value < 0 then -cur_expr.value else cur_expr.value;
+            g := gcd(abs_val, remaining_int);
+            if g > 1 {
+                cur_num       = expr_const(cur_expr.value / g, exprs);
+                remaining_int /= g;
+            }
+        }
+    }
+
+    // If the denominator itself had a denominator (den_flat.sym_denom / den_flat.int_denom),
+    // those factors flip to the numerator:  num / (A/B)  =  num * B / A.
+    for sym: den_flat.sym_denom {
+        cur_num = expr_bin(.MUL, cur_num, sym, exprs);
+    }
+    if den_flat.int_denom != 1 {
+        cur_num = expr_bin(.MUL, cur_num, expr_const(den_flat.int_denom, exprs), exprs);
+    }
+
+    // Has the denominator fully cancelled?
+    if remaining_sym.count == 0 && remaining_int == 1 {
+        exprs.*[e] = exprs.*[cur_num];
+        fold(e, exprs);
+        return;
+    }
+
+    new_den := build_product(remaining_int, remaining_sym, exprs);
+    exprs.*[e] = .{ kind = .DIV, left = cur_num, right = new_den };
+    fold(e, exprs);
+}
+
+// If a MUL has a DIV child, lift it into a single top-level DIV so that
+// simplify_div can see the full numerator and denominator.
+//   (a/b) * c  →  (a*c) / b
+//    a * (b/c) →  (a*b) / c
+simplify_mul :: (e: Expr_ID, exprs: *[..] Expr) {
+    expr  := exprs.*[e];
+    left  := exprs.*[expr.left];
+    right := exprs.*[expr.right];
+    if left.kind == .DIV {
+        new_num := expr_bin(.MUL, left.left, expr.right, exprs);
+        exprs.*[e] = .{ kind = .DIV, left = new_num, right = left.right };
+        simplify_div(e, exprs);
+    } else if right.kind == .DIV {
+        new_num := expr_bin(.MUL, expr.left, right.left, exprs);
+        exprs.*[e] = .{ kind = .DIV, left = new_num, right = right.right };
+        simplify_div(e, exprs);
+    }
+}
+
+// Recursive bottom-up pass: simplify children first, then the current node.
+simplify_node :: (e: Expr_ID, exprs: *[..] Expr) {
+    expr := exprs.*[e];
+    if expr.kind == .CONST || expr.kind == .SYMBOL || expr.kind == .NULL  return;
+    if expr.kind == .NEG {
+        simplify_node(expr.left, exprs);
+    } else {
+        simplify_node(expr.left,  exprs);
+        simplify_node(expr.right, exprs);
+    }
+    expr = exprs.*[e];  // re-read: a child may have changed its own kind
+    if expr.kind == .DIV  simplify_div(e, exprs);
+    if expr.kind == .MUL  simplify_mul(e, exprs);
+}
+
+//==================================================
 simplify :: (e: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    // @TODO: better stuff here...
+    fold(e, exprs);             // constant-fold and normalise signs
+    simplify_node(e, exprs);    // cancel common factors (MUL/DIV lifting)
+    fold(e, exprs);             // clean up any new constant sub-expressions
+    simplify_node(e, exprs);    // second pass: catches opportunities exposed above
     fold(e, exprs);
     return e;
 }
+
 
 //==================================================
 print_expr :: (e: Expr_ID, exprs: [] Expr) -> string {
