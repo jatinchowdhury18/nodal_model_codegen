@@ -34,6 +34,14 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto gRload = 1.0f / params.Rload;
     
+    const auto _t0 = (gC2 * gR2);
+    const auto _t1 = ((gR1 + gR2) + gC2);
+    const auto _t3 = (((gR2 + gC1) * _t1) - (gR2 * gR2));
+    const auto _t6 = (((gRf + gRg) * _t0) - (_t3 * gRf));
+    const auto _t7 = (1 / (_t0 * _t6));
+    const auto _t8 = ((gR2 * _t0) + (_t3 * gC2));
+    const auto _t9 = (1 / (((_t1 * gC2) * gR2) * _t6));
+    const auto _t10 = (1 / _t6);
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC1 = state[ch].zC1;
@@ -42,10 +50,13 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto vo = (-(((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf))) + ((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gRf) * (((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)))) / ((gC2 * gR2) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf)))));
-            const auto n3 = (-((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gRf) / (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf))));
+            const auto _t2 = (zC2 - (gR1 * vi));
+            const auto _t4 = ((zC1 * _t1) - (_t2 * gR2));
+            const auto _t5 = (_t4 * gRf);
+            const auto vo = (-(((_t4 * _t6) + (_t5 * _t3)) * _t7));
+            const auto n3 = (-(_t5 * _t10));
             const auto tC1 = (gC1 * (n3 - 0));
-            const auto n1 = (-((((((zC2 - (gR1 * vi)) * (gC2 * gR2)) + (((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gC2)) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf))) + ((((zC1 * ((gR1 + gR2) + gC2)) - ((zC2 - (gR1 * vi)) * gR2)) * gRf) * ((gR2 * (gC2 * gR2)) + ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gC2)))) / (((((gR1 + gR2) + gC2) * gC2) * gR2) * (((gRf + gRg) * (gC2 * gR2)) - ((((gR2 + gC1) * ((gR1 + gR2) + gC2)) - (gR2 * gR2)) * gRf)))));
+            const auto n1 = (-(((((_t2 * _t0) + (_t4 * gC2)) * _t6) + (_t5 * _t8)) * _t9));
             const auto tC2 = (gC2 * (vo - n1));
             
             zC1 = 2 * tC1 - zC1;

@@ -28,6 +28,8 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto _t0 = ((gC21 + gC22) + gL1);
     const auto _t2 = (((gC22 + gR9) * _t0) - (gC22 * gC22));
+    const auto _t4 = (1 / (_t0 * _t2));
+    const auto _t5 = (1 / _t2);
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC21 = state[ch].zC21;
@@ -39,9 +41,8 @@ static void compute (const float* const* input, float** output, int num_channels
 
             const auto _t1 = (zL1 - (((gC21 * vi) - zC21) + zC22));
             const auto _t3 = ((zC22 * _t0) + (_t1 * gC22));
-            
-            const auto vo = (-(_t3 / _t2));
-            const auto vl = (-(((_t1 * _t2) + (_t3 * gC22)) / (_t0 * _t2)));
+            const auto vo = (-(_t3 * _t5));
+            const auto vl = (-(((_t1 * _t2) + (_t3 * gC22)) * _t4));
             const auto tC21 = (gC21 * (vi - vl));
             const auto tC22 = (gC22 * (vl - vo));
             const auto tL1 = (gL1 * (vl - 0));

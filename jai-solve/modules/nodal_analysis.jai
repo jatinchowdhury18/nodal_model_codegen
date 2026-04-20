@@ -203,9 +203,13 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
 //   inner_code — loop-variant CSE temps + gen_var assignments + state updates
 codegen :: (elements: [] Element, inputs: [] string,
             gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
-            exprs: [] Expr) -> (string, string) {
+            exprs: [] Expr) -> (outer_code: string, inner_code: string) {
 
     variant_base := build_variant_base(elements, inputs);
+    // Gen_vars are computed inside the per-sample loop; treat their names as
+    // loop-variant base symbols so that any CSE temp depending on them is
+    // correctly classified as loop-variant.
+    for gv : gen_vars  array_add(*variant_base, gv.name);
 
     // Accumulate names of CSE temps that are loop-variant so we can propagate
     // variant-ness through the (topologically ordered) temp list.
@@ -214,20 +218,57 @@ codegen :: (elements: [] Element, inputs: [] string,
     outer_builder: String_Builder;
     inner_builder: String_Builder;
 
+    // Collect all inner-loop items: loop-variant CSE temps + gen_vars.
+    // We topologically sort them together so that a CSE temp that references
+    // a gen_var name (e.g. _t6 = vn9 - v36) is emitted *after* that gen_var.
+    inner_items: [..] Gen_Var;
+
     for cv : cse_vars {
         if expr_is_loop_variant(cv.expr_id, exprs, variant_base, variant_cse_names) {
             array_add(*variant_cse_names, cv.name);
-            print_to_builder(*inner_builder, "const auto % = %;\n", cv.name, print_expr(cv.expr_id, exprs));
+            array_add(*inner_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
         } else {
             print_to_builder(*outer_builder, "const auto % = %;\n", cv.name, print_expr(cv.expr_id, exprs));
         }
     }
 
-    // All gen_vars are loop-variant (they ultimately depend on the input signal
-    // or circuit state) — emit them all in the inner (per-sample) section.
-    print_to_builder(*inner_builder, "\n");
     for gv : gen_vars {
-        print_to_builder(*inner_builder, "const auto % = %;\n", gv.name, print_expr(gv.expr_id, exprs));
+        array_add(*inner_items, gv);
+    }
+
+    // Build the flat list of inner item names for dependency look-up.
+    inner_names: [..] string;
+    for item : inner_items  array_add(*inner_names, item.name);
+
+    // Iterative topological sort: emit each item once all of its inner-loop
+    // symbol dependencies have already been emitted.
+    emitted: [..] bool;
+    for _ : 0..inner_items.count-1  array_add(*emitted, false);
+
+    remaining := inner_items.count;
+    while remaining > 0 {
+        made_progress := false;
+        for i : 0..inner_items.count-1 {
+            if emitted[i]  continue;
+            refs: [..] string;
+            collect_symbol_names(inner_items[i].expr_id, exprs, *refs);
+            ready := true;
+            for ref : refs {
+                found, j := array_find(inner_names, ref);
+                if found && j != i && !emitted[j] {
+                    ready = false;
+                    break;
+                }
+            }
+            if ready {
+                emitted[i] = true;
+                remaining -= 1;
+                made_progress = true;
+                print_to_builder(*inner_builder, "const auto % = %;\n",
+                                 inner_items[i].name, print_expr(inner_items[i].expr_id, exprs));
+            }
+        }
+        if !made_progress  break;   // Safety exit -- would mean a cycle.
     }
     print_to_builder(*inner_builder, "\n");
 
@@ -247,7 +288,7 @@ codegen :: (elements: [] Element, inputs: [] string,
     return builder_to_string(*outer_builder), builder_to_string(*inner_builder);
 }
 
-solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> (string, string) {
+solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> (outer_code: string, inner_code: string) {
     solve_vars, equations, exprs := generate_kcl_equations(elements, inputs);
 
     solutions := solve(equations, solve_vars, *exprs);
@@ -259,6 +300,12 @@ solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] strin
     for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
 
     cse_vars := cse(gen_var_ids, *exprs);
+
+    // Build the variant base for LICM (inputs + state vars + gen_var names).
+    licm_variant_base := build_variant_base(elements, inputs);
+    for gv : gen_vars  array_add(*licm_variant_base, gv.name);
+    licm(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
+    recip_hoist(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
 
     outer_code, inner_code := codegen(elements, inputs, gen_vars, cse_vars, exprs);
     return outer_code, inner_code;

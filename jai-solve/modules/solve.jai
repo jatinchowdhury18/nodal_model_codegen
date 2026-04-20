@@ -751,4 +751,385 @@ print_expr :: (e: Expr_ID, exprs: [] Expr) -> string {
     expr_to_builder(*builder, e, exprs);
     return builder_to_string(*builder);
 }
-#load "cse.jai";
+
+//==================================================
+CSE_Var :: struct {
+    name:    string;
+    expr_id: Expr_ID;
+}
+
+cse_expr_size :: (e: Expr_ID, exprs: [] Expr) -> int {
+    ex := exprs[e];
+    if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return 0;
+    if ex.kind == .NEG  return 1 + cse_expr_size(ex.left, exprs);
+    return 1 + cse_expr_size(ex.left, exprs) + cse_expr_size(ex.right, exprs);
+}
+
+cse_count_refs :: (e: Expr_ID, exprs: [] Expr,
+                   ids: *[..] Expr_ID, counts: *[..] int) {
+    ex := exprs[e];
+    if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return;
+    for i: 0..ids.count-1 {
+        if ids.*[i] == e {
+            counts.*[i] += 1;
+            return;
+        }
+    }
+    array_add(ids,    e);
+    array_add(counts, 1);
+    if ex.kind == .NEG {
+        cse_count_refs(ex.left, exprs, ids, counts);
+    } else {
+        cse_count_refs(ex.left,  exprs, ids, counts);
+        cse_count_refs(ex.right, exprs, ids, counts);
+    }
+}
+
+cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
+             exprs: *[..] Expr, counter: *int) -> bool {
+    ids:    [..] Expr_ID;
+    counts: [..] int;
+    for v  : gen_var_ids  cse_count_refs(v,          exprs.*, *ids, *counts);
+    for cv : cse_vars.*   cse_count_refs(cv.expr_id, exprs.*, *ids, *counts);
+    if ids.count == 0  return false;
+
+    canonical: [..] int;
+    for i: 0..ids.count-1  array_add(*canonical, i);
+    for i: 0..ids.count-1 {
+        if canonical[i] != i  continue;
+        for j: i+1..ids.count-1 {
+            if canonical[j] != j    continue;
+            if ids[i] == ids[j]     continue;
+            if exprs_equal(ids[i], ids[j], exprs.*) {
+                canonical[j]  = i;
+                counts[i]    += counts[j];
+            }
+        }
+    }
+
+    class_reps: [..] int;
+    for i: 0..ids.count-1 {
+        if canonical[i] == i  array_add(*class_reps, i);
+    }
+    for i: 1..class_reps.count-1 {
+        key    := class_reps[i];
+        key_sz := cse_expr_size(ids[key], exprs.*);
+        j := i - 1;
+        while j >= 0 && cse_expr_size(ids[class_reps[j]], exprs.*) > key_sz {
+            class_reps[j+1] = class_reps[j];
+            j -= 1;
+        }
+        class_reps[j+1] = key;
+    }
+
+    made_progress := false;
+    for rep_idx : class_reps {
+        if counts[rep_idx] < 2  continue;
+        canonical_id := ids[rep_idx];
+        if cse_expr_size(canonical_id, exprs.*) == 0  continue;
+
+        temp_name := tprint("_t%", counter.*);
+        counter.* += 1;
+
+        ex := exprs.*[canonical_id];
+        saved_id: Expr_ID;
+        if ex.kind == .NEG {
+            saved_id = expr_neg(ex.left, exprs);
+        } else {
+            saved_id = expr_bin(ex.kind, ex.left, ex.right, exprs);
+        }
+        array_add(cse_vars, CSE_Var.{ name = temp_name, expr_id = saved_id });
+
+        temp_sym_id := expr_symbol(temp_name, exprs);
+        exprs.*[canonical_id] = exprs.*[temp_sym_id];
+        for i: 0..ids.count-1 {
+            if canonical[i] == rep_idx && i != rep_idx {
+                exprs.*[ids[i]] = exprs.*[temp_sym_id];
+            }
+        }
+        made_progress = true;
+    }
+    return made_progress;
+}
+
+expr_is_loop_variant :: (e: Expr_ID, exprs: [] Expr,
+                         base_variant_names: [] string,
+                         cse_variant_names:  [] string) -> bool {
+    ex := exprs[e];
+    if ex.kind == .CONST || ex.kind == .NULL  return false;
+    if ex.kind == .SYMBOL {
+        for n : base_variant_names  if ex.name == n  return true;
+        for n : cse_variant_names   if ex.name == n  return true;
+        return false;
+    }
+    if ex.kind == .NEG {
+        return expr_is_loop_variant(ex.left, exprs, base_variant_names, cse_variant_names);
+    }
+    return expr_is_loop_variant(ex.left,  exprs, base_variant_names, cse_variant_names)
+        || expr_is_loop_variant(ex.right, exprs, base_variant_names, cse_variant_names);
+}
+
+cse :: (gen_var_ids: [] Expr_ID, exprs: *[..] Expr) -> [..] CSE_Var {
+    cse_vars: [..] CSE_Var;
+    counter: int = 0;
+    MAX_PASSES :: 20;
+    for 0..MAX_PASSES-1 {
+        if !cse_pass(gen_var_ids, *cse_vars, exprs, *counter)  break;
+    }
+    return cse_vars;
+}
+
+// Walk a loop-variant expression and hoist any loop-invariant sub-expressions
+// into new_vars as new CSE temporaries (even if they appear only once).
+licm_walk :: (e: Expr_ID, exprs: *[..] Expr,
+              new_vars: *[..] CSE_Var, counter: *int,
+              variant_base: [] string, variant_cse_names: [] string) -> bool {
+    ex := (exprs.*)[e];
+    if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return false;
+
+    made_progress := false;
+
+    // Collect children (up to 2 for binary ops, 1 for NEG).
+    child_ids: [2] Expr_ID;
+    n_children: int;
+    if ex.kind == .NEG {
+        child_ids[0] = ex.left;
+        n_children = 1;
+    } else {
+        child_ids[0] = ex.left;
+        child_ids[1] = ex.right;
+        n_children = 2;
+    }
+
+    for ci : 0..n_children-1 {
+        child_id := child_ids[ci];
+        ch_ex := (exprs.*)[child_id];
+        // Skip trivial leaves (symbols and constants are free to recompute).
+        if ch_ex.kind == .CONST || ch_ex.kind == .SYMBOL || ch_ex.kind == .NULL  continue;
+        if !expr_is_loop_variant(child_id, exprs.*, variant_base, variant_cse_names) {
+            // Loop-invariant compound sub-expression inside a loop-variant context.
+            // Hoist it as a new loop-invariant temporary.
+            temp_name := tprint("_t%", counter.*);
+            counter.* += 1;
+            saved_id: Expr_ID;
+            if ch_ex.kind == .NEG {
+                saved_id = expr_neg(ch_ex.left, exprs);
+            } else {
+                saved_id = expr_bin(ch_ex.kind, ch_ex.left, ch_ex.right, exprs);
+            }
+            array_add(new_vars, CSE_Var.{ name = temp_name, expr_id = saved_id });
+            temp_sym_id := expr_symbol(temp_name, exprs);
+            (exprs.*)[child_id] = (exprs.*)[temp_sym_id];
+            made_progress = true;
+        } else {
+            if licm_walk(child_id, exprs, new_vars, counter, variant_base, variant_cse_names)
+                made_progress = true;
+        }
+    }
+
+    return made_progress;
+}
+
+// Loop-Invariant Code Motion pass: extract loop-invariant sub-expressions from
+// loop-variant expressions, even when they appear only once.  Newly extracted
+// temporaries are appended to cse_vars; codegen will hoist them outside the
+// per-sample loop because they classify as loop-invariant.
+licm :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
+         variant_base: [] string) {
+    // Propagate variant-ness through the existing (topologically ordered) CSE temps
+    // so that expr_is_loop_variant correctly handles temps that depend on other temps.
+    variant_cse_names: [..] string;
+    for cv : cse_vars.* {
+        if expr_is_loop_variant(cv.expr_id, exprs.*, variant_base, variant_cse_names)
+            array_add(*variant_cse_names, cv.name);
+    }
+
+    new_vars: [..] CSE_Var;
+    counter := cse_vars.count;   // Name LICM temps after existing CSE temps to avoid clashes.
+
+    MAX_PASSES :: 10;
+    for 0..MAX_PASSES-1 {
+        made_progress := false;
+
+        for gv_id : gen_var_ids {
+            if expr_is_loop_variant(gv_id, exprs.*, variant_base, variant_cse_names) {
+                if licm_walk(gv_id, exprs, *new_vars, *counter, variant_base, variant_cse_names)
+                    made_progress = true;
+            }
+        }
+
+        for cv : cse_vars.* {
+            if expr_is_loop_variant(cv.expr_id, exprs.*, variant_base, variant_cse_names) {
+                if licm_walk(cv.expr_id, exprs, *new_vars, *counter, variant_base, variant_cse_names)
+                    made_progress = true;
+            }
+        }
+
+        if !made_progress  break;
+    }
+
+    // Append newly extracted loop-invariant temporaries to cse_vars.
+    for nv : new_vars  array_add(cse_vars, nv);
+}
+
+
+// Collect all SYMBOL names referenced anywhere in expression e (recursively).
+collect_symbol_names :: (e: Expr_ID, exprs: [] Expr, names: *[..] string) {
+    ex := exprs[e];
+    if ex.kind == .SYMBOL {
+        array_add_if_unique(names, ex.name);
+        return;
+    }
+    if ex.kind == .CONST || ex.kind == .NULL  return;
+    if ex.kind == .NEG {
+        collect_symbol_names(ex.left, exprs, names);
+        return;
+    }
+    collect_symbol_names(ex.left,  exprs, names);
+    collect_symbol_names(ex.right, exprs, names);
+}
+
+
+// Count how many times a named symbol appears as a *direct* divisor
+// (the immediate right child of a DIV node) vs. all other positions,
+// in the expression tree rooted at e.
+count_sym_uses_by_name :: (e: Expr_ID, sym_name: string, exprs: [] Expr,
+                           div_count: *int, other_count: *int) {
+    ex := exprs[e];
+    if ex.kind == .CONST || ex.kind == .NULL  return;
+    if ex.kind == .SYMBOL {
+        if ex.name == sym_name  other_count.* += 1;
+        return;
+    }
+    if ex.kind == .NEG {
+        count_sym_uses_by_name(ex.left, sym_name, exprs, div_count, other_count);
+        return;
+    }
+    if ex.kind == .DIV {
+        // Treat the right (divisor) child specially.
+        right_ex := exprs[ex.right];
+        if right_ex.kind == .SYMBOL && right_ex.name == sym_name {
+            div_count.* += 1;
+        } else {
+            count_sym_uses_by_name(ex.right, sym_name, exprs, div_count, other_count);
+        }
+        count_sym_uses_by_name(ex.left, sym_name, exprs, div_count, other_count);
+        return;
+    }
+    count_sym_uses_by_name(ex.left,  sym_name, exprs, div_count, other_count);
+    count_sym_uses_by_name(ex.right, sym_name, exprs, div_count, other_count);
+}
+
+// In expression tree e, replace every DIV(A, sym_name) with MUL(A, recip_sym_id).
+replace_div_by_name :: (e: Expr_ID, sym_name: string, recip_sym_id: Expr_ID, exprs: *[..] Expr) {
+    ex := (exprs.*)[e];
+    if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return;
+    if ex.kind == .NEG {
+        replace_div_by_name(ex.left, sym_name, recip_sym_id, exprs);
+        return;
+    }
+    if ex.kind == .DIV {
+        right_ex := (exprs.*)[ex.right];
+        if right_ex.kind == .SYMBOL && right_ex.name == sym_name {
+            (exprs.*)[e].kind  = .MUL;
+            (exprs.*)[e].right = recip_sym_id;
+            replace_div_by_name(ex.left, sym_name, recip_sym_id, exprs);
+        } else {
+            replace_div_by_name(ex.left,  sym_name, recip_sym_id, exprs);
+            replace_div_by_name(ex.right, sym_name, recip_sym_id, exprs);
+        }
+        return;
+    }
+    replace_div_by_name(ex.left,  sym_name, recip_sym_id, exprs);
+    replace_div_by_name(ex.right, sym_name, recip_sym_id, exprs);
+}
+
+// Pre-compute reciprocals of loop-invariant expressions that appear as divisors
+// in the inner sample loop, so every inner-loop divide becomes a multiply.
+//
+// For each outer-loop CSE temp _tN used as a direct divisor (x / _tN):
+//   - If _tN is used ONLY as a divisor in the inner loop AND is not referenced by
+//     any other outer-loop expression: flip _tN in place to (1 / original) and
+//     replace every inner-loop (x / _tN) with (x * _tN).
+//   - Otherwise: add a new outer-loop temp (1 / _tN) and replace inner-loop
+//     (x / _tN) with (x * new_temp).
+recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
+                variant_base: [] string) {
+    // Classify each CSE temp as inner (loop-variant) or outer (loop-invariant).
+    variant_cse_names: [..] string;
+    for cv : cse_vars.* {
+        if expr_is_loop_variant(cv.expr_id, exprs.*, variant_base, variant_cse_names)
+            array_add(*variant_cse_names, cv.name);
+    }
+
+    // Build a usage-info record for every outer-loop CSE temp.
+    Div_Info :: struct {
+        name:        string;
+        cse_idx:     int;   // Position in cse_vars (for in-place flip).
+        inner_div:   int;   // Times used as direct divisor in inner-loop expressions.
+        inner_other: int;   // Times used in non-divisor position in inner-loop expressions.
+        outer_refs:  int;   // Times referenced (any position) by other outer-loop expressions.
+    }
+    infos: [..] Div_Info;
+    for cv, idx : cse_vars.* {
+        if !array_find(variant_cse_names, cv.name)
+            array_add(*infos, .{ name = cv.name, cse_idx = idx });
+    }
+    if infos.count == 0  return;
+
+    // Count inner-loop uses.
+    for i : 0..infos.count-1 {
+        for gv_id : gen_var_ids
+            count_sym_uses_by_name(gv_id, infos[i].name, exprs.*, *infos[i].inner_div, *infos[i].inner_other);
+        for cv : cse_vars.* {
+            if array_find(variant_cse_names, cv.name)
+                count_sym_uses_by_name(cv.expr_id, infos[i].name, exprs.*, *infos[i].inner_div, *infos[i].inner_other);
+        }
+    }
+
+    // Count references in *other* outer-loop CSE expressions (guards the in-place flip).
+    for i : 0..infos.count-1 {
+        for cv : cse_vars.* {
+            if cv.name == infos[i].name  continue;
+            if !array_find(variant_cse_names, cv.name) {
+                d, o := 0, 0;
+                count_sym_uses_by_name(cv.expr_id, infos[i].name, exprs.*, *d, *o);
+                infos[i].outer_refs += d + o;
+            }
+        }
+    }
+
+    counter := cse_vars.count;
+
+    for info : infos {
+        if info.inner_div == 0  continue;
+
+        sym_id := expr_symbol(info.name, exprs);
+
+        if info.inner_other == 0 && info.outer_refs == 0 {
+            // Safe to flip: temp is used only as a divisor and nothing else depends on it.
+            one_id := expr_const(1, exprs);
+            cse_vars.*[info.cse_idx].expr_id =
+                expr_bin(.DIV, one_id, cse_vars.*[info.cse_idx].expr_id, exprs);
+            for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, sym_id, exprs);
+            for cv : cse_vars.* {
+                if array_find(variant_cse_names, cv.name)
+                    replace_div_by_name(cv.expr_id, info.name, sym_id, exprs);
+            }
+        } else {
+            // Temp is used elsewhere too; add a dedicated reciprocal.
+            recip_name := tprint("_t%", counter);
+            counter += 1;
+            one_id := expr_const(1, exprs);
+            recip_expr_id := expr_bin(.DIV, one_id, sym_id, exprs);
+            array_add(cse_vars, .{ name = recip_name, expr_id = recip_expr_id });
+
+            recip_sym_id := expr_symbol(recip_name, exprs);
+            for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, recip_sym_id, exprs);
+            for cv : cse_vars.* {
+                if array_find(variant_cse_names, cv.name)
+                    replace_div_by_name(cv.expr_id, info.name, recip_sym_id, exprs);
+            }
+        }
+    }
+}
