@@ -43,12 +43,15 @@ def write_bin(x, bin_file):
 def read_bin(bin_file):
     return np.fromfile(bin_file, dtype=np.float32)
 
-def netlist_codegen(netlist_file, header_file):
-    subprocess.run([
+def netlist_codegen(netlist_file, header_file, lang="cpp"):
+    cmd = [
         codegen_exe,
         netlist_file,
         header_file
-    ])
+    ]
+    if lang != "cpp":
+        cmd += ["-lang", lang]
+    subprocess.run(cmd)
 
 def compile_run_cpp(name):
     subprocess.run([
@@ -56,7 +59,19 @@ def compile_run_cpp(name):
         f"{name}.cpp",
         "--std=c++20",
         "-D_CRT_SECURE_NO_WARNINGS",
-        "-g",
+        # "-g",
+        "-o",
+        f"{name}.exe"
+    ])
+    subprocess.run([f"./{name}.exe"])
+
+def compile_run_c(name):
+    subprocess.run([
+        "clang",
+        f"{name}.c",
+        "--std=c11",
+        "-D_CRT_SECURE_NO_WARNINGS",
+        # "-g",
         "-o",
         f"{name}.exe"
     ])

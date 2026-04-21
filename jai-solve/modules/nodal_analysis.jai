@@ -249,7 +249,13 @@ reduce_circuit :: (elements: *[..] Element, inputs: [] string, outputs: [] strin
     }
 }
 
-// A generated variable: a named expression that will become a C++ `const auto`.
+// Options controlling the target language for code generation.
+Codegen_Options :: struct {
+    lang:      string = "cpp";   // "cpp" or "c"
+    type_name: string = "float"; // numeric type used for variable declarations
+}
+
+// A generated variable: a named expression that will become a `const auto` (C++) or `const <type>` (C).
 Gen_Var :: struct {
     name:    string;
     expr_id: Expr_ID;
@@ -430,7 +436,8 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
 // Emit items into builder as `const auto name = expr;` lines in topological
 // order: each item is written only after all inner-loop symbol dependencies it
 // references have already been written.
-emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder) {
+emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder, options: Codegen_Options = .{}) {
+    decl_type := ifx options.lang == "c" then options.type_name else "auto";
     emitted: [..] bool;
     for _ : 0..items.count-1  array_add(*emitted, false);
 
@@ -455,8 +462,8 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
                 emitted[i]  = true;
                 remaining  -= 1;
                 made_progress = true;
-                print_to_builder(builder, "const auto % = %;\n",
-                                 items[i].name, print_expr(items[i].expr_id, exprs));
+                print_to_builder(builder, "const % % = %;\n",
+                                 decl_type, items[i].name, print_expr(items[i].expr_id, exprs));
             }
         }
         if !made_progress  break;  // Cycle guard.
@@ -470,7 +477,7 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
 //   inner_code — loop-variant CSE temps + gen_var assignments + state updates
 codegen :: (elements: [] Element, inputs: [] string,
             gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
-            exprs: [] Expr) -> (outer_code: string, inner_code: string) {
+            exprs: [] Expr, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string) {
 
     variant_base := build_variant_base(elements, inputs);
     // Gen_vars are computed inside the per-sample loop; treat their names as
@@ -505,8 +512,8 @@ codegen :: (elements: [] Element, inputs: [] string,
     }
 
     // Emit both groups in topological order (dependencies before uses).
-    emit_topological_order(outer_items, exprs, *outer_builder);
-    emit_topological_order(inner_items, exprs, *inner_builder);
+    emit_topological_order(outer_items, exprs, *outer_builder, options);
+    emit_topological_order(inner_items, exprs, *inner_builder, options);
     print_to_builder(*inner_builder, "\n");
 
     for el : elements {
@@ -525,7 +532,7 @@ codegen :: (elements: [] Element, inputs: [] string,
     return builder_to_string(*outer_builder), builder_to_string(*inner_builder);
 }
 
-solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string) -> (outer_code: string, inner_code: string) {
+solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string) {
     reduce_circuit(elements, inputs, outputs);
 
     solve_vars, equations, exprs := generate_kcl_equations(elements.*, inputs);
@@ -547,6 +554,6 @@ solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] st
     licm(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
     recip_hoist(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
 
-    outer_code, inner_code := codegen(elements.*, inputs, gen_vars, cse_vars, exprs);
+    outer_code, inner_code := codegen(elements.*, inputs, gen_vars, cse_vars, exprs, options);
     return outer_code, inner_code;
 }

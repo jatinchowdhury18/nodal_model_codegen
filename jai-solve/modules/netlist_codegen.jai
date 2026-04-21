@@ -119,11 +119,15 @@ parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Va
 
 generate_params_struct :: (elements: [] Element,
                            values: [] Element_Value,
-                           type_name: string = "float") -> string {
+                           type_name: string = "float",
+                           lang: string = "cpp") -> string {
     context.print_style.default_format_float.mode = .SCIENTIFIC;
     context.print_style.default_format_float.zero_removal = .ONE_ZERO_AFTER_DECIMAL;
 
     write_value :: (name: string) -> string #expand {
+        if lang == "c" {
+            return tprint("    % %;\n", type_name, name);
+        }
         for val : values {
             if val.name == name return tprint("    % % = %f;\n", type_name, name, val.value);
         }
@@ -131,7 +135,8 @@ generate_params_struct :: (elements: [] Element,
     }
 
     builder: String_Builder;
-    append(*builder, "struct Params {\n");
+    if lang == "c"  append(*builder, "typedef struct {\n");
+    else            append(*builder, "struct Params {\n");
 
     for el : elements {
         if el.type == {
@@ -154,15 +159,17 @@ generate_params_struct :: (elements: [] Element,
         }
     }
 
-    append(*builder, "};\n");
+    if lang == "c"  append(*builder, "} Params;\n");
+    else            append(*builder, "};\n");
     return builder_to_string(*builder);
 }
 
-generate_state_struct :: (elements: [] Element, type_name: string = "float") -> string, [] string {
+generate_state_struct :: (elements: [] Element, type_name: string = "float", lang: string = "cpp") -> string, [] string {
     states: [..] string;
 
     builder: String_Builder;
-    append(*builder, "struct State {\n");
+    if lang == "c"  append(*builder, "typedef struct {\n");
+    else            append(*builder, "struct State {\n");
 
     for el : elements {
         if el.type == {
@@ -171,57 +178,67 @@ generate_state_struct :: (elements: [] Element, type_name: string = "float") -> 
             case .RC_SERIES; #through;
             case .RC_PARALLEL;
                 array_add(*states, tprint("z%", el.name));
-                append(*builder, tprint("    % % {};\n", type_name, states[states.count-1]));
+                if lang == "c"  append(*builder, tprint("    % %;\n",      type_name, states[states.count-1]));
+                else            append(*builder, tprint("    % % {};\n",   type_name, states[states.count-1]));
         }
     }
 
-    append(*builder, "};\n");
+    if lang == "c"  append(*builder, "} State;\n");
+    else            append(*builder, "};\n");
     return builder_to_string(*builder), states;
 }
 
-generate_impedance_defs :: (elements: [] Element) -> string {
+generate_impedance_defs :: (elements: [] Element, type_name: string = "float", lang: string = "cpp") -> string {
     builder: String_Builder;
-    append(*builder, "[[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };\n");
-    append(*builder, "[[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };\n\n");
+
+    if lang == "c" {
+        append(*builder, "#define sum(a, b) ((a) + (b))\n");
+        append(*builder, "#define recip_sum(a, b) ((a) * (b) / ((a) + (b)))\n\n");
+    } else {
+        append(*builder, "[[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };\n");
+        append(*builder, "[[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };\n\n");
+    }
+
+    auto_or_type := ifx lang == "c" then type_name else "auto";
 
     for el : elements {
         // For same-type combined elements (R+R, C+C, R||R, C||C), emit:
-        //   const auto {name} = {combo_expr};
+        //   const {auto_or_type} {name} = {combo_expr};
         // and then use {name} (not params.{name}) in the impedance formula.
         if el.combo_expr != null && (el.type == .RESISTOR || el.type == .CAPACITOR || el.type == .INDUCTOR) {
-            append(*builder, tprint("const auto %1 = %2;\n", el.name, print_param_expr(el.combo_expr)));
+            append(*builder, tprint("const %1 %2 = %3;\n", auto_or_type, el.name, print_param_expr(el.combo_expr)));
         }
 
         val_name := ifx el.combo_expr != null then el.name else tprint("params.%", el.name);
 
         if el.type == {
             case .RESISTOR;
-                append(*builder, tprint("const auto g%1 = 1.0f / %2;\n\n", el.name, val_name));
+                append(*builder, tprint("const %1 g%2 = 1.0f / %3;\n\n", auto_or_type, el.name, val_name));
             case .CAPACITOR;
-                append(*builder, tprint("const auto g%1 = 2.0f * sample_rate * %2;\n\n", el.name, val_name));
+                append(*builder, tprint("const %1 g%2 = 2.0f * sample_rate * %3;\n\n", auto_or_type, el.name, val_name));
             case .INDUCTOR;
-                append(*builder, tprint("const auto g%1 = 1.0f / (2.0f * sample_rate * %2);\n\n", el.name, val_name));
+                append(*builder, tprint("const %1 g%2 = 1.0f / (2.0f * sample_rate * %3);\n\n", auto_or_type, el.name, val_name));
             case .RC_SERIES;
                 res_name := el.rc_internal.res_name;
                 cap_name := el.rc_internal.cap_name;
-                append(*builder, tprint("const auto %1 = %2;\n", res_name, print_param_expr(el.rc_internal.res_expr)));
-                append(*builder, tprint("const auto %1 = %2;\n", cap_name, print_param_expr(el.rc_internal.cap_expr)));
-                append(*builder, tprint("const auto g%1 = (2.0f * sample_rate * %2) / (1.0f + 2.0f * sample_rate * %3 * %2);\n",   el.name, cap_name, res_name));
-                append(*builder, tprint("const auto gn%1 = g%1 * (2.0f * sample_rate * %2 * %3 - 1.0f) / (2.0f * sample_rate * %3);\n\n", el.name, res_name, cap_name));
+                append(*builder, tprint("const %1 %2 = %3;\n", auto_or_type, res_name, print_param_expr(el.rc_internal.res_expr)));
+                append(*builder, tprint("const %1 %2 = %3;\n", auto_or_type, cap_name, print_param_expr(el.rc_internal.cap_expr)));
+                append(*builder, tprint("const %1 g%2 = (2.0f * sample_rate * %3) / (1.0f + 2.0f * sample_rate * %4 * %3);\n",   auto_or_type, el.name, cap_name, res_name));
+                append(*builder, tprint("const %1 gn%2 = g%2 * (2.0f * sample_rate * %3 * %4 - 1.0f) / (2.0f * sample_rate * %4);\n\n", auto_or_type, el.name, res_name, cap_name));
             case .RC_PARALLEL;
                 res_name := el.rc_internal.res_name;
                 cap_name := el.rc_internal.cap_name;
-                append(*builder, tprint("const auto %1 = %2;\n", res_name, print_param_expr(el.rc_internal.res_expr)));
-                append(*builder, tprint("const auto %1 = %2;\n", cap_name, print_param_expr(el.rc_internal.cap_expr)));
-                append(*builder, tprint("const auto g%1 = 2.0f * sample_rate * %2 + (1.0f / %3);\n", el.name, cap_name, res_name));
-                append(*builder, tprint("const auto gz%1 = 4.0f * sample_rate * %2;\n\n", el.name, cap_name));
+                append(*builder, tprint("const %1 %2 = %3;\n", auto_or_type, res_name, print_param_expr(el.rc_internal.res_expr)));
+                append(*builder, tprint("const %1 %2 = %3;\n", auto_or_type, cap_name, print_param_expr(el.rc_internal.cap_expr)));
+                append(*builder, tprint("const %1 g%2 = 2.0f * sample_rate * %3 + (1.0f / %4);\n", auto_or_type, el.name, cap_name, res_name));
+                append(*builder, tprint("const %1 gz%2 = 4.0f * sample_rate * %3;\n\n", auto_or_type, el.name, cap_name));
         }
     }
 
     return builder_to_string(*builder);
 }
 
-netlist_codegen :: (netlist_str: string, type_name: string = "float") -> string {
+netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp") -> string {
     indent :: (in: string, prefix := "    ") -> string {
         ends_with_newline := in[in.count - 1] == #char "\n";
         out := String.replace(in, "\n", tprint("\n%", prefix));
@@ -236,35 +253,37 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float") -> string 
     // print("%\n", values);
 
     outputs := string.["vo"];
-    outer_code, loop_code := solve_and_codegen(*elements, inputs, outputs);
+    outer_code, loop_code := solve_and_codegen(*elements, inputs, outputs, .{ lang = lang, type_name = type_name });
     // print("%\n", outer_code);
     // print("%\n", loop_code);
+
+    decl_type := ifx lang == "c" then type_name else "auto";
 
     builder: String_Builder;
     append(*builder, "#pragma once\n\n");
 
-    params_struct_code := generate_params_struct(elements, values, type_name);
+    params_struct_code := generate_params_struct(elements, values, type_name, lang);
     append(*builder, params_struct_code);
     append(*builder, "\n");
 
-    state_struct_code, states := generate_state_struct(elements, type_name);
+    state_struct_code, states := generate_state_struct(elements, type_name, lang);
     append(*builder, state_struct_code);
     append(*builder, "\n");
 
     append(*builder, "static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
     append(*builder, "{\n");
 
-    append(*builder, indent(generate_impedance_defs(elements)));
+    append(*builder, indent(generate_impedance_defs(elements, type_name, lang)));
     if outer_code.count > 0  append(*builder, indent(outer_code));
 
     append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n");
     append(*builder, "    {\n");
-    for state : states append(*builder, tprint("        auto %1 = state[ch].%1;\n", state));
+    for state : states  append(*builder, tprint("        %1 %2 = state[ch].%2;\n", decl_type, state));
 
     append(*builder, "        for (int n = 0; n < num_samples; ++n)\n");
     append(*builder, "        {\n");
     // @TODO: multiple inputs
-    append(*builder, tprint("            const auto % = input[ch][n];\n\n", inputs[0]));
+    append(*builder, tprint("            const %1 %2 = input[ch][n];\n\n", decl_type, inputs[0]));
 
     append(*builder, tprint("%\n", indent(loop_code, "            ")));
 
