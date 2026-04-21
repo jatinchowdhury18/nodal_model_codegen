@@ -318,91 +318,195 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
     }
 }
 
-//==================================================
-// Symbolically solve a square system of n equations (each equal to zero) for n unknowns,
-// using fraction-free Gauss-Jordan elimination.
-// Each elimination step uses:  row = row*pivot - pivot_row*factor  (no DIV until the end)
-// Returns one solution Expr_ID per unknown, in the same order as solve_for.
+// ===========================================================================
+// Cramer's rule solver using memoized cofactor expansion.
+//
+// Replaces the previous fraction-free Gauss-Jordan implementation.
+//
+// Motivation: Gauss-Jordan builds each diagonal entry as a product of
+// intermediate pivot values.  For typical audio-circuit conductances
+// (~1e-3 to 1e-5) an 8×8 system produces pivot products in the range
+// 1e-45 to 1e-60 — at or below float32's minimum denormal (~1.4e-45).
+// Those denominators underflow to zero in float32, causing NaN/Inf output.
+//
+// Cramer's rule computes det(A) via cofactor (Laplace) expansion, which
+// expresses it as a *sum* of products rather than a *product* of pivots.
+// For the same circuit the determinant evaluates to ~6e-16 — well within
+// float32's normal range.  All n solutions share the identical det(A)
+// denominator, so CSE extracts it once and recip_hoist turns it into a
+// single precomputed reciprocal, matching the structure produced by the
+// old Mathematica pipeline.
+// ===========================================================================
+
+// Count the number of set bits in a 64-bit integer.
+popcount_u64 :: (x: u64) -> int {
+    n := 0;
+    v := x;
+    while v != 0 { n += 1; v &= v - 1; }
+    return n;
+}
+
+// Index of the lowest set bit (0-based).  Precondition: x != 0.
+ctz_u64 :: (x: u64) -> int {
+    n := 0;
+    v := x;
+    while (v & 1) == 0 { n += 1; v >>= 1; }
+    return n;
+}
+
+// Memoization cache entry: the determinant of the sub-matrix identified
+// by the given row / column bitmasks within the full n×n matrix.
+Det_Cache_Entry :: struct {
+    rows : u64;
+    cols : u64;
+    value: Expr_ID;
+}
+
+// Symbolically compute the determinant of the sub-matrix of M (n×n,
+// row-major) whose rows and columns are indicated by the bitmasks.
+// M[i*n+j] == NO_EXPR is treated as a structural zero (skips that term).
+// Results are memoized in `cache` to avoid re-expanding identical minors.
+symbolic_det :: (M: [] Expr_ID, n: int,
+                 rows: u64, cols: u64,
+                 cache: *[..] Det_Cache_Entry,
+                 exprs: *[..] Expr) -> Expr_ID {
+
+    // Cache lookup.
+    for e: cache.*  if e.rows == rows && e.cols == cols  return e.value;
+
+    k := popcount_u64(rows);
+    assert(k == popcount_u64(cols));
+
+    det: Expr_ID;
+
+    if k == 0 {
+        // Empty sub-matrix: determinant = 1 (multiplicative identity).
+        det = expr_const(1, exprs);
+
+    } else if k == 1 {
+        r   := ctz_u64(rows);
+        c   := ctz_u64(cols);
+        det = M[r * n + c];
+        if det == NO_EXPR  det = expr_const(0, exprs);
+
+    } else {
+        // Cofactor expansion along the lowest-numbered remaining row.
+        r0       := ctz_u64(rows);
+        sub_rows := rows ^ (cast(u64)1 << r0);
+
+        det      = NO_EXPR;
+        col_pos  := 0;          // position of cj within the ordered cols set
+        remaining := cols;
+        while remaining != 0 {
+            cj        := ctz_u64(remaining);
+            remaining &= remaining - 1;   // clear lowest set bit
+
+            entry := M[r0 * n + cj];
+            if entry == NO_EXPR { col_pos += 1; continue; }   // structural zero
+
+            sub_cols := cols ^ (cast(u64)1 << cj);
+            minor    := symbolic_det(M, n, sub_rows, sub_cols, cache, exprs);
+
+            // Skip if the minor is the constant zero.
+            minor_zero := exprs.*[minor].kind == .CONST && exprs.*[minor].value == 0;
+            if !minor_zero {
+                term := expr_mul(entry, minor, exprs);
+                fold(term, exprs);
+                sign_plus := (col_pos % 2) == 0;
+                det = ifx sign_plus then combine(det, term, .ADD, exprs)
+                                    else combine(det, term, .SUB, exprs);
+            }
+            col_pos += 1;
+        }
+        if det == NO_EXPR  det = expr_const(0, exprs);
+    }
+
+    array_add(cache, .{ rows = rows, cols = cols, value = det });
+    return det;
+}
+
+// Solve a square linear system A*x = b using Cramer's rule.
+// Every solution x[i] = det(A_i) / det(A), where A_i is A with column i
+// replaced by b.  Because all solutions share the *same* det(A), the CSE
+// pass will extract it as one shared temporary and recip_hoist will turn
+// it into a single precomputed reciprocal — identical in structure to the
+// single `temp17 = 1/det` produced by the old Mathematica pipeline.
 solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [..] Expr_ID {
     n := equations.count;
     assert(n == solve_for.count, "Need one equation per unknown!");
-    print("Solving %1x%1 equation\n", n);
+    assert(n <= 62, "System too large for bitmask Cramer solver (n > 62)");
+    print("Solving %1x%1 system\n", n);
 
-    // Build n x (n+1) augmented matrix [A | rhs], stored row-major.
-    //   A[i][j]  = coefficient of solve_for[j] in equation i
-    //   rhs[i]   = -constant term  (so the system becomes A*x = rhs)
-    cols := n + 1;
-    mat: [..] Expr_ID;
-    for _: 0..n*cols-1  array_add(*mat, NO_EXPR);
+    // -----------------------------------------------------------------------
+    // Step 1: Extract coefficient matrix A and RHS vector b.
+    //   A[i*n + j] = coefficient of solve_for[j] in equation i
+    //   b[i]       = -constant term  (so A*x = b)
+    // -----------------------------------------------------------------------
+    A: [..] Expr_ID;
+    b: [..] Expr_ID;
 
     for i: 0..n-1 {
         lin := linearize(equations[i], solve_for, exprs);
         for j: 0..n-1 {
-            mat[i * cols + j] = lin.coeffs[j];
-            if mat[i * cols + j] != NO_EXPR  fold(mat[i * cols + j], exprs);
+            a_ij := lin.coeffs[j];
+            if a_ij != NO_EXPR  fold(a_ij, exprs);
+            array_add(*A, a_ij);
         }
         rhs_i := ifx lin.constant != NO_EXPR then expr_neg(lin.constant, exprs) else NO_EXPR;
         if rhs_i != NO_EXPR  fold(rhs_i, exprs);
-        mat[i * cols + n] = rhs_i;
+        array_add(*b, rhs_i);
     }
 
-    // Gauss-Jordan elimination (fraction-free)
-    for col: 0..n-1 {
-        // Find a non-zero pivot in this column at or below the diagonal
-        pivot_row := -1;
-        for row: col..n-1 {
-            if mat[row * cols + col] != NO_EXPR { pivot_row = row; break; }
-        }
-        assert(pivot_row != -1, "System is singular or underdetermined!");
+    all_mask : u64 = (cast(u64)1 << n) - 1;
 
-        // Bring pivot row to the diagonal position
-        if pivot_row != col {
-            for j: 0..cols-1 {
-                tmp                         := mat[col       * cols + j];
-                mat[col       * cols + j]    = mat[pivot_row * cols + j];
-                mat[pivot_row * cols + j]    = tmp;
-            }
-        }
+    // -----------------------------------------------------------------------
+    // Step 2: Compute det(A) — the shared denominator for every solution.
+    // Because symbolic_det uses cofactor expansion, det(A) is expressed as
+    // a *sum* of products of conductances, keeping values in float32 range.
+    // -----------------------------------------------------------------------
+    det_A_cache: [..] Det_Cache_Entry;
+    det_A := symbolic_det(A, n, all_mask, all_mask, *det_A_cache, exprs);
+    assert(!(exprs.*[det_A].kind == .CONST && exprs.*[det_A].value == 0),
+           "System matrix is singular!");
+    fold(det_A, exprs);
 
-        pivot := mat[col * cols + col];
-
-        // Eliminate this column from every other row
-        for row: 0..n-1 {
-            if row == col  continue;
-            factor := mat[row * cols + col];
-            if factor == NO_EXPR  continue; // already zero
-
-            for j: 0..cols-1 {
-                if j == col {
-                    // factor*pivot - pivot*factor is always exactly 0; set directly.
-                    mat[row * cols + j] = NO_EXPR;
-                    continue;
-                }
-                a  := mat[row * cols + j];
-                b  := mat[col * cols + j];
-                // new = a*pivot - b*factor  (fraction-free: no division introduced)
-                ap := ifx a != NO_EXPR then expr_mul(a, pivot, exprs) else NO_EXPR;
-                bf := ifx b != NO_EXPR then expr_mul(b, factor, exprs) else NO_EXPR;
-                new_val := combine(ap, bf, .SUB, exprs);
-                if new_val != NO_EXPR  fold(new_val, exprs);
-                mat[row * cols + j] = new_val;
-            }
-        }
-    }
-
-    // Read off solutions: diag[i] * var[i] = rhs[i]  →  var[i] = rhs[i] / diag[i]
+    // -----------------------------------------------------------------------
+    // Step 3: For each variable x[i], build A_i and compute det(A_i).
+    // We seed the A_i cache with all sub-matrix results from det(A) that do
+    // NOT involve column i — those sub-matrices are identical in A and A_i,
+    // so the same Expr_IDs can be reused.  This enables the later CSE pass
+    // to recognise shared cofactors across all Cramer determinants.
+    // -----------------------------------------------------------------------
     result: [..] Expr_ID;
+
     for i: 0..n-1 {
-        diag := mat[i * cols + i];
-        rhs  := mat[i * cols + n];
-        assert(diag != NO_EXPR, "System is singular!");
-        sol: Expr_ID;
-        if rhs == NO_EXPR {
-            sol = expr_const(0, exprs);
-        } else {
-            sol = expr_div(rhs, diag, exprs);
-            fold(sol, exprs);
+        // Build A_i: same as A but with column i replaced by b.
+        A_i: [..] Expr_ID;
+        for row: 0..n-1 {
+            for col: 0..n-1 {
+                array_add(*A_i, ifx col == i then b[row] else A[row*n + col]);
+            }
         }
+
+        // Pre-populate cache with invariant sub-determinants from det(A).
+        det_Ai_cache: [..] Det_Cache_Entry;
+        col_i_bit := cast(u64)1 << i;
+        for e: det_A_cache {
+            if (e.cols & col_i_bit) == 0   // sub-matrix doesn't touch col i
+                array_add(*det_Ai_cache, e);
+        }
+
+        det_Ai := symbolic_det(A_i, n, all_mask, all_mask, *det_Ai_cache, exprs);
+        fold(det_Ai, exprs);
+
+        // Numerically zero solution — return directly without a division.
+        if exprs.*[det_Ai].kind == .CONST && exprs.*[det_Ai].value == 0 {
+            array_add(*result, det_Ai);
+            continue;
+        }
+
+        sol := expr_div(det_Ai, det_A, exprs);
+        fold(sol, exprs);
         array_add(*result, sol);
     }
 

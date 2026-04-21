@@ -36,10 +36,9 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto gR2R3R1pR1C1C1pC2C3 = (2.0f * sample_rate * C1C1pC2C3) / (1.0f + 2.0f * sample_rate * R2R3R1pR1 * C1C1pC2C3);
     const auto gnR2R3R1pR1C1C1pC2C3 = gR2R3R1pR1C1C1pC2C3 * (2.0f * sample_rate * R2R3R1pR1 * C1C1pC2C3 - 1.0f) / (2.0f * sample_rate * C1C1pC2C3);
     
-    const auto _t1 = (gR0C0 + gR2R3R1pR1C1C1pC2C3);
-    const auto _t3 = (((gRl + gR2R3R1pR1C1C1pC2C3) * _t1) - (gR2R3R1pR1C1C1pC2C3 * gR2R3R1pR1C1C1pC2C3));
-    const auto _t4 = (1 / (_t1 * _t3));
-    const auto _t5 = (1 / _t3);
+    const auto _t0 = (gR0C0 + gR2R3R1pR1C1C1pC2C3);
+    const auto _t3 = (gRl + gR2R3R1pR1C1C1pC2C3);
+    const auto _t2 = (1 / ((_t0 * _t3) - (gR2R3R1pR1C1C1pC2C3 * gR2R3R1pR1C1C1pC2C3)));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zR0C0 = state[ch].zR0C0;
@@ -48,10 +47,9 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto _t2 = (zR2R3R1pR1C1C1pC2C3 - ((gR0C0 * vi) - zR0C0));
-            const auto _t0 = ((zR2R3R1pR1C1C1pC2C3 * _t1) - (_t2 * gR2R3R1pR1C1C1pC2C3));
-            const auto vo = (_t0 * _t5);
-            const auto v1 = (-(((_t2 * _t3) - (_t0 * gR2R3R1pR1C1C1pC2C3)) * _t4));
+            const auto _t1 = (zR2R3R1pR1C1C1pC2C3 - ((gR0C0 * vi) - zR0C0));
+            const auto vo = (((_t0 * zR2R3R1pR1C1C1pC2C3) - (_t1 * gR2R3R1pR1C1C1pC2C3)) * _t2);
+            const auto v1 = (((gR2R3R1pR1C1C1pC2C3 * zR2R3R1pR1C1C1pC2C3) - (_t1 * _t3)) * _t2);
             const auto vR0C0 = (vi - v1);
             const auto vR2R3R1pR1C1C1pC2C3 = (vo - v1);
             
