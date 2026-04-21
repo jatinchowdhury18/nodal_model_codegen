@@ -255,6 +255,37 @@ Codegen_Options :: struct {
     type_name: string = "float"; // numeric type used for variable declarations
 }
 
+// Counts of floating-point operations in a block of generated code.
+Flop_Count :: struct {
+    muls: int;
+    divs: int;
+    adds: int; // ADD, SUB, and NEG all counted here
+}
+
+// Recursively walk an expression tree and accumulate op counts into `result`.
+// Stops at SYMBOL and CONST leaves; does not cross into sub-expressions that
+// are already named CSE variables (they appear as SYMBOL nodes).
+count_flops_expr :: (e: Expr_ID, exprs: [] Expr, result: *Flop_Count) {
+    if e == NO_EXPR  return;
+    kind := exprs[e].kind;
+    if      kind == .MUL                                    result.muls += 1;
+    else if kind == .DIV                                    result.divs += 1;
+    else if kind == .ADD || kind == .SUB || kind == .NEG    result.adds += 1;
+
+    if kind == .ADD || kind == .SUB || kind == .MUL || kind == .DIV {
+        count_flops_expr(exprs[e].left,  exprs, result);
+        count_flops_expr(exprs[e].right, exprs, result);
+    } else if kind == .NEG {
+        count_flops_expr(exprs[e].left, exprs, result);
+    }
+}
+
+count_flops :: (items: [] Gen_Var, exprs: [] Expr) -> Flop_Count {
+    result: Flop_Count;
+    for item : items  count_flops_expr(item.expr_id, exprs, *result);
+    return result;
+}
+
 // A generated variable: a named expression that will become a `const auto` (C++) or `const <type>` (C).
 Gen_Var :: struct {
     name:    string;
@@ -477,7 +508,7 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
 //   inner_code — loop-variant CSE temps + gen_var assignments + state updates
 codegen :: (elements: [] Element, inputs: [] string,
             gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
-            exprs: [] Expr, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string) {
+            exprs: [] Expr, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
 
     variant_base := build_variant_base(elements, inputs);
     // Gen_vars are computed inside the per-sample loop; treat their names as
@@ -511,6 +542,10 @@ codegen :: (elements: [] Element, inputs: [] string,
         array_add(*inner_items, gv);
     }
 
+    // Count FLOPs for both groups before emitting.
+    outer_flops := count_flops(outer_items, exprs);
+    inner_flops := count_flops(inner_items, exprs);
+
     // Emit both groups in topological order (dependencies before uses).
     emit_topological_order(outer_items, exprs, *outer_builder, options);
     emit_topological_order(inner_items, exprs, *inner_builder, options);
@@ -520,19 +555,23 @@ codegen :: (elements: [] Element, inputs: [] string,
         if el.type == {
             case .CAPACITOR;
                 print_to_builder(*inner_builder, "z%1 = 2 * t%1 - z%1;\n", el.name);
+                inner_flops.muls += 1;  inner_flops.adds += 1;  // 2*t, minus
             case .INDUCTOR;
                 print_to_builder(*inner_builder, "z%1 = 2 * t%1 + z%1;\n", el.name);
+                inner_flops.muls += 1;  inner_flops.adds += 1;  // 2*t, plus
             case .RC_SERIES;
                 print_to_builder(*inner_builder, "z%1 = g%1 * (1 - gn%1) * v%1 + gn%1 * z%1; // RC series\n", el.name);
+                inner_flops.muls += 3;  inner_flops.adds += 2;  // 3 muls, (1-gn), plus
             case .RC_PARALLEL;
                 print_to_builder(*inner_builder, "z%1 = gz%1 * v%1 - z%1; // RC parallel\n", el.name);
+                inner_flops.muls += 1;  inner_flops.adds += 1;  // gz*v, minus
         }
     }
 
-    return builder_to_string(*outer_builder), builder_to_string(*inner_builder);
+    return builder_to_string(*outer_builder), builder_to_string(*inner_builder), outer_flops, inner_flops;
 }
 
-solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string) {
+solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
     reduce_circuit(elements, inputs, outputs);
 
     solve_vars, equations, exprs := generate_kcl_equations(elements.*, inputs);
@@ -554,6 +593,6 @@ solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] st
     licm(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
     recip_hoist(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
 
-    outer_code, inner_code := codegen(elements.*, inputs, gen_vars, cse_vars, exprs, options);
-    return outer_code, inner_code;
+    outer_code, inner_code, outer_flops, inner_flops := codegen(elements.*, inputs, gen_vars, cse_vars, exprs, options);
+    return outer_code, inner_code, outer_flops, inner_flops;
 }

@@ -253,9 +253,21 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     // print("%\n", values);
 
     outputs := string.["vo"];
-    outer_code, loop_code := solve_and_codegen(*elements, inputs, outputs, .{ lang = lang, type_name = type_name });
+    outer_code, loop_code, outer_flops, inner_flops := solve_and_codegen(*elements, inputs, outputs, .{ lang = lang, type_name = type_name });
     // print("%\n", outer_code);
     // print("%\n", loop_code);
+
+    flop_str :: (f: Flop_Count) -> string #expand {
+        b: String_Builder;
+        sep := "";
+        if f.muls > 0 { append(*b, sep); print_to_builder(*b, "% mul", f.muls); sep = ", "; }
+        if f.divs > 0 { append(*b, sep); print_to_builder(*b, "% div", f.divs); sep = ", "; }
+        if f.adds > 0 { append(*b, sep); print_to_builder(*b, "% add", f.adds); sep = ", "; }
+        total := f.muls + f.divs + f.adds;
+        if total == 0  return "0 ops";
+        return tprint("% ops (%)", total, builder_to_string(*b));
+    }
+    print("  Outer loop: %\n  Inner loop: %\n", flop_str(outer_flops), flop_str(inner_flops));
 
     decl_type := ifx lang == "c" then type_name else "auto";
 

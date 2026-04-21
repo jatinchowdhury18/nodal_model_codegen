@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cc5c911.
+// Auto-generated with netlist_codegen version f57da4b.
 // Command: netlist_codegen sk_lpf.net sk_lpf.h
 
 #pragma once
