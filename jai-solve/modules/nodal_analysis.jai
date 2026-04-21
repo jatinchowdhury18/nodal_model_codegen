@@ -196,6 +196,42 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
     return names;
 }
 
+// Emit items into builder as `const auto name = expr;` lines in topological
+// order: each item is written only after all inner-loop symbol dependencies it
+// references have already been written.
+emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder) {
+    emitted: [..] bool;
+    for _ : 0..items.count-1  array_add(*emitted, false);
+
+    remaining := items.count;
+    while remaining > 0 {
+        made_progress := false;
+        for i : 0..items.count-1 {
+            if emitted[i]  continue;
+            deps: [..] string;
+            collect_symbol_names(items[i].expr_id, exprs, *deps);
+            ready := true;
+            for dep : deps {
+                for j : 0..items.count-1 {
+                    if j != i && items[j].name == dep && !emitted[j] {
+                        ready = false;
+                        break;
+                    }
+                }
+                if !ready  break;
+            }
+            if ready {
+                emitted[i]  = true;
+                remaining  -= 1;
+                made_progress = true;
+                print_to_builder(builder, "const auto % = %;\n",
+                                 items[i].name, print_expr(items[i].expr_id, exprs));
+            }
+        }
+        if !made_progress  break;  // Cycle guard.
+    }
+}
+
 // Generate code for the given gen_vars and CSE temporaries.
 //
 // Returns two strings:
@@ -218,9 +254,10 @@ codegen :: (elements: [] Element, inputs: [] string,
     outer_builder: String_Builder;
     inner_builder: String_Builder;
 
-    // Collect all inner-loop items: loop-variant CSE temps + gen_vars.
-    // We topologically sort them together so that a CSE temp that references
-    // a gen_var name (e.g. _t6 = vn9 - v36) is emitted *after* that gen_var.
+    // Collect loop-variant CSE temps + gen_vars (inner) and loop-invariant CSE
+    // temps (outer) separately; both will be emitted in topological order so
+    // that every temporary is declared after all the items it depends on.
+    outer_items: [..] Gen_Var;
     inner_items: [..] Gen_Var;
 
     for cv : cse_vars {
@@ -228,7 +265,7 @@ codegen :: (elements: [] Element, inputs: [] string,
             array_add(*variant_cse_names, cv.name);
             array_add(*inner_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
         } else {
-            print_to_builder(*outer_builder, "const auto % = %;\n", cv.name, print_expr(cv.expr_id, exprs));
+            array_add(*outer_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
         }
     }
 
@@ -236,40 +273,9 @@ codegen :: (elements: [] Element, inputs: [] string,
         array_add(*inner_items, gv);
     }
 
-    // Build the flat list of inner item names for dependency look-up.
-    inner_names: [..] string;
-    for item : inner_items  array_add(*inner_names, item.name);
-
-    // Iterative topological sort: emit each item once all of its inner-loop
-    // symbol dependencies have already been emitted.
-    emitted: [..] bool;
-    for _ : 0..inner_items.count-1  array_add(*emitted, false);
-
-    remaining := inner_items.count;
-    while remaining > 0 {
-        made_progress := false;
-        for i : 0..inner_items.count-1 {
-            if emitted[i]  continue;
-            refs: [..] string;
-            collect_symbol_names(inner_items[i].expr_id, exprs, *refs);
-            ready := true;
-            for ref : refs {
-                found, j := array_find(inner_names, ref);
-                if found && j != i && !emitted[j] {
-                    ready = false;
-                    break;
-                }
-            }
-            if ready {
-                emitted[i] = true;
-                remaining -= 1;
-                made_progress = true;
-                print_to_builder(*inner_builder, "const auto % = %;\n",
-                                 inner_items[i].name, print_expr(inner_items[i].expr_id, exprs));
-            }
-        }
-        if !made_progress  break;   // Safety exit -- would mean a cycle.
-    }
+    // Emit both groups in topological order (dependencies before uses).
+    emit_topological_order(outer_items, exprs, *outer_builder);
+    emit_topological_order(inner_items, exprs, *inner_builder);
     print_to_builder(*inner_builder, "\n");
 
     for el : elements {
@@ -300,6 +306,7 @@ solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] strin
     for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
 
     cse_vars := cse(gen_var_ids, *exprs);
+    sort_cse_topological(*cse_vars, exprs);  // ensure deps appear before dependents
 
     // Build the variant base for LICM (inputs + state vars + gen_var names).
     licm_variant_base := build_variant_base(elements, inputs);

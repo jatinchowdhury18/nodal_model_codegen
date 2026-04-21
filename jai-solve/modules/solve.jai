@@ -793,59 +793,41 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
     for cv : cse_vars.*   cse_count_refs(cv.expr_id, exprs.*, *ids, *counts);
     if ids.count == 0  return false;
 
-    canonical: [..] int;
-    for i: 0..ids.count-1  array_add(*canonical, i);
+    // Union-find: merge structurally-equal nodes into one equivalence class.
+    parent: [..] int;
+    for i: 0..ids.count-1  array_add(*parent, i);
     for i: 0..ids.count-1 {
-        if canonical[i] != i  continue;
+        if parent[i] != i  continue;
         for j: i+1..ids.count-1 {
-            if canonical[j] != j    continue;
-            if ids[i] == ids[j]     continue;
+            if parent[j] != j    continue;
+            if ids[i] == ids[j]  continue;
             if exprs_equal(ids[i], ids[j], exprs.*) {
-                canonical[j]  = i;
-                counts[i]    += counts[j];
+                parent[j]   = i;
+                counts[i]  += counts[j];
             }
         }
     }
 
-    class_reps: [..] int;
-    for i: 0..ids.count-1 {
-        if canonical[i] == i  array_add(*class_reps, i);
-    }
-    for i: 1..class_reps.count-1 {
-        key    := class_reps[i];
-        key_sz := cse_expr_size(ids[key], exprs.*);
-        j := i - 1;
-        while j >= 0 && cse_expr_size(ids[class_reps[j]], exprs.*) > key_sz {
-            class_reps[j+1] = class_reps[j];
-            j -= 1;
-        }
-        class_reps[j+1] = key;
-    }
-
     made_progress := false;
-    for rep_idx : class_reps {
-        if counts[rep_idx] < 2  continue;
-        canonical_id := ids[rep_idx];
-        if cse_expr_size(canonical_id, exprs.*) == 0  continue;
+    for i: 0..ids.count-1 {
+        if parent[i] != i                        continue;  // not the class representative
+        if counts[i] < 2                         continue;  // not shared enough to CSE
+        if cse_expr_size(ids[i], exprs.*) == 0   continue;  // trivial (leaf) node
 
         temp_name := tprint("_t%", counter.*);
         counter.* += 1;
 
-        ex := exprs.*[canonical_id];
-        saved_id: Expr_ID;
-        if ex.kind == .NEG {
-            saved_id = expr_neg(ex.left, exprs);
-        } else {
-            saved_id = expr_bin(ex.kind, ex.left, ex.right, exprs);
-        }
-        array_add(cse_vars, CSE_Var.{ name = temp_name, expr_id = saved_id });
+        ex       := exprs.*[ids[i]];
+        saved_id := ifx ex.kind == .NEG
+                    then expr_neg(ex.left, exprs)
+                    else expr_bin(ex.kind, ex.left, ex.right, exprs);
+        array_add(cse_vars, .{ name = temp_name, expr_id = saved_id });
 
         temp_sym_id := expr_symbol(temp_name, exprs);
-        exprs.*[canonical_id] = exprs.*[temp_sym_id];
-        for i: 0..ids.count-1 {
-            if canonical[i] == rep_idx && i != rep_idx {
-                exprs.*[ids[i]] = exprs.*[temp_sym_id];
-            }
+        exprs.*[ids[i]] = exprs.*[temp_sym_id];
+        for j: 0..ids.count-1 {
+            if parent[j] == i && j != i
+                exprs.*[ids[j]] = exprs.*[temp_sym_id];
         }
         made_progress = true;
     }
@@ -879,6 +861,44 @@ cse :: (gen_var_ids: [] Expr_ID, exprs: *[..] Expr) -> [..] CSE_Var {
     return cse_vars;
 }
 
+
+// Sort cse_vars in-place into topological order: each temp appears after all
+// other temps whose names it references.  A single forward pass over cse_vars
+// is then sufficient to propagate loop-variant-ness and to emit declarations
+// in the correct dependency order.
+sort_cse_topological :: (cse_vars: *[..] CSE_Var, exprs: [] Expr) {
+    sorted:  [..] CSE_Var;
+    emitted: [..] bool;
+    for _ : 0..cse_vars.count-1  array_add(*emitted, false);
+
+    remaining := cse_vars.count;
+    while remaining > 0 {
+        made_progress := false;
+        for i : 0..cse_vars.count-1 {
+            if emitted[i]  continue;
+            deps: [..] string;
+            collect_symbol_names(cse_vars.*[i].expr_id, exprs, *deps);
+            ready := true;
+            for dep : deps {
+                for j : 0..cse_vars.count-1 {
+                    if j != i && cse_vars.*[j].name == dep && !emitted[j] {
+                        ready = false;
+                        break;
+                    }
+                }
+                if !ready  break;
+            }
+            if ready {
+                emitted[i] = true;
+                remaining -= 1;
+                made_progress = true;
+                array_add(*sorted, cse_vars.*[i]);
+            }
+        }
+        if !made_progress  break;  // Cycle guard.
+    }
+    cse_vars.* = sorted;
+}
 // Walk a loop-variant expression and hoist any loop-invariant sub-expressions
 // into new_vars as new CSE temporaries (even if they appear only once).
 licm_walk :: (e: Expr_ID, exprs: *[..] Expr,
@@ -888,42 +908,22 @@ licm_walk :: (e: Expr_ID, exprs: *[..] Expr,
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return false;
 
     made_progress := false;
-
-    // Collect children (up to 2 for binary ops, 1 for NEG).
-    child_ids: [2] Expr_ID;
-    n_children: int;
-    if ex.kind == .NEG {
-        child_ids[0] = ex.left;
-        n_children = 1;
-    } else {
-        child_ids[0] = ex.left;
-        child_ids[1] = ex.right;
-        n_children = 2;
-    }
-
+    n_children := ifx ex.kind == .NEG then 1 else 2;
     for ci : 0..n_children-1 {
-        child_id := child_ids[ci];
-        ch_ex := (exprs.*)[child_id];
-        // Skip trivial leaves (symbols and constants are free to recompute).
-        if ch_ex.kind == .CONST || ch_ex.kind == .SYMBOL || ch_ex.kind == .NULL  continue;
+        child_id := ifx ci == 0 then ex.left else ex.right;
+        ch := (exprs.*)[child_id];
+        if ch.kind == .CONST || ch.kind == .SYMBOL || ch.kind == .NULL  continue;
         if !expr_is_loop_variant(child_id, exprs.*, variant_base, variant_cse_names) {
-            // Loop-invariant compound sub-expression inside a loop-variant context.
-            // Hoist it as a new loop-invariant temporary.
-            temp_name := tprint("_t%", counter.*);
-            counter.* += 1;
-            saved_id: Expr_ID;
-            if ch_ex.kind == .NEG {
-                saved_id = expr_neg(ch_ex.left, exprs);
-            } else {
-                saved_id = expr_bin(ch_ex.kind, ch_ex.left, ch_ex.right, exprs);
-            }
-            array_add(new_vars, CSE_Var.{ name = temp_name, expr_id = saved_id });
-            temp_sym_id := expr_symbol(temp_name, exprs);
-            (exprs.*)[child_id] = (exprs.*)[temp_sym_id];
+            // Loop-invariant compound sub-expression inside a loop-variant context -- hoist it.
+            temp_name := tprint("_t%", counter.*);  counter.* += 1;
+            saved_id  := ifx ch.kind == .NEG
+                         then expr_neg(ch.left, exprs)
+                         else expr_bin(ch.kind, ch.left, ch.right, exprs);
+            array_add(new_vars, .{ name = temp_name, expr_id = saved_id });
+            (exprs.*)[child_id] = (exprs.*)[expr_symbol(temp_name, exprs)];
             made_progress = true;
-        } else {
-            if licm_walk(child_id, exprs, new_vars, counter, variant_base, variant_cse_names)
-                made_progress = true;
+        } else if licm_walk(child_id, exprs, new_vars, counter, variant_base, variant_cse_names) {
+            made_progress = true;
         }
     }
 
