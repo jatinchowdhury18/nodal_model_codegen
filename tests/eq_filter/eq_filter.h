@@ -1,4 +1,10 @@
+// Auto-generated with netlist_codegen version cc5c911.
+// Command: netlist_codegen eq_filter.net eq_filter.h -namespace nodal::eq_filter
+
 #pragma once
+
+namespace nodal::eq_filter
+{
 
 struct Params {
     float R33 = 4.75e+03f;
@@ -127,3 +133,5 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zR43C18C19 = zR43C18C19;
     }
 }
+
+} // namespace nodal::eq_filter

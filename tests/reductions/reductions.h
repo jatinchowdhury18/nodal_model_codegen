@@ -1,3 +1,6 @@
+// Auto-generated with netlist_codegen version cc5c911.
+// Command: netlist_codegen reductions.net reductions.h
+
 #pragma once
 
 struct Params {

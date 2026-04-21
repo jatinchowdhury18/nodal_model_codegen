@@ -238,7 +238,7 @@ generate_impedance_defs :: (elements: [] Element, type_name: string = "float", l
     return builder_to_string(*builder);
 }
 
-netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp") -> string {
+netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "") -> string {
     indent :: (in: string, prefix := "    ") -> string {
         ends_with_newline := in[in.count - 1] == #char "\n";
         out := String.replace(in, "\n", tprint("\n%", prefix));
@@ -261,6 +261,10 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
 
     builder: String_Builder;
     append(*builder, "#pragma once\n\n");
+
+    if namespace.count > 0 && lang == "cpp" {
+        append(*builder, tprint("namespace %\n{\n\n", namespace));
+    }
 
     params_struct_code := generate_params_struct(elements, values, type_name, lang);
     append(*builder, params_struct_code);
@@ -295,6 +299,10 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     append(*builder, "    }\n");
 
     append(*builder, "}\n");
+
+    if namespace.count > 0 && lang == "cpp" {
+        append(*builder, tprint("\n} // namespace %\n", namespace));
+    }
 
     return builder_to_string(*builder);
 }

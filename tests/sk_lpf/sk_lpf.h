@@ -1,3 +1,6 @@
+// Auto-generated with netlist_codegen version cc5c911.
+// Command: netlist_codegen sk_lpf.net sk_lpf.h
+
 #pragma once
 
 struct Params {

@@ -44,14 +44,14 @@ int main()
 
     const auto fs = 48000.0f;
 
-    Params params = {
+    nodal::eq_filter::Params params = {
         .R40 = 3.5e3,
         .R39 = 23.5e3,
         .R43 = 25.1e3,
         .R42 = 24.3e3,
     };
-    State state {};
-    compute (&input, &output, 1, (int) count, params, &state, fs);
+    nodal::eq_filter::State state {};
+    nodal::eq_filter::compute (&input, &output, 1, (int) count, params, &state, fs);
 
     write_data (output, count);
 

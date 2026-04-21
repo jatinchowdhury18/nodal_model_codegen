@@ -1,3 +1,6 @@
+// Auto-generated with netlist_codegen version cc5c911.
+// Command: netlist_codegen rc_lowpass.net rc_lowpass.h
+
 #pragma once
 
 struct Params {

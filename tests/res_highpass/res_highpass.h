@@ -1,3 +1,6 @@
+// Auto-generated with netlist_codegen version cc5c911.
+// Command: netlist_codegen res_highpass.net res_highpass.h
+
 #pragma once
 
 struct Params {
