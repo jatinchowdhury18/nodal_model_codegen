@@ -10,13 +10,244 @@ Element_Type :: enum {
     RC_PARALLEL;
 }
 
+Combo_Op_Type :: enum {
+    NONE;       // leaf: use the element's own name as the param directly
+    SUM;        // a + b  (series R+R, parallel C||C)
+    RECIP_SUM;  // a*b/(a+b)  (series C+C, parallel R||R)
+}
+
+// Recursive expression tree for a combined parameter value.
+// Leaf nodes (op == .NONE) hold a single param name.
+// Branch nodes combine two sub-expressions.
+Param_Expr :: struct {
+    op:        Combo_Op_Type;
+    leaf_name: string;       // valid only when op == .NONE
+    left:      *Param_Expr;  // valid only when op != .NONE
+    right:     *Param_Expr;  // valid only when op != .NONE
+}
+
+// Stores the R and C identity info for a combined RC element.
+RC_Internal :: struct {
+    res_name: string;
+    res_expr: *Param_Expr;
+    cap_name: string;
+    cap_expr: *Param_Expr;
+}
+
 Element :: struct {
     name: string;
 
     type: Element_Type;
 
     terminals: [..] string;
+
+    // For same-type combined elements (R+R, C+C, R||R, C||C):
+    // non-null when this element's parameter is a combo expression.
+    combo_expr: *Param_Expr;  // null => use params.{name} directly
+
+    // For RC_SERIES / RC_PARALLEL combined elements.
+    rc_internal: RC_Internal;
 };
+
+// Return a Param_Expr leaf for an element.
+// If the element already carries a combo_expr, return that; otherwise make a fresh leaf.
+get_param_expr :: (el: Element) -> *Param_Expr {
+    if el.combo_expr  return el.combo_expr;
+    expr := New(Param_Expr);
+    expr.op = .NONE;
+    expr.leaf_name = el.name;
+    return expr;
+}
+
+make_combo_expr :: (op: Combo_Op_Type, left: *Param_Expr, right: *Param_Expr) -> *Param_Expr {
+    expr := New(Param_Expr);
+    expr.op    = op;
+    expr.left  = left;
+    expr.right = right;
+    return expr;
+}
+
+// Build an RC_SERIES Element from a resistor element and a capacitor element,
+// given the "other" terminal for each (the terminal NOT shared with the internal node).
+make_rc_series_element :: (res_el: Element, res_other: string,
+                           cap_el: Element, cap_other: string) -> Element {
+    new_el: Element;
+    new_el.name = tprint("%1%2", res_el.name, cap_el.name);
+    new_el.type = .RC_SERIES;
+    array_add(*new_el.terminals, res_other);
+    array_add(*new_el.terminals, cap_other);
+    new_el.rc_internal.res_name = res_el.name;
+    new_el.rc_internal.res_expr = get_param_expr(res_el);
+    new_el.rc_internal.cap_name = cap_el.name;
+    new_el.rc_internal.cap_expr = get_param_expr(cap_el);
+    return new_el;
+}
+
+// Attempt ONE series combination. Returns true if a combination was made.
+// Series reduction: elements sharing a node that is not input, output, or ground,
+// and that node has exactly two elements connected to it.
+reduce_series_once :: (elements: *[..] Element, inputs: [] string, outputs: [] string) -> bool {
+    all_nodes: [..] string;
+    defer array_free(all_nodes);
+    for el : elements.* {
+        for terminal : el.terminals {
+            array_add_if_unique(*all_nodes, terminal);
+        }
+    }
+
+    for node : all_nodes {
+        if node == "0" continue;
+        if array_find(inputs, node)  continue;
+        if array_find(outputs, node) continue;
+
+        connected: [..] int;
+        defer array_free(connected);
+        for el, idx : elements.* {
+            for terminal : el.terminals {
+                if terminal == node {
+                    array_add(*connected, idx);
+                    break;
+                }
+            }
+        }
+        if connected.count != 2 continue;
+
+        idx1 := connected[0];
+        idx2 := connected[1];
+        el1  := (elements.*)[idx1];
+        el2  := (elements.*)[idx2];
+        other1 := ifx el1.terminals[0] == node then el1.terminals[1] else el1.terminals[0];
+        other2 := ifx el2.terminals[0] == node then el2.terminals[1] else el2.terminals[0];
+
+        new_el: Element;
+        combined := false;
+
+        if el1.type == .RESISTOR && el2.type == .RESISTOR {
+            print("Combining series resistors: % + %\n", el1.name, el2.name);
+            new_el.name = tprint("%1%2", el1.name, el2.name);
+            new_el.type = .RESISTOR;
+            array_add(*new_el.terminals, other1);
+            array_add(*new_el.terminals, other2);
+            new_el.combo_expr = make_combo_expr(.SUM, get_param_expr(el1), get_param_expr(el2));
+            combined = true;
+        } else if el1.type == .CAPACITOR && el2.type == .CAPACITOR {
+            print("Combining series capacitors: % + %\n", el1.name, el2.name);
+            new_el.name = tprint("%1%2", el1.name, el2.name);
+            new_el.type = .CAPACITOR;
+            array_add(*new_el.terminals, other1);
+            array_add(*new_el.terminals, other2);
+            new_el.combo_expr = make_combo_expr(.RECIP_SUM, get_param_expr(el1), get_param_expr(el2));
+            combined = true;
+        } else if el1.type == .RESISTOR && el2.type == .CAPACITOR {
+            print("Combining series resistor and capacitor: % + %\n", el1.name, el2.name);
+            new_el  = make_rc_series_element(el1, other1, el2, other2);
+            combined = true;
+        } else if el1.type == .CAPACITOR && el2.type == .RESISTOR {
+            print("Combining series resistor and capacitor: % + %\n", el2.name, el1.name);
+            new_el  = make_rc_series_element(el2, other2, el1, other1);
+            combined = true;
+        }
+
+        if combined {
+            hi := max(idx1, idx2);
+            lo := min(idx1, idx2);
+            array_unordered_remove_by_index(elements, hi);
+            array_unordered_remove_by_index(elements, lo);
+            array_add(elements, new_el);
+            return true;
+        }
+    }
+    return false;
+}
+
+// Attempt ONE parallel combination. Returns true if a combination was made.
+// Priority: R||R, then C||C, then R||C.
+reduce_parallel_once :: (elements: *[..] Element) -> bool {
+    // Same-type parallel (R||R and C||C)
+    for i : 0..elements.count-1 {
+        el1 := (elements.*)[i];
+        if el1.type != .RESISTOR && el1.type != .CAPACITOR  continue;
+
+        for j : i+1..elements.count-1 {
+            el2 := (elements.*)[j];
+            if el2.type != el1.type  continue;
+
+            n1a := el1.terminals[0]; n2a := el1.terminals[1];
+            n1b := el2.terminals[0]; n2b := el2.terminals[1];
+            same_nodes := (n1a == n1b && n2a == n2b) || (n1a == n2b && n2a == n1b);
+            if !same_nodes  continue;
+
+            new_el: Element;
+            new_el.name = tprint("%1%2", el1.name, el2.name);
+            new_el.type = el1.type;
+            array_add(*new_el.terminals, n1a);
+            array_add(*new_el.terminals, n2a);
+
+            if el1.type == .RESISTOR {
+                print("Combining parallel resistors: % || %\n", el1.name, el2.name);
+                new_el.combo_expr = make_combo_expr(.RECIP_SUM, get_param_expr(el1), get_param_expr(el2));
+            } else {
+                print("Combining parallel capacitors: % || %\n", el1.name, el2.name);
+                new_el.combo_expr = make_combo_expr(.SUM, get_param_expr(el1), get_param_expr(el2));
+            }
+
+            // Remove higher index first to avoid shift issues
+            array_unordered_remove_by_index(elements, j);
+            array_unordered_remove_by_index(elements, i);
+            array_add(elements, new_el);
+            return true;
+        }
+    }
+
+    // Mixed parallel (R||C)
+    for i : 0..elements.count-1 {
+        el1 := (elements.*)[i];
+        if el1.type != .RESISTOR  continue;
+
+        for j : 0..elements.count-1 {
+            if j == i  continue;
+            el2 := (elements.*)[j];
+            if el2.type != .CAPACITOR  continue;
+
+            n1a := el1.terminals[0]; n2a := el1.terminals[1];
+            n1b := el2.terminals[0]; n2b := el2.terminals[1];
+            same_nodes := (n1a == n1b && n2a == n2b) || (n1a == n2b && n2a == n1b);
+            if !same_nodes  continue;
+
+            print("Combining parallel resistor and capacitor: % || %\n", el1.name, el2.name);
+
+            new_el: Element;
+            new_el.name = tprint("%1%2", el1.name, el2.name);
+            new_el.type = .RC_PARALLEL;
+            array_add(*new_el.terminals, n1a);
+            array_add(*new_el.terminals, n2a);
+            new_el.rc_internal.res_name = el1.name;
+            new_el.rc_internal.res_expr = get_param_expr(el1);
+            new_el.rc_internal.cap_name = el2.name;
+            new_el.rc_internal.cap_expr = get_param_expr(el2);
+
+            hi := max(i, j);
+            lo := min(i, j);
+            array_unordered_remove_by_index(elements, hi);
+            array_unordered_remove_by_index(elements, lo);
+            array_add(elements, new_el);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Reduce the circuit by combining series/parallel elements until no more
+// reductions are possible. Mirrors the Python reduce_circuit() function.
+reduce_circuit :: (elements: *[..] Element, inputs: [] string, outputs: [] string) {
+    prev_count := -1;
+    while elements.count != prev_count {
+        prev_count = elements.count;
+        reduce_series_once(elements, inputs, outputs);
+        reduce_parallel_once(elements);
+    }
+}
 
 // A generated variable: a named expression that will become a C++ `const auto`.
 Gen_Var :: struct {
@@ -77,7 +308,7 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
             case .RC_SERIES;
                 current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
             case .RC_PARALLEL;
-                current_expr = expr_add(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
         }
         // assert(current_expr != NO_EXPR);
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
@@ -294,12 +525,14 @@ codegen :: (elements: [] Element, inputs: [] string,
     return builder_to_string(*outer_builder), builder_to_string(*inner_builder);
 }
 
-solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] string) -> (outer_code: string, inner_code: string) {
-    solve_vars, equations, exprs := generate_kcl_equations(elements, inputs);
+solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string) -> (outer_code: string, inner_code: string) {
+    reduce_circuit(elements, inputs, outputs);
+
+    solve_vars, equations, exprs := generate_kcl_equations(elements.*, inputs);
 
     solutions := solve(equations, solve_vars, *exprs);
 
-    gen_vars := generate_expressions(elements, outputs, solve_vars, solutions, *exprs);
+    gen_vars := generate_expressions(elements.*, outputs, solve_vars, solutions, *exprs);
 
     // Collect gen_var expression IDs for CSE.
     gen_var_ids: [..] Expr_ID;
@@ -309,11 +542,11 @@ solve_and_codegen :: (elements: [] Element, inputs: [] string, outputs: [] strin
     sort_cse_topological(*cse_vars, exprs);  // ensure deps appear before dependents
 
     // Build the variant base for LICM (inputs + state vars + gen_var names).
-    licm_variant_base := build_variant_base(elements, inputs);
+    licm_variant_base := build_variant_base(elements.*, inputs);
     for gv : gen_vars  array_add(*licm_variant_base, gv.name);
     licm(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
     recip_hoist(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
 
-    outer_code, inner_code := codegen(elements, inputs, gen_vars, cse_vars, exprs);
+    outer_code, inner_code := codegen(elements.*, inputs, gen_vars, cse_vars, exprs);
     return outer_code, inner_code;
 }

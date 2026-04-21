@@ -12,9 +12,11 @@
 *.dSYM
 *.pdb
 *.rdi
+*.DS_Store
 .build/
 __pycache__/
 scratch/
 
+*_old.*
 jai-solve/*_test
 jai-solve/netlist_codegen

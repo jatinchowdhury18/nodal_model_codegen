@@ -4,12 +4,46 @@ Math :: #import "Math";
 
 #import "nodal_analysis";
 
+print_param_expr :: (expr: *Param_Expr, param_prefix: string = "params.") -> string {
+    build_param_expr :: (e: *Param_Expr, param_prefix: string, builder: *String_Builder) {
+        if e == null {
+            append(builder, "/* null expr */");
+            return;
+        }
+        if e.op == .NONE {
+            print_to_builder(builder, "%1%2", param_prefix, e.leaf_name);
+            return;
+        }
+        if e.op == .SUM  append(builder, "sum(");
+        else             append(builder, "recip_sum(");
+        build_param_expr(e.left, param_prefix, builder);
+        append(builder, ", ");
+        build_param_expr(e.right, param_prefix, builder);
+        append(builder, ")");
+    }
+
+    builder: String_Builder;
+    build_param_expr(expr, param_prefix, *builder);
+    return builder_to_string(*builder);
+}
+
+// Walk a Param_Expr tree and collect all leaf names into `names`.
+collect_param_leaf_names :: (expr: *Param_Expr, names: *[..] string) {
+    if expr == null  return;
+    if expr.op == .NONE {
+        array_add_if_unique(names, expr.leaf_name);
+        return;
+    }
+    collect_param_leaf_names(expr.left,  names);
+    collect_param_leaf_names(expr.right, names);
+}
+
 Element_Value :: struct {
     name: string;
     value: float;
 };
 
-parse_netlist :: (netlist_str: string) -> [] Element, [] string, [] Element_Value {
+parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Value {
     parse_value :: (val_str: string) -> float32 {
         val, success, remainder := string_to_float(val_str);
         if !success return Math.FLOAT32_NAN;
@@ -49,7 +83,9 @@ parse_netlist :: (netlist_str: string) -> [] Element, [] string, [] Element_Valu
 
         if String.contains(line, "netlist_skip")  continue;
 
-        tokens := String.split(line, #char " ");
+        tokens_raw := String.split(line, #char " ");
+        tokens: [..] string;
+        for t : tokens_raw  if t.count > 0  array_add(*tokens, t);
         // print("%\n", tokens);
 
         name := tokens[0];
@@ -102,12 +138,19 @@ generate_params_struct :: (elements: [] Element,
             case .RESISTOR; #through;
             case .CAPACITOR; #through;
             case .INDUCTOR;
-                append(*builder, write_value(el.name));
-                // @TODO: else if params need to be extracted...
-                // params := extract_param_names(el[3]);
-                // for pname in params {
-                //     append(&builder, write_value(pname));
-                // }
+                if el.combo_expr == null {
+                    append(*builder, write_value(el.name));
+                } else {
+                    leaf_names: [..] string;
+                    collect_param_leaf_names(el.combo_expr, *leaf_names);
+                    for pname : leaf_names  append(*builder, write_value(pname));
+                }
+            case .RC_SERIES; #through;
+            case .RC_PARALLEL;
+                leaf_names: [..] string;
+                collect_param_leaf_names(el.rc_internal.res_expr, *leaf_names);
+                collect_param_leaf_names(el.rc_internal.cap_expr, *leaf_names);
+                for pname : leaf_names  append(*builder, write_value(pname));
         }
     }
 
@@ -137,53 +180,41 @@ generate_state_struct :: (elements: [] Element, type_name: string = "float") -> 
 }
 
 generate_impedance_defs :: (elements: [] Element) -> string {
-//     def param_expr(expr, param_prefix="params."):
-//         if isinstance(expr, str):
-//             return f"{param_prefix}{expr}"
-//         op = expr[0]
-//         args = expr[1:]
-//         if op == Combo_Op_Type.SUM:
-//             # sum(a, b, c)
-//             return f"sum({', '.join(param_expr(arg, param_prefix) for arg in args)})"
-//         elif op == Combo_Op_Type.RECIP_SUM:
-//             # recip_sum(a, b, c)
-//             return f"recip_sum({', '.join(param_expr(arg, param_prefix) for arg in args)})"
-//         else:
-//             raise ValueError(f"Unknown operation: {op}")
-
     builder: String_Builder;
     append(*builder, "[[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };\n");
     append(*builder, "[[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };\n\n");
 
     for el : elements {
-        val_name := tprint("params.%", el.name);
+        // For same-type combined elements (R+R, C+C, R||R, C||C), emit:
+        //   const auto {name} = {combo_expr};
+        // and then use {name} (not params.{name}) in the impedance formula.
+        if el.combo_expr != null && (el.type == .RESISTOR || el.type == .CAPACITOR || el.type == .INDUCTOR) {
+            append(*builder, tprint("const auto %1 = %2;\n", el.name, print_param_expr(el.combo_expr)));
+        }
 
-        // @TODO:
-        // if len(el) > 3 and isinstance(el[3], tuple):
-        //     val_name = name
-        //     code += f"const auto {val_name} = {param_expr(el[3])};\n"
+        val_name := ifx el.combo_expr != null then el.name else tprint("params.%", el.name);
 
         if el.type == {
             case .RESISTOR;
-                append(*builder, tprint("const auto g% = 1.0f / %;\n\n", el.name, val_name));
+                append(*builder, tprint("const auto g%1 = 1.0f / %2;\n\n", el.name, val_name));
             case .CAPACITOR;
-                append(*builder, tprint("const auto g% = 2.0f * sample_rate * %;\n\n", el.name, val_name));
+                append(*builder, tprint("const auto g%1 = 2.0f * sample_rate * %2;\n\n", el.name, val_name));
             case .INDUCTOR;
-                append(*builder, tprint("const auto g% = 1.0f / (2.0f * sample_rate * %);\n\n", el.name, val_name));
+                append(*builder, tprint("const auto g%1 = 1.0f / (2.0f * sample_rate * %2);\n\n", el.name, val_name));
             case .RC_SERIES;
-                // rc_internals = el[3]
-                // res_name, cap_name = list(rc_internals.keys())[:2]
-                // code += f"const auto {res_name} = {param_expr(rc_internals[res_name])};\n"
-                // code += f"const auto {cap_name} = {param_expr(rc_internals[cap_name])};\n"
-                // code += f"const auto g{name} = (2.0f * sample_rate * {cap_name}) / (1.0f + 2.0f * sample_rate * {res_name} * {cap_name});\n"
-                // code += f"const auto gn{name} = g{name} * (2.0f * sample_rate * {res_name} * {cap_name} - 1.0f) / (2.0f * sample_rate * {cap_name});\n\n"
+                res_name := el.rc_internal.res_name;
+                cap_name := el.rc_internal.cap_name;
+                append(*builder, tprint("const auto %1 = %2;\n", res_name, print_param_expr(el.rc_internal.res_expr)));
+                append(*builder, tprint("const auto %1 = %2;\n", cap_name, print_param_expr(el.rc_internal.cap_expr)));
+                append(*builder, tprint("const auto g%1 = (2.0f * sample_rate * %2) / (1.0f + 2.0f * sample_rate * %3 * %2);\n",   el.name, cap_name, res_name));
+                append(*builder, tprint("const auto gn%1 = g%1 * (2.0f * sample_rate * %2 * %3 - 1.0f) / (2.0f * sample_rate * %3);\n\n", el.name, res_name, cap_name));
             case .RC_PARALLEL;
-                // rc_internals = el[3]
-                // res_name, cap_name = list(rc_internals.keys())[:2]
-                // code += f"const auto {res_name} = {param_expr(rc_internals[res_name])};\n"
-                // code += f"const auto {cap_name} = {param_expr(rc_internals[cap_name])};\n"
-                // code += f"const auto g{name} = 2.0f * sample_rate * {cap_name} + (1.0f / {res_name});\n"
-                // code += f"const auto gz{name} = 4.0f * sample_rate * {cap_name};\n\n"
+                res_name := el.rc_internal.res_name;
+                cap_name := el.rc_internal.cap_name;
+                append(*builder, tprint("const auto %1 = %2;\n", res_name, print_param_expr(el.rc_internal.res_expr)));
+                append(*builder, tprint("const auto %1 = %2;\n", cap_name, print_param_expr(el.rc_internal.cap_expr)));
+                append(*builder, tprint("const auto g%1 = 2.0f * sample_rate * %2 + (1.0f / %3);\n", el.name, cap_name, res_name));
+                append(*builder, tprint("const auto gz%1 = 4.0f * sample_rate * %2;\n\n", el.name, cap_name));
         }
     }
 
@@ -205,7 +236,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float") -> string 
     // print("%\n", values);
 
     outputs := string.["vo"];
-    outer_code, loop_code := solve_and_codegen(elements, inputs, outputs);
+    outer_code, loop_code := solve_and_codegen(*elements, inputs, outputs);
     // print("%\n", outer_code);
     // print("%\n", loop_code);
 

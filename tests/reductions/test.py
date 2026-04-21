@@ -15,7 +15,7 @@ fs, vout = read_wav("vout.wav")
 write_bin(vin, "input.bin")
 
 # Generate C++ code
-netlist_codegen("reductions.net", "reductions.h", reduce_circuit=True)
+netlist_codegen("reductions.net", "reductions.h") # , reduce_circuit=True)
 compile_run_cpp("reductions")
 cpp_vout = read_bin("output.bin")
 

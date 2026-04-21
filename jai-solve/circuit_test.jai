@@ -9,11 +9,10 @@ make_arr :: (list: [] $T) -> [..] T {
 }
 
 main :: () {
-    circuit := Element.[
-        Element.{"R1", .RESISTOR, make_arr(string.["vo", "vi"]) },
-        Element.{"C1", .CAPACITOR, make_arr(string.["vo", "0"]) },
-    ];
-    outer_code, inner_code := solve_and_codegen(circuit, .["vi"], .["vo"]);
+    circuit: [..] Element;
+    array_add(*circuit, Element.{name="R1", type=.RESISTOR, terminals=make_arr(string.["vo", "vi"]) });
+    array_add(*circuit, Element.{name="C1", type=.CAPACITOR, terminals=make_arr(string.["vo", "0"]) });
+    outer_code, inner_code := solve_and_codegen(*circuit, .["vi"], .["vo"]);
     print("-----------\n");
     if outer_code.count > 0 {
         print("// OUTER LOOP\n");

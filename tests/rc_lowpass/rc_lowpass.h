@@ -1,12 +1,12 @@
 #pragma once
 
 struct Params {
-    double R1 = 1.0e+03f;
-    double C1 = 1.0e-06f;
+    float R1 = 1.0e+03f;
+    float C1 = 1.0e-06f;
 };
 
 struct State {
-    double zC1 {};
+    float zC1 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)

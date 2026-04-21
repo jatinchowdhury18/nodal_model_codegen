@@ -7,7 +7,7 @@ main :: () {
     args := get_command_line_arguments();
     netlist_file := args[1];
     header_file := args[2];
-    type_name := ifx args.count > 3 then args[3] else "double";
+    type_name := ifx args.count > 3 then args[3] else "float";
     print("Converting netlist file % to % (type: %)\n", netlist_file, header_file, type_name);
 
     netlist_file_str, fread_success := File.read_entire_file(netlist_file);

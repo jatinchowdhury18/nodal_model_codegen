@@ -1,22 +1,22 @@
 #pragma once
 
 struct Params {
-    float Rl = 1.000e+04f;
-    float R0 = 1.000e+03f;
-    float C0 = 1.000e-06f;
-    float R1 = 5.000e+03f;
-    float R1p = 5.100e+03f;
-    float R3 = 1.500e+03f;
-    float R2 = 1.000e+03f;
-    float C1p = 5.100e-06f;
-    float C1 = 5.000e-06f;
-    float C3 = 1.500e-06f;
-    float C2 = 1.000e-06f;
+    float R0 = 1.0e+03f;
+    float C0 = 1.0e-06f;
+    float Rl = 1.0e+04f;
+    float R2 = 1.0e+03f;
+    float R3 = 1.5e+03f;
+    float R1p = 5.1e+03f;
+    float R1 = 5.0e+03f;
+    float C1 = 5.0e-06f;
+    float C1p = 5.1e-06f;
+    float C2 = 1.0e-06f;
+    float C3 = 1.5e-06f;
 };
 
 struct State {
     float zR0C0 {};
-    float zR3R2R1R1pC2C3C1C1p {};
+    float zR2R3R1pR1C1C1pC2C3 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -24,54 +24,43 @@ static void compute (const float* const* input, float** output, int num_channels
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
     
-    const auto gRl = 1.0f / params.Rl;
-    
     const auto R0 = params.R0;
     const auto C0 = params.C0;
     const auto gR0C0 = 2.0f * sample_rate * C0 + (1.0f / R0);
     const auto gzR0C0 = 4.0f * sample_rate * C0;
     
-    const auto R3R2R1R1p = sum(params.R3, sum(params.R2, recip_sum(params.R1, params.R1p)));
-    const auto C2C3C1C1p = recip_sum(recip_sum(params.C2, params.C3), sum(params.C1, params.C1p));
-    const auto gR3R2R1R1pC2C3C1C1p = (2.0f * sample_rate * C2C3C1C1p) / (1.0f + 2.0f * sample_rate * R3R2R1R1p * C2C3C1C1p);
-    const auto gnR3R2R1R1pC2C3C1C1p = gR3R2R1R1pC2C3C1C1p * (2.0f * sample_rate * R3R2R1R1p * C2C3C1C1p - 1.0f) / (2.0f * sample_rate * C2C3C1C1p);
+    const auto gRl = 1.0f / params.Rl;
     
-    const auto temp3 = gR3R2R1R1pC2C3C1C1p*gRl;
-    const auto temp4 = gR3R2R1R1pC2C3C1C1p + gRl;
-    const auto temp5 = gR0C0*temp4;
-    const auto temp6 = temp3 + temp5;
-    const auto temp7 = 1/temp6;
-
+    const auto R2R3R1pR1 = sum(sum(params.R2, params.R3), recip_sum(params.R1p, params.R1));
+    const auto C1C1pC2C3 = recip_sum(sum(params.C1, params.C1p), recip_sum(params.C2, params.C3));
+    const auto gR2R3R1pR1C1C1pC2C3 = (2.0f * sample_rate * C1C1pC2C3) / (1.0f + 2.0f * sample_rate * R2R3R1pR1 * C1C1pC2C3);
+    const auto gnR2R3R1pR1C1C1pC2C3 = gR2R3R1pR1C1C1pC2C3 * (2.0f * sample_rate * R2R3R1pR1 * C1C1pC2C3 - 1.0f) / (2.0f * sample_rate * C1C1pC2C3);
+    
+    const auto _t1 = (gR0C0 + gR2R3R1pR1C1C1pC2C3);
+    const auto _t3 = (((gRl + gR2R3R1pR1C1C1pC2C3) * _t1) - (gR2R3R1pR1C1C1pC2C3 * gR2R3R1pR1C1C1pC2C3));
+    const auto _t4 = (1 / (_t1 * _t3));
+    const auto _t5 = (1 / _t3);
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zR0C0 = state[ch].zR0C0;
-        auto zR3R2R1R1pC2C3C1C1p = state[ch].zR3R2R1R1pC2C3C1C1p;
+        auto zR2R3R1pR1C1C1pC2C3 = state[ch].zR2R3R1pR1C1C1pC2C3;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
 
-            const auto temp15 = gR0C0*vi;
-            const auto temp16 = temp15 + zR0C0;
-            const auto temp17 = temp4*temp16;
-            const auto temp18 = -(gRl*zR3R2R1R1pC2C3C1C1p);
-            const auto temp19 = temp17 + temp18;
-            const auto temp8 = gR3R2R1R1pC2C3C1C1p*zR0C0;
-            const auto temp9 = gR3R2R1R1pC2C3C1C1p*vi;
-            const auto temp10 = temp9 + zR3R2R1R1pC2C3C1C1p;
-            const auto temp11 = gR0C0*temp10;
-            const auto temp12 = temp8 + temp11;
-            const auto temp13 = temp7*temp12;
-            
-            const auto vo = temp13;
-            const auto vR0C0 = -vi + temp7*temp19;
-            const auto vR3R2R1R1pC2C3C1C1p = -(temp7*temp19) + temp13;
+            const auto _t2 = (zR2R3R1pR1C1C1pC2C3 - ((gR0C0 * vi) - zR0C0));
+            const auto _t0 = ((zR2R3R1pR1C1C1pC2C3 * _t1) - (_t2 * gR2R3R1pR1C1C1pC2C3));
+            const auto vo = (_t0 * _t5);
+            const auto v1 = (-(((_t2 * _t3) - (_t0 * gR2R3R1pR1C1C1pC2C3)) * _t4));
+            const auto vR0C0 = (vi - v1);
+            const auto vR2R3R1pR1C1C1pC2C3 = (vo - v1);
             
             zR0C0 = gzR0C0 * vR0C0 - zR0C0; // RC parallel
-            zR3R2R1R1pC2C3C1C1p = gR3R2R1R1pC2C3C1C1p * (1 - gnR3R2R1R1pC2C3C1C1p) * vR3R2R1R1pC2C3C1C1p + gnR3R2R1R1pC2C3C1C1p * zR3R2R1R1pC2C3C1C1p; // RC series
+            zR2R3R1pR1C1C1pC2C3 = gR2R3R1pR1C1C1pC2C3 * (1 - gnR2R3R1pR1C1C1pC2C3) * vR2R3R1pR1C1C1pC2C3 + gnR2R3R1pR1C1C1pC2C3 * zR2R3R1pR1C1C1pC2C3; // RC series
 
             output[ch][n] = vo;
         }
         state[ch].zR0C0 = zR0C0;
-        state[ch].zR3R2R1R1pC2C3C1C1p = zR3R2R1R1pC2C3C1C1p;
+        state[ch].zR2R3R1pR1C1C1pC2C3 = zR2R3R1pR1C1C1pC2C3;
     }
 }

@@ -1,33 +1,31 @@
 #pragma once
 
 struct Params {
-    double R33 = 4.75e+03f;
-    double R37 = 4.75e+03f;
-    double R35 = 4.75e+03f;
-    double R40 = 3.5e+03f;
-    double R39 = 2.35e+04f;
-    double R66 = 1.2e+04f;
-    double R41 = 1.8e+03f;
-    double R38 = 4.7e+03f;
-    double R44 = 1.0e+03f;
-    double R47 = 7.5e+02f;
-    double R48 = 3.3e+03f;
-    double R43 = 2.51e+04f;
-    double C18 = 3.3e-08f;
-    double C19 = 4.7e-08f;
-    double R45 = 1.0e+03f;
-    double C20 = 1.0e-04f;
-    double R42 = 2.43e+04f;
-    double C16 = 3.3e-08f;
-    double C17 = 4.7e-08f;
+    float R33 = 4.75e+03f;
+    float R37 = 4.75e+03f;
+    float R35 = 4.75e+03f;
+    float R40 = 3.5e+03f;
+    float R39 = 2.35e+04f;
+    float R66 = 1.2e+04f;
+    float R45 = 1.0e+03f;
+    float C20 = 1.0e-04f;
+    float R44 = 1.0e+03f;
+    float R47 = 7.5e+02f;
+    float R48 = 3.3e+03f;
+    float R42 = 2.43e+04f;
+    float C17 = 4.7e-08f;
+    float C16 = 3.3e-08f;
+    float R41 = 1.8e+03f;
+    float R38 = 4.7e+03f;
+    float R43 = 2.51e+04f;
+    float C18 = 3.3e-08f;
+    float C19 = 4.7e-08f;
 };
 
 struct State {
-    double zC18 {};
-    double zC19 {};
-    double zC20 {};
-    double zC16 {};
-    double zC17 {};
+    float zR45C20 {};
+    float zR42C17C16 {};
+    float zR43C18C19 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -47,9 +45,10 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto gR66 = 1.0f / params.R66;
     
-    const auto gR41 = 1.0f / params.R41;
-    
-    const auto gR38 = 1.0f / params.R38;
+    const auto R45 = params.R45;
+    const auto C20 = params.C20;
+    const auto gR45C20 = (2.0f * sample_rate * C20) / (1.0f + 2.0f * sample_rate * R45 * C20);
+    const auto gnR45C20 = gR45C20 * (2.0f * sample_rate * R45 * C20 - 1.0f) / (2.0f * sample_rate * C20);
     
     const auto gR44 = 1.0f / params.R44;
     
@@ -57,116 +56,82 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto gR48 = 1.0f / params.R48;
     
-    const auto gR43 = 1.0f / params.R43;
+    const auto R42 = params.R42;
+    const auto C17C16 = sum(params.C17, params.C16);
+    const auto gR42C17C16 = (2.0f * sample_rate * C17C16) / (1.0f + 2.0f * sample_rate * R42 * C17C16);
+    const auto gnR42C17C16 = gR42C17C16 * (2.0f * sample_rate * R42 * C17C16 - 1.0f) / (2.0f * sample_rate * C17C16);
     
-    const auto gC18 = 2.0f * sample_rate * params.C18;
+    const auto R41R38 = recip_sum(params.R41, params.R38);
+    const auto gR41R38 = 1.0f / R41R38;
     
-    const auto gC19 = 2.0f * sample_rate * params.C19;
+    const auto R43 = params.R43;
+    const auto C18C19 = sum(params.C18, params.C19);
+    const auto gR43C18C19 = 2.0f * sample_rate * C18C19 + (1.0f / R43);
+    const auto gzR43C18C19 = 4.0f * sample_rate * C18C19;
     
-    const auto gR45 = 1.0f / params.R45;
-    
-    const auto gC20 = 2.0f * sample_rate * params.C20;
-    
-    const auto gR42 = 1.0f / params.R42;
-    
-    const auto gC16 = 2.0f * sample_rate * params.C16;
-    
-    const auto gC17 = 2.0f * sample_rate * params.C17;
-    
-    const auto _t2 = (gR44 + gR45);
-    const auto _t4 = ((((gR47 + gR43) + gC18) + gC19) + gC20);
-    const auto _t8 = (gR43 + gC18);
-    const auto _t12 = ((gR37 + gR66) + gR48);
-    const auto _t14 = (gR35 * _t12);
+    const auto _t3 = ((gR37 + gR66) + gR48);
+    const auto _t4 = (gR35 * _t3);
+    const auto _t5 = (gR66 * gR48);
+    const auto _t8 = (gR40 * _t3);
+    const auto _t9 = (gR45C20 + gR44);
+    const auto _t11 = (gR45C20 + gR43C18C19);
     const auto _t15 = (gR66 * gR37);
-    const auto _t16 = (gR40 * _t12);
-    const auto _t18 = ((gR66 * _t14) - (gR37 * _t16));
-    const auto _t23 = (gR66 * gR48);
-    const auto _t29 = (gC20 * _t2);
-    const auto _t30 = (_t2 * _t29);
-    const auto _t36 = (gC16 + gC17);
-    const auto _t38 = ((_t18 * _t36) * _t2);
-    const auto _t3 = (_t4 * _t2);
-    const auto _t7 = (_t8 + gC19);
-    const auto _t13 = ((((((((((gR40 + gR39) + gR66) + gR41) + gR38) + gC16) + gC17) * _t12) - (gR66 * gR66)) * _t14) + (_t15 * _t16));
-    const auto _t17 = ((gR37 * _t13) + (_t18 * _t15));
-    const auto _t22 = ((gR48 * _t13) + (_t18 * _t23));
-    const auto _t28 = (_t29 + (gR45 * _t7));
-    const auto _t35 = ((_t36 * _t12) * _t14);
-    const auto _t37 = ((_t35 * _t23) * _t3);
-    const auto _t39 = ((gR42 * _t2) * _t3);
-    const auto _t41 = (_t39 * _t30);
-    const auto _t6 = (_t7 * _t2);
-    const auto _t11 = ((gR47 * _t12) * _t13);
-    const auto _t21 = (_t22 * _t3);
-    const auto _t25 = (_t2 * _t6);
-    const auto _t27 = (((gR45 * (_t7 + gR42)) * _t3) - (_t28 * _t6));
-    const auto _t33 = (_t28 * _t11);
-    const auto _t44 = ((_t28 * _t25) + (_t27 * _t2));
-    const auto _t10 = (_t2 * _t11);
-    const auto _t26 = ((_t27 * _t30) - ((((((gR45 + gC20) * _t2) - (gR45 * gR45)) * _t3) - (_t28 * _t29)) * _t25));
-    const auto _t40 = (_t10 * _t38);
-    const auto _t42 = ((_t27 * _t40) - ((((gR45 * (gR42 * _t13)) * _t21) - (_t33 * _t38)) * _t25));
-    const auto _t46 = (_t10 * _t18);
-    const auto _t47 = (((_t33 * _t18) * _t25) + (_t27 * _t46));
-    const auto _t9 = (_t10 * _t17);
-    const auto _t32 = (((_t33 * _t17) * _t25) + (_t27 * _t9));
-    const auto _t34 = (((((((((((gR42 + gC16) + gC17) * _t13) - (_t35 * _t36)) * _t2) * _t21) + (_t37 * _t38)) * _t25) - (_t39 * _t40)) * _t26) + (_t41 * _t42));
-    const auto _t49 = ((_t41 * _t32) - ((((((_t35 * _t15) * _t21) - (_t37 * _t17)) * _t25) + (_t39 * _t9)) * _t26));
-    const auto _t50 = (1 / (((((((((_t14 * _t13) * _t22) * _t4) * _t2) * _t2) * _t7) * _t2) * _t26) * _t34));
-    const auto _t51 = (_t41 * gR45);
-    const auto _t52 = (1 / ((_t2 * _t26) * _t34));
-    const auto _t53 = ((_t41 * _t44) - ((_t39 * _t2) * _t26));
-    const auto _t54 = (1 / (((((_t3 * _t2) * _t7) * _t2) * _t26) * _t34));
-    const auto _t55 = (1 / (_t26 * _t34));
-    const auto _t56 = ((_t41 * _t47) - (((((_t35 * _t21) - (_t37 * _t18)) * _t25) + (_t39 * _t46)) * _t26));
-    const auto _t57 = (1 / ((((((((_t13 * _t22) * _t4) * _t2) * _t2) * _t7) * _t2) * _t26) * _t34));
-    const auto _t58 = (1 / _t34);
+    const auto _t17 = ((gR66 * _t4) - (gR37 * _t8));
+    const auto _t2 = ((gR42C17C16 * _t3) * _t4);
+    const auto _t10 = ((((gR45C20 + gR47) + gR43C18C19) * _t9) - (gR45C20 * _t11));
+    const auto _t14 = ((((((((gR40 + gR39) + gR66) + gR42C17C16) + gR41R38) * _t3) - (gR66 * gR66)) * _t4) + (_t15 * _t8));
+    const auto _t16 = ((((gR37 * _t14) + (_t17 * _t15)) * _t9) * _t10);
+    const auto _t18 = (_t2 * _t15);
+    const auto _t19 = (gR45C20 * _t18);
+    const auto _t21 = ((gR48 * _t14) + (_t17 * _t5));
+    const auto _t24 = (((_t17 * gR42C17C16) * _t9) * _t10);
+    const auto _t26 = (((gR42C17C16 + gR43C18C19) * _t14) - (_t2 * gR42C17C16));
+    const auto _t29 = ((_t17 * _t9) * _t10);
+    const auto _t30 = (gR45C20 * _t2);
+    const auto _t1 = (_t2 * _t5);
+    const auto _t13 = ((((gR47 * _t3) * _t14) * _t9) + (gR45C20 * _t1));
+    const auto _t20 = ((_t21 * _t9) * _t10);
+    const auto _t23 = (_t9 * _t13);
+    const auto _t25 = (((gR43C18C19 * _t14) * _t9) - (gR45C20 * _t26));
+    const auto _t22 = ((_t23 * _t24) - ((_t9 * _t25) * _t20));
+    const auto _t31 = (((_t9 * _t19) * _t20) - (_t23 * _t16));
+    const auto _t32 = (1 / (((((((_t4 * _t14) * _t9) * _t10) * _t21) * _t9) * _t10) * _t22));
+    const auto _t33 = (_t9 * gR45C20);
+    const auto _t34 = (1 / ((_t9 * _t10) * _t22));
+    const auto _t35 = (1 / (_t10 * _t22));
+    const auto _t36 = (((_t9 * _t30) * _t20) - (_t23 * _t29));
+    const auto _t37 = (1 / ((((((_t14 * _t9) * _t10) * _t21) * _t9) * _t10) * _t22));
     for (int ch = 0; ch < num_channels; ++ch)
     {
-        auto zC18 = state[ch].zC18;
-        auto zC19 = state[ch].zC19;
-        auto zC20 = state[ch].zC20;
-        auto zC16 = state[ch].zC16;
-        auto zC17 = state[ch].zC17;
+        auto zR45C20 = state[ch].zR45C20;
+        auto zR42C17C16 = state[ch].zR42C17C16;
+        auto zR43C18C19 = state[ch].zR43C18C19;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
 
-            const auto _t1 = (zC18 + zC19);
-            const auto _t5 = ((_t1 + zC20) * _t2);
-            const auto _t20 = ((gR33 * vi) * _t12);
-            const auto _t19 = ((_t20 * _t16) - (((((gR39 * vi) + zC16) + zC17) * _t12) * _t14));
-            const auto _t24 = (((_t19 * _t23) * _t3) + (_t5 * _t11));
-            const auto _t0 = (((_t1 * _t2) * _t3) - (_t5 * _t6));
-            const auto _t31 = ((_t0 * _t30) - ((((zC20 * _t2) * _t3) - (_t5 * _t29)) * _t25));
-            const auto _t43 = ((((_t0 * _t40) - (((((((zC16 + zC17) * _t13) + (_t19 * _t36)) * _t2) * _t21) - (_t24 * _t38)) * _t25)) * _t26) - (_t31 * _t42));
-            const auto vo = (-(((((((_t0 * _t9) - (((((_t19 * _t15) - (_t20 * _t13)) * _t21) - (_t24 * _t17)) * _t25)) * _t26) - (_t31 * _t32)) * _t34) - (_t43 * _t49)) * _t50));
-            const auto vn9 = ((((_t31 * gR45) * _t34) + (_t43 * _t51)) * _t52);
-            const auto v36 = (-(((((((_t5 * _t25) + (_t0 * _t2)) * _t26) - (_t31 * _t44)) * _t34) - (_t43 * _t53)) * _t54));
-            const auto vr45 = (((_t31 * _t34) + (_t43 * _t41)) * _t55);
-            const auto tC20 = (gC20 * (vr45 - v36));
-            const auto v33 = (((((((_t0 * _t46) - (((_t19 * _t21) - (_t24 * _t18)) * _t25)) * _t26) - (_t31 * _t47)) * _t34) - (_t43 * _t56)) * _t57);
-            const auto v37 = (_t43 * _t58);
-            const auto _t45 = (vn9 - v36);
-            const auto _t48 = (v33 - v37);
-            const auto tC18 = (gC18 * _t45);
-            const auto tC19 = (gC19 * _t45);
-            const auto tC16 = (gC16 * _t48);
-            const auto tC17 = (gC17 * _t48);
+            const auto _t7 = ((gR33 * vi) * _t3);
+            const auto _t12 = ((zR45C20 * _t11) - ((zR45C20 + zR43C18C19) * _t9));
+            const auto _t6 = ((((zR42C17C16 - (gR39 * vi)) * _t3) * _t4) + (_t7 * _t8));
+            const auto _t0 = ((((zR45C20 * _t1) - ((_t6 * _t5) * _t9)) * _t10) + (_t12 * _t13));
+            const auto _t27 = ((((((zR45C20 * _t26) - ((((zR42C17C16 + zR43C18C19) * _t14) - (_t6 * gR42C17C16)) * _t9)) * _t10) - (_t12 * _t25)) * _t20) + (_t0 * _t24));
+            const auto vo = (((((_t0 * _t16) - (((((zR45C20 * _t18) - (((_t6 * _t15) - (_t7 * _t14)) * _t9)) * _t10) + (_t12 * _t19)) * _t20)) * _t22) + (_t27 * _t31)) * _t32);
+            const auto vn9 = (-(((_t27 * _t33) - (((zR45C20 * _t10) + (_t12 * gR45C20)) * _t22)) * _t34));
+            const auto v36 = (((_t12 * _t22) - (_t27 * _t9)) * _t35);
+            const auto v33 = (-(((((_t0 * _t29) - (((((zR45C20 * _t2) - (_t6 * _t9)) * _t10) + (_t12 * _t30)) * _t20)) * _t22) + (_t27 * _t36)) * _t37));
+            const auto vR42C17C16 = (vn9 - v33);
+            const auto _t28 = (vn9 - v36);
+            const auto vR45C20 = _t28;
+            const auto vR43C18C19 = _t28;
             
-            zC18 = 2 * tC18 - zC18;
-            zC19 = 2 * tC19 - zC19;
-            zC20 = 2 * tC20 - zC20;
-            zC16 = 2 * tC16 - zC16;
-            zC17 = 2 * tC17 - zC17;
+            zR45C20 = gR45C20 * (1 - gnR45C20) * vR45C20 + gnR45C20 * zR45C20; // RC series
+            zR42C17C16 = gR42C17C16 * (1 - gnR42C17C16) * vR42C17C16 + gnR42C17C16 * zR42C17C16; // RC series
+            zR43C18C19 = gzR43C18C19 * vR43C18C19 - zR43C18C19; // RC parallel
 
             output[ch][n] = vo;
         }
-        state[ch].zC18 = zC18;
-        state[ch].zC19 = zC19;
-        state[ch].zC20 = zC20;
-        state[ch].zC16 = zC16;
-        state[ch].zC17 = zC17;
+        state[ch].zR45C20 = zR45C20;
+        state[ch].zR42C17C16 = zR42C17C16;
+        state[ch].zR43C18C19 = zR43C18C19;
     }
 }
