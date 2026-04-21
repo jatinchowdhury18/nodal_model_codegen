@@ -14,6 +14,7 @@
 *.rdi
 .build/
 __pycache__/
+scratch/
 
 jai-solve/*_test
 jai-solve/netlist_codegen

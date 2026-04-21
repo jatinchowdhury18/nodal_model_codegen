@@ -82,15 +82,16 @@ parse_netlist :: (netlist_str: string) -> [] Element, [] string, [] Element_Valu
 }
 
 generate_params_struct :: (elements: [] Element,
-                           values: [] Element_Value) -> string {
+                           values: [] Element_Value,
+                           type_name: string = "float") -> string {
     context.print_style.default_format_float.mode = .SCIENTIFIC;
     context.print_style.default_format_float.zero_removal = .ONE_ZERO_AFTER_DECIMAL;
 
     write_value :: (name: string) -> string #expand {
         for val : values {
-            if val.name == name return tprint("    double % = %f;\n", name, val.value);
+            if val.name == name return tprint("    % % = %f;\n", type_name, name, val.value);
         }
-        return tprint("    double %;\n", name);
+        return tprint("    % %;\n", type_name, name);
     }
 
     builder: String_Builder;
@@ -114,7 +115,7 @@ generate_params_struct :: (elements: [] Element,
     return builder_to_string(*builder);
 }
 
-generate_state_struct :: (elements: [] Element) -> string, [] string {
+generate_state_struct :: (elements: [] Element, type_name: string = "float") -> string, [] string {
     states: [..] string;
 
     builder: String_Builder;
@@ -127,7 +128,7 @@ generate_state_struct :: (elements: [] Element) -> string, [] string {
             case .RC_SERIES; #through;
             case .RC_PARALLEL;
                 array_add(*states, tprint("z%", el.name));
-                append(*builder, tprint("    double % {};\n", states[states.count-1]));
+                append(*builder, tprint("    % % {};\n", type_name, states[states.count-1]));
         }
     }
 
@@ -189,7 +190,7 @@ generate_impedance_defs :: (elements: [] Element) -> string {
     return builder_to_string(*builder);
 }
 
-netlist_codegen :: (netlist_str: string) -> string {
+netlist_codegen :: (netlist_str: string, type_name: string = "float") -> string {
     indent :: (in: string, prefix := "    ") -> string {
         ends_with_newline := in[in.count - 1] == #char "\n";
         out := String.replace(in, "\n", tprint("\n%", prefix));
@@ -211,11 +212,11 @@ netlist_codegen :: (netlist_str: string) -> string {
     builder: String_Builder;
     append(*builder, "#pragma once\n\n");
 
-    params_struct_code := generate_params_struct(elements, values);
+    params_struct_code := generate_params_struct(elements, values, type_name);
     append(*builder, params_struct_code);
     append(*builder, "\n");
 
-    state_struct_code, states := generate_state_struct(elements);
+    state_struct_code, states := generate_state_struct(elements, type_name);
     append(*builder, state_struct_code);
     append(*builder, "\n");
 
@@ -247,5 +248,3 @@ netlist_codegen :: (netlist_str: string) -> string {
 
     return builder_to_string(*builder);
 }
-
-    //     f.write(indent(inner_code, "            ") + "\n\n")
