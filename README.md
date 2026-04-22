@@ -1,5 +1,12 @@
 # nodal_model_codegen
 
+TODO:
+- circuits with multiple inputs/outputs
+- constant voltage sources
+- nonlinear stuff
+- non-ideal op-amp model?
+- support Rust and/or Jai codegen?
+
 `nodal_model_codegen` is a tool for generating optimized C++ or C audio DSP code
 from [LTspice](https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html)
 netlists, using [Modified Nodal Analysis (MNA)](https://en.wikipedia.org/wiki/Modified_nodal_analysis) and equivalent currents.
@@ -13,7 +20,7 @@ Given an LTspice netlist (`.net` file) describing a passive or op-amp circuit,
 2. Apply circuit-level reductions (series and parallel element combinations)
 3. Build and symbolically solve the MNA system of equations
 4. Discretize reactive elements (capacitors, inductors) using trapezoidal integration
-5. Apply code-level optimizations (common subexpression elimination, loop-invariant code motion, reciprocal hoisting)
+5. Apply code-level optimizations (common subexpression elimination, loop-invariant code motion)
 6. Emit a self-contained C++ or C header file
 
 ## Usage
@@ -154,7 +161,7 @@ bash run_tests.sh
 Currently tested circuits:
 
 - `rc_lowpass` — 1st-order RC low-pass filter
-- `res_highpass` — 1st-order RC high-pass filter
+- `res_highpass` — Resonant RC high-pass filter
 - `sk_lpf` — 2nd-order Sallen-Key low-pass filter with ideal op-amp
 - `reductions` — exercises all series/parallel element-reduction paths
 - `eq_filter` — multi-op-amp EQ filter
