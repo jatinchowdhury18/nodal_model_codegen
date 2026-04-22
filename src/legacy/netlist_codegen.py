@@ -176,7 +176,7 @@ def generate_impedance_defs(elements):
 
     return code
 
-def netlist_codegen(netlist_file, cpp_header_file, reduce_circuit=True):
+def netlist_codegen(netlist_file, cpp_header_file, reduce_circuit=True, simplify="FullSimplify"):
     print(f"Generating {cpp_header_file} from netlist: {netlist_file}")
 
     elements, inputs, values = parse_netlist(netlist_file)
@@ -184,7 +184,7 @@ def netlist_codegen(netlist_file, cpp_header_file, reduce_circuit=True):
     # print(elements)
     # print(inputs)
 
-    elements, outer_code, inner_code = solve_and_codegen(elements, inputs, outputs, return_code=True, reduce=reduce_circuit)
+    elements, outer_code, inner_code = solve_and_codegen(elements, inputs, outputs, return_code=True, reduce=reduce_circuit, simplify=simplify)
     # print(outer_code)
     # print("\n")
     # print(inner_code)

@@ -20,3 +20,4 @@ test res_highpass
 test sk_lpf
 test reductions
 test eq_filter
+test eq_filter2

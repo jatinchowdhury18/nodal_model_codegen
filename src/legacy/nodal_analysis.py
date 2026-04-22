@@ -346,13 +346,13 @@ def process_codegen(oex, elements, inputs, gen_vars):
 
     return "\n".join(ool_code_str), "\n".join(code_str)
 
-def solve_and_codegen(elements, inputs, outputs, return_code=False, out_file=None, reduce=True):
+def solve_and_codegen(elements, inputs, outputs, return_code=False, out_file=None, reduce=True, simplify="FullSimplify"):
     if reduce:
         elements = reduce_circuit(elements, inputs, outputs)
 
     solve_vars, mm_eqns = generate_kcl_equations(elements, inputs)
     print(f"Solving for variables: {solve_vars}")
-    gen_vars, mm_exprs = generate_expressions(elements, outputs, solve_vars)
+    gen_vars, mm_exprs = generate_expressions(elements, outputs, solve_vars, simplify=simplify)
     print(f"Generating expressions: {gen_vars}")
     mm_cmd = generate_script_command(mm_eqns, mm_exprs, solve_vars, gen_vars)
 

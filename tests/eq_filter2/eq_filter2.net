@@ -1,0 +1,46 @@
+* Bell filter topology from an SSL-style EQ
+
+* V1 vi 0 AC(1 0)
+V1 vi 0 PULSE(-1 1 0 10m 10m 1u 20m)
+R13 v20 vn3 4.75k
+R50 vi vn3  4.75k
+R12 vo vn3 4.75k
+C8 vo vn3 330p IC=0
+R16 vo v11 1k
+Rboostp v11 v13 15k
+Rboostm v13 v12 10k
+R40 v13 0 4.7k
+R11 v12 vi 1k
+R17 v13 0 1.8k
+Rf1 v13 v14 50k
+R18 v14 vr18 4.3k
+C9 vr18 vn4 4.7n IC=0
+R64 v20 v13 12k
+R19 vn4 v16 5.1k
+Rf2 v16 v15 50k
+C10 vn4 v15 4.7n IC=0
+C11 v15 vc11 100u IC=0
+R22 vc11 v19 910
+R21 v19 v18 1.8k
+R20 v18 0 470
+Rq1p va4 v19 2k
+Rq1m va4 v18 8k
+R62 va4 0 100k
+R23 vc11 vn5 750
+R24 vn5 v21 750
+Rq2 v21 v20 8k
+
+* E<name> out+ out- in+ in- gain
+E3 vo 0 0 vn3 1e6
+E4 v15 0 va4 vn4 1e6
+E5 v20 0 0 vn5 1e6
+
+Escaled vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip
+
+* .ac oct 100 20 20k
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 96k V(vi)
+.wav "vout.wav" 32 96k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end
