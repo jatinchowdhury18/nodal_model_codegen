@@ -1,5 +1,5 @@
 #import "Basic";
-#import "solve";
+#import "sym_algebra";
 
 Element_Type :: enum {
     RESISTOR;

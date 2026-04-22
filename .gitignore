@@ -18,5 +18,5 @@ __pycache__/
 scratch/
 
 *_old.*
-jai-solve/*_test
-jai-solve/netlist_codegen
+src/test/*_test
+src/netlist_codegen

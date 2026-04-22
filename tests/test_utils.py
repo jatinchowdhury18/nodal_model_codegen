@@ -6,16 +6,18 @@ from scipy.io import wavfile
 import platform
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+_project_root = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(_project_root)
+sys.path.append(os.path.join(_project_root, "legacy"))
 # from netlist_codegen import netlist_codegen
 
 system = platform.system()
 if system == "Windows":
     ltspice_exe = os.path.expanduser("~") + "/AppData/Local/Programs/ADI/LTspice/LTspice.exe"
-    codegen_exe = "../../jai-solve/netlist_codegen.exe"
+    codegen_exe = "../../src/netlist_codegen.exe"
 elif system == "Darwin":
     ltspice_exe = r"/Applications/LTspice.app/Contents/MacOS/LTspice"
-    codegen_exe = "../../jai-solve/netlist_codegen"
+    codegen_exe = "../../src/netlist_codegen"
 
 def cleanup():
     os.system("rm -f *.bin")

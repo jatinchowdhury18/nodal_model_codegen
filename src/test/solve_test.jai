@@ -1,4 +1,4 @@
-#import "solve";
+#import "sym_algebra";
 #import "Basic";
 #import "Process";
 

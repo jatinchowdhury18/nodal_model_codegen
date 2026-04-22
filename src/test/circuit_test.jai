@@ -1,5 +1,4 @@
 #import "nodal_analysis";
-Solve :: #import "solve";
 #import "Basic";
 
 make_arr :: (list: [] $T) -> [..] T {

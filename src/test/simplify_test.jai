@@ -1,4 +1,4 @@
-#import "solve";
+#import "sym_algebra";
 #import "Basic";
 
 check :: (label: string, e: Expr_ID, expected: string, exprs: [] Expr) {

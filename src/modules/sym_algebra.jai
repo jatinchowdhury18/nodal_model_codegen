@@ -1,3 +1,100 @@
+// sym_algebra -- symbolic computer algebra for Jai
+//
+// This module can be used to represent, simplify, and solve
+// mathematical expressions sybmolically. The module can also
+// be used to generate code to evaluate these expressions.
+// At the moment only linear expressions are supported.
+//
+// ===========================================================================
+// REPRESENTATION
+// ===========================================================================
+//
+// Expressions are stored in a flat [..] Expr array owned by the caller,
+// referenced by Expr_ID (an s64 index into that array).  Passing
+// expressions around is cheap; the array grows as needed and IDs
+// remain stable. NO_EXPR (-1) is the sentinel for "absent / zero."
+//
+// Build expressions with:
+//   expr_symbol (name,  *exprs)     -- a named unknown
+//   expr_const  (value, *exprs)     -- an integer literal
+//   expr_add / expr_sub / expr_mul / expr_div
+//                                   -- binary arithmetic nodes
+//   expr_neg    (a,     *exprs)     -- unary negation
+//   substitute  (old, new, *exprs)  -- in-place variable substitution
+//
+// Note that `expr_symbol` is de-duplicated, i.e. if you call `expr_symbol("x", *exprs)`
+// when a symbol called "x" already exists in the `exprs` array, the function
+// will just return the ID of the "x" that already exist.
+//
+// ===========================================================================
+// SIMPLIFICATION
+// ===========================================================================
+//
+// This module contains two methods for simplifying expressions.
+//
+//   fold (e, *exprs)  -- Performs constant folding, and collapses algebraic
+//                        identities. For example: 0+x -> x, 1*x -> x, etc.
+//
+//   simplify (e, *exprs)  -- Performs sybmolic simplification of an expression,
+//                            by trying to reduce the number of multiplies and divides,
+//                            using common-factor cancellation and similar techniques.
+//                            For best results, call after `fold`.
+//
+// ===========================================================================
+// LINEAR SOLVER
+// ===========================================================================
+//
+//   linearize (e, vars, *exprs)  -- Decomposes `e` into a linear combination of the
+//                                   provided `vars`, plus a constant term.
+//
+//   solve :: (equations, vars, exprs) -- Solves a system of equations.
+//
+// Some notes on the solver:
+//   - As of this writing, the largest system of equations that the solver
+//     has been tested with had 10 equations and 10 unknowns.
+//   - The solver uses Cramer's rule (cofactor / Laplace expansion) with a
+//     memoized sub-determinant cache. Previous versions of this code used
+//     Gaussian elimination, but the resulting "product of pivots" structure
+//     resulted in floating-point underflows when attempting to compute the
+//     resulting expressions with 32-bit floats.
+//
+// ===========================================================================
+// CODE-GENERATION PASSES
+// ===========================================================================
+//
+// Before generating code, the following methods may be useful for generating
+// optimal code, using common sub-expression elimination and loop-invariant
+// code motion. While is possible for the compiler to do these things for us,
+// it can be a lot of work (especially for bigger math expressions), and the
+// compiler may give up, or so it's nice to give the compiler a head start.
+//
+// For best results, run these methods in thie order before emitting code:
+//
+//   cse (gen_vars, *exprs) -> [..] CSE_Var
+//       Common Subexpression Elimination -- extracts shared sub-expressions
+//       into named temporaries (_t0, _t1, …) to avoid recomputing them.
+//
+//   sort_cse_topological (*cse_vars)
+//       Sort temporaries so each temp is defined before it is used.
+//       Run this before the LICM and recip_hoist passes.
+//
+//   licm (gen_vars, *cse_vars, *exprs, variant_names)
+//       Loop-Invariant Code Motion -- identifies which temporaries depend
+//       on loop-variant inputs and hoists the rest to an outer scope.
+//
+//   recip_hoist (gen_vars, *cse_vars, *exprs, variant_names)
+//       Reciprocal hoisting -- when an outer-loop temporary T appears only
+//       as a divisor in inner-loop expressions, replaces it with 1/T and
+//       rewrites x/T as x*(1/T), turning an inner-loop division into a
+//       cheaper multiply.
+//
+// ===========================================================================
+// PRINTING
+// ===========================================================================
+//
+//   print_expr (e, exprs) -> string  -- render an expression to a string
+//
+
 #import "Basic";
 
 Expr_Kind :: enum {
