@@ -43,7 +43,7 @@ Element_Value :: struct {
     value: float;
 };
 
-parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Value {
+parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] string, [] Element_Value {
     parse_value :: (val_str: string) -> float32 {
         val, success, remainder := string_to_float(val_str);
         if !success return Math.FLOAT32_NAN;
@@ -67,6 +67,7 @@ parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Va
 
     elements: [..] Element;
     inputs: [..] string;
+    outputs: [..] string;
     values: [..] Element_Value;
 
     add_element :: (name: string, type: Element_Type, terminals: [] string) #expand {
@@ -79,7 +80,18 @@ parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Va
     for line_raw : lines {
         line := String.trim(line_raw);
 
-        if line.count == 0 || line[0] == #char "*" || line[0] == #char "."  continue;
+        if line.count == 0  continue;
+        if line[0] == #char "*" || line[0] == #char "." {
+            // trim comment start char
+            line = String.trim(String.slice(line, 1, line.count - 1));
+            if String.begins_with(line, "output:") {
+                output := String.trim(String.slice(line, 7, line.count - 7));
+                print("Adding output node: %\n", output);
+                array_add(*outputs, output);
+            }
+
+            continue;
+        }
 
         if String.contains(line, "netlist_skip")  continue;
 
@@ -114,7 +126,7 @@ parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Va
         add_element(name, etype, .[n1, n2]);
     }
 
-    return elements, inputs, values;
+    return elements, inputs, outputs, values;
 }
 
 generate_params_struct :: (elements: [] Element,
@@ -247,12 +259,12 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         return out;
     }
 
-    elements, inputs, values := parse_netlist(netlist_str);
+    elements, inputs, outputs, values := parse_netlist(netlist_str);
     // print("%\n", elements);
     // print("%\n", inputs);
     // print("%\n", values);
 
-    outputs := string.["vo"];
+    if outputs.count == 0 outputs = string.["vo"];
     outer_code, loop_code, outer_flops, inner_flops := solve_and_codegen(*elements, inputs, outputs, .{ lang = lang, type_name = type_name });
     // print("%\n", outer_code);
     // print("%\n", loop_code);
@@ -292,7 +304,12 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     } else {
         for input : inputs append(*builder, tprint("const float* const* input_%, ", input));
     }
-    append(*builder, "float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
+    if outputs.count == 1 {
+        append(*builder, "float** output, ");
+    } else {
+        for output : outputs append(*builder, tprint("float** output_%, ", output));
+    }
+    append(*builder, "int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
     append(*builder, "{\n");
 
     append(*builder, indent(generate_impedance_defs(elements, type_name, lang)));
@@ -313,12 +330,16 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         }
         append(*builder, "\n");
     }
-    // @TODO: multiple inputs
 
     append(*builder, tprint("%\n", indent(loop_code, "            ")));
 
-    // @TODO: multiple outputs
-    append(*builder, tprint("            output[ch][n] = %;\n", outputs[0]));
+    if outputs.count == 1 {
+        append(*builder, tprint("            output[ch][n] = %;\n", outputs[0]));
+    } else {
+        for output : outputs {
+            append(*builder, tprint("            output_%1[ch][n] = %1;\n", output));
+        }
+    }
     append(*builder, "        }\n");
 
     for state : states append(*builder, tprint("        state[ch].%1 = %1;\n", state));
