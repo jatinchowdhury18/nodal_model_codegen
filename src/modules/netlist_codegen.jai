@@ -286,7 +286,13 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     append(*builder, state_struct_code);
     append(*builder, "\n");
 
-    append(*builder, "static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
+    append(*builder, "static void compute (");
+    if inputs.count == 1 {
+        append(*builder, "const float* const* input, ");
+    } else {
+        for input : inputs append(*builder, tprint("const float* const* input_%, ", input));
+    }
+    append(*builder, "float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
     append(*builder, "{\n");
 
     append(*builder, indent(generate_impedance_defs(elements, type_name, lang)));
@@ -298,8 +304,16 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
 
     append(*builder, "        for (int n = 0; n < num_samples; ++n)\n");
     append(*builder, "        {\n");
+
+    if inputs.count == 1 {
+        append(*builder, tprint("            const %1 %2 = input[ch][n];\n\n", decl_type, inputs[0]));
+    } else {
+        for input : inputs {
+            append(*builder, tprint("            const %1 %2 = input_%2[ch][n];\n", decl_type, input));
+        }
+        append(*builder, "\n");
+    }
     // @TODO: multiple inputs
-    append(*builder, tprint("            const %1 %2 = input[ch][n];\n\n", decl_type, inputs[0]));
 
     append(*builder, tprint("%\n", indent(loop_code, "            ")));
 

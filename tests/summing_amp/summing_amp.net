@@ -1,0 +1,32 @@
+* Simple 3-input summing amplifier
+
+* Input sources
+V1 vi1 0 PULSE(-1 1 0 20m 1u 1u 20m)
+V2 vi2 0 PULSE(0 1 0 20m 1u 1u 20m)
+V3 vi3 0 PULSE(-1 0 0 20m 1u 1u 20m)
+
+* Input resistors
+R1 vi1 NINV 125k
+R2 vi2 NINV 50k
+R3 vi3 NINV 25k
+
+* Feedback resistor
+RF vo NINV 10k
+* Feedback capacitor
+Cf vo NINV 100n IC=0
+
+* Ideal op-amp
+EOP vo 0 0 NINV 1e6
+
+* Output load
+RL vo 0 10k
+
+.tran 0 80m 0 20.0u
+* .ac dec 100 10 20k
+.wav "vin1.wav" 32 48k V(vi1)
+.wav "vin2.wav" 32 48k V(vi2)
+.wav "vin3.wav" 32 48k V(vi3)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end

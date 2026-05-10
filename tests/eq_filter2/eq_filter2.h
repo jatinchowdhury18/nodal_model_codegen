@@ -1,43 +1,43 @@
-// Auto-generated with netlist_codegen version 22dcea5.
-// Command: netlist_codegen eq_filter2.net eq_filter2.h
+// Auto-generated with netlist_codegen version ecfb7f3.
+// Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
 
 #pragma once
 
 struct Params {
-    float R13 = 4.75e+03f;
-    float R50 = 4.75e+03f;
-    float R23 = 7.5e+02f;
-    float Rboostm = 1.0e+04f;
-    float R11 = 1.0e+03f;
-    float R12 = 4.75e+03f;
-    float C8 = 3.3e-10f;
-    float R40 = 4.7e+03f;
-    float R17 = 1.8e+03f;
-    float R16 = 1.0e+03f;
-    float Rboostp = 1.5e+04f;
-    float R62 = 1.0e+05f;
-    float R24 = 7.5e+02f;
-    float Rq2 = 8.0e+03f;
-    float Rq1m = 8.0e+03f;
-    float R64 = 1.2e+04f;
-    float Rq1p = 2.0e+03f;
-    float Rf1 = 5.0e+04f;
-    float R18 = 4.3e+03f;
-    float C9 = 4.7e-09f;
-    float R20 = 4.7e+02f;
-    float C11 = 1.0e-04f;
-    float R22 = 9.1e+02f;
-    float R21 = 1.8e+03f;
-    float R19 = 5.1e+03f;
-    float Rf2 = 5.0e+04f;
-    float C10 = 4.7e-09f;
+    double R13 = 4.75e+03f;
+    double R50 = 4.75e+03f;
+    double R23 = 7.5e+02f;
+    double Rboostm = 1.0e+04f;
+    double R11 = 1.0e+03f;
+    double R12 = 4.75e+03f;
+    double C8 = 3.3e-10f;
+    double R40 = 4.7e+03f;
+    double R17 = 1.8e+03f;
+    double R16 = 1.0e+03f;
+    double Rboostp = 1.5e+04f;
+    double R62 = 1.0e+05f;
+    double R24 = 7.5e+02f;
+    double Rq2 = 8.0e+03f;
+    double Rq1m = 8.0e+03f;
+    double R64 = 1.2e+04f;
+    double Rq1p = 2.0e+03f;
+    double Rf1 = 5.0e+04f;
+    double R18 = 4.3e+03f;
+    double C9 = 4.7e-09f;
+    double R20 = 4.7e+02f;
+    double C11 = 1.0e-04f;
+    double R22 = 9.1e+02f;
+    double R21 = 1.8e+03f;
+    double R19 = 5.1e+03f;
+    double Rf2 = 5.0e+04f;
+    double C10 = 4.7e-09f;
 };
 
 struct State {
-    float zR12C8 {};
-    float zRf1R18C9 {};
-    float zC11 {};
-    float zR19Rf2C10 {};
+    double zR12C8 {};
+    double zRf1R18C9 {};
+    double zC11 {};
+    double zR19Rf2C10 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
