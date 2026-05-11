@@ -21,3 +21,5 @@ test sk_lpf
 test reductions
 test eq_filter
 test eq_filter2
+test summing_amp
+test multi_svf

@@ -1,0 +1,39 @@
+* Multi-Output op-amp SVF, based on "A FOURTH-ORDER STATE VARIABLE FILTER FOR LINKWITZ-RILEY ACTIVE CROSSOVER DESIGNS" by Dennis Bohn
+
+Vin vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+
+Rin vi z1p 10k
+
+R1 z1n vh 10k
+
+Rf1 vh z2n 15k
+Cf1 z2n vb 100n IC=0
+
+Rf2 vb z3n 15k
+Cf2 z3n vl 100n IC=0
+
+Rfb1 vb z1p 2.5k
+Rfb2 vl z1n 10k
+Rg z1n 0 15.2k
+
+* op-amps
+* [out, 0, pos, neg, gain]
+E1 vh 0 z1p z1n 1e6
+E2 vb 0 0 z2n 1e6
+E3 vl 0 0 z3n 1e6
+
+Escaled vh_scaled 0 value = {V(vh)*0.5} ; netlist_skip
+
+.tran 0 80m 0 20.0u
+* .ac dec 100 10 20k
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout_hp.wav" 32 48k V(vh_scaled)
+.wav "vout_bp.wav" 32 48k V(vb)
+.wav "vout_lp.wav" 32 48k V(vl)
+.options plotwinsize=0
+.backanno
+.end
+
+* output:vh
+* output:vb
+* output:vl

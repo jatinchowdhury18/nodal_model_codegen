@@ -43,7 +43,7 @@ Element_Value :: struct {
     value: float;
 };
 
-parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Value {
+parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] string, [] Element_Value {
     parse_value :: (val_str: string) -> float32 {
         val, success, remainder := string_to_float(val_str);
         if !success return Math.FLOAT32_NAN;
@@ -67,6 +67,7 @@ parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Va
 
     elements: [..] Element;
     inputs: [..] string;
+    outputs: [..] string;
     values: [..] Element_Value;
 
     add_element :: (name: string, type: Element_Type, terminals: [] string) #expand {
@@ -79,7 +80,18 @@ parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Va
     for line_raw : lines {
         line := String.trim(line_raw);
 
-        if line.count == 0 || line[0] == #char "*" || line[0] == #char "."  continue;
+        if line.count == 0  continue;
+        if line[0] == #char "*" || line[0] == #char "." {
+            // trim comment start char
+            line = String.trim(String.slice(line, 1, line.count - 1));
+            if String.begins_with(line, "output:") {
+                output := String.trim(String.slice(line, 7, line.count - 7));
+                print("Adding output node: %\n", output);
+                array_add(*outputs, output);
+            }
+
+            continue;
+        }
 
         if String.contains(line, "netlist_skip")  continue;
 
@@ -106,15 +118,24 @@ parse_netlist :: (netlist_str: string) -> [..] Element, [] string, [] Element_Va
                 add_element(name, .AMP, .[tokens[1], tokens[4], tokens[3]]);
                 continue;
             case "V";
-                array_add(*inputs, n1); // treat voltage source as input node
-                continue; // don't include in elements
+                is_fixed := false;
+                for token : tokens {
+                    if token == "fixed" { is_fixed = true; break; }
+                }
+
+                if is_fixed {
+                    etype = .FIXED_VOLTAGE;
+                } else {
+                    array_add(*inputs, n1); // treat voltage source as input node
+                    continue; // don't include in elements
+                }
             case;
                 continue; // ignore unsupported parts
         }
         add_element(name, etype, .[n1, n2]);
     }
 
-    return elements, inputs, values;
+    return elements, inputs, outputs, values;
 }
 
 generate_params_struct :: (elements: [] Element,
@@ -156,6 +177,8 @@ generate_params_struct :: (elements: [] Element,
                 collect_param_leaf_names(el.rc_internal.res_expr, *leaf_names);
                 collect_param_leaf_names(el.rc_internal.cap_expr, *leaf_names);
                 for pname : leaf_names  append(*builder, write_value(pname));
+            case .FIXED_VOLTAGE;
+                append(*builder, write_value(el.name));
         }
     }
 
@@ -232,6 +255,17 @@ generate_impedance_defs :: (elements: [] Element, type_name: string = "float", l
                 append(*builder, tprint("const %1 %2 = %3;\n", auto_or_type, cap_name, print_param_expr(el.rc_internal.cap_expr)));
                 append(*builder, tprint("const %1 g%2 = 2.0f * sample_rate * %3 + (1.0f / %4);\n", auto_or_type, el.name, cap_name, res_name));
                 append(*builder, tprint("const %1 gz%2 = 4.0f * sample_rate * %3;\n\n", auto_or_type, el.name, cap_name));
+            case .FIXED_VOLTAGE;
+                // Define the parameter value as a named constant, then alias the
+                // (possibly renamed) node to it.  Both names may appear in generated
+                // expressions: the param name comes from the equation solve RHS, while
+                // the node name comes from element's terminal references.
+                param_name := el.name;
+                node_name  := el.terminals[0];
+                append(*builder, tprint("const %1 %2 = params.%2;\n\n", auto_or_type, param_name));
+                if node_name != param_name {
+                    append(*builder, tprint("const %1 %2 = %3;\n\n", auto_or_type, node_name, param_name));
+                }
         }
     }
 
@@ -247,12 +281,12 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         return out;
     }
 
-    elements, inputs, values := parse_netlist(netlist_str);
+    elements, inputs, outputs, values := parse_netlist(netlist_str);
     // print("%\n", elements);
     // print("%\n", inputs);
     // print("%\n", values);
 
-    outputs := string.["vo"];
+    if outputs.count == 0 outputs = string.["vo"];
     outer_code, loop_code, outer_flops, inner_flops := solve_and_codegen(*elements, inputs, outputs, .{ lang = lang, type_name = type_name });
     // print("%\n", outer_code);
     // print("%\n", loop_code);
@@ -286,7 +320,18 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     append(*builder, state_struct_code);
     append(*builder, "\n");
 
-    append(*builder, "static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
+    append(*builder, "static void compute (");
+    if inputs.count == 1 {
+        append(*builder, "const float* const* input, ");
+    } else {
+        for input : inputs append(*builder, tprint("const float* const* input_%, ", input));
+    }
+    if outputs.count == 1 {
+        append(*builder, "float** output, ");
+    } else {
+        for output : outputs append(*builder, tprint("float** output_%, ", output));
+    }
+    append(*builder, "int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
     append(*builder, "{\n");
 
     append(*builder, indent(generate_impedance_defs(elements, type_name, lang)));
@@ -298,13 +343,25 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
 
     append(*builder, "        for (int n = 0; n < num_samples; ++n)\n");
     append(*builder, "        {\n");
-    // @TODO: multiple inputs
-    append(*builder, tprint("            const %1 %2 = input[ch][n];\n\n", decl_type, inputs[0]));
+
+    if inputs.count == 1 {
+        append(*builder, tprint("            const %1 %2 = input[ch][n];\n\n", decl_type, inputs[0]));
+    } else {
+        for input : inputs {
+            append(*builder, tprint("            const %1 %2 = input_%2[ch][n];\n", decl_type, input));
+        }
+        append(*builder, "\n");
+    }
 
     append(*builder, tprint("%\n", indent(loop_code, "            ")));
 
-    // @TODO: multiple outputs
-    append(*builder, tprint("            output[ch][n] = %;\n", outputs[0]));
+    if outputs.count == 1 {
+        append(*builder, tprint("            output[ch][n] = %;\n", outputs[0]));
+    } else {
+        for output : outputs {
+            append(*builder, tprint("            output_%1[ch][n] = %1;\n", output));
+        }
+    }
     append(*builder, "        }\n");
 
     for state : states append(*builder, tprint("        state[ch].%1 = %1;\n", state));

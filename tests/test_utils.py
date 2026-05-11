@@ -1,4 +1,5 @@
 import subprocess
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
@@ -57,7 +58,11 @@ def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace
         cmd += ["-namespace", namespace]
     if dtype is not None:
         cmd += ["-type_name", dtype]
+
+    start = time.perf_counter()
     subprocess.run(cmd)
+    elapsed_ms = 1000 * (time.perf_counter() - start)
+    print(f"Codegen completed in {elapsed_ms:.3f} ms")
 
 def compile_run_cpp(name):
     subprocess.run([

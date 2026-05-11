@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version f57da4b.
+// Auto-generated with netlist_codegen version d2c1c08.
 // Command: netlist_codegen res_highpass.net res_highpass.h
 
 #pragma once
