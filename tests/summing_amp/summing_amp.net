@@ -10,13 +10,20 @@ R1 vi1 NINV 125k
 R2 vi2 NINV 50k
 R3 vi3 NINV 25k
 
+* Fixed DC 4th input
+Vdc vdc 0 -1.5 * fixed
+R4 vdc NINV 50k
+
 * Feedback resistor
 RF vo NINV 10k
 * Feedback capacitor
 Cf vo NINV 100n IC=0
 
 * Ideal op-amp
-EOP vo 0 0 NINV 1e6
+EOP vo 0 NNON NINV 1e6
+
+* Bias voltage
+Vbias NNON 0 -0.25 * fixed
 
 * Output load
 RL vo 0 10k

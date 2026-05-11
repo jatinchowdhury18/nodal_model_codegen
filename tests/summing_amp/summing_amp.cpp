@@ -46,14 +46,7 @@ int main()
 
     const auto fs = 48000.0f;
 
-    Params params = {
-        .R1 = 1.25e+05f,
-        .R2 = 5.0e+04f,
-        .R3 = 2.5e+04f,
-        .RL = 1.0e+04f,
-        .RF = 1.0e+04f,
-        .Cf = 100.0e-9f,
-    };
+    Params params = {};
     State state {};
     compute (&input_v1, &input_v2, &input_v3, &output, 1, (int) count, params, &state, fs);
 

@@ -57,6 +57,7 @@ def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace
         cmd += ["-namespace", namespace]
     if dtype is not None:
         cmd += ["-type_name", dtype]
+
     subprocess.run(cmd)
 
 def compile_run_cpp(name):

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 64cd039.
+// Auto-generated with netlist_codegen version d2c1c08.
 // Command: netlist_codegen summing_amp.net summing_amp.h
 
 #pragma once
@@ -7,6 +7,9 @@ struct Params {
     float R1 = 1.25e+05f;
     float R2 = 5.0e+04f;
     float R3 = 2.5e+04f;
+    float Vdc = -1.5e+00f;
+    float R4 = 5.0e+04f;
+    float Vbias = -2.5e-01f;
     float RL = 1.0e+04f;
     float RF = 1.0e+04f;
     float Cf = 9.999999e-08f;
@@ -27,6 +30,16 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
     
     const auto gR3 = 1.0f / params.R3;
     
+    const auto Vdc = params.Vdc;
+    
+    const auto vdc = Vdc;
+    
+    const auto gR4 = 1.0f / params.R4;
+    
+    const auto Vbias = params.Vbias;
+    
+    const auto NINV = Vbias;
+    
     const auto gRL = 1.0f / params.RL;
     
     const auto RF = params.RF;
@@ -34,6 +47,7 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
     const auto gRFCf = 2.0f * sample_rate * Cf + (1.0f / RF);
     const auto gzRFCf = 4.0f * sample_rate * Cf;
     
+    const auto _t0 = ((((((gR1 + gR2) + gR3) + gR4) + gRFCf) * Vbias) - (gR4 * Vdc));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zRFCf = state[ch].zRFCf;
@@ -43,8 +57,8 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
             const auto vi2 = input_vi2[ch][n];
             const auto vi3 = input_vi3[ch][n];
 
-            const auto vo = (-(((((gR1 * vi1) + (gR2 * vi2)) + (gR3 * vi3)) - zRFCf) / gRFCf));
-            const auto vRFCf = (vo - 0);
+            const auto vo = ((_t0 + (zRFCf - (((gR1 * vi1) + (gR2 * vi2)) + (gR3 * vi3)))) / gRFCf);
+            const auto vRFCf = (vo - NINV);
             
             zRFCf = gzRFCf * vRFCf - zRFCf; // RC parallel
 

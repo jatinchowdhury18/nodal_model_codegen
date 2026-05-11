@@ -6,6 +6,7 @@ Element_Type :: enum {
     CAPACITOR;
     INDUCTOR;
     AMP;
+    FIXED_VOLTAGE;
     RC_SERIES;
     RC_PARALLEL;
 }
@@ -299,6 +300,7 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
         for terminal : el.terminals {
             if terminal == "0" continue;
             if array_find(inputs, terminal) continue;
+            if el.type == .FIXED_VOLTAGE    continue;
             array_add_if_unique(*eqn_nodes, terminal);
         }
     }
@@ -317,9 +319,9 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
     solve_vars: [..]Expr_ID;
     for node : eqn_nodes array_add(*solve_vars, expr_symbol(node, *exprs));
 
-    // all linear elemements beside op-amps
+    // all linear elemements beside op-amps and fixed voltage sources
     for el : elements {
-        if el.type == .AMP continue;
+        if el.type == .AMP || el.type == .FIXED_VOLTAGE  continue;
 
         pos_node := el.terminals[0];
         neg_node := el.terminals[1];
@@ -358,6 +360,20 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
                 if node == node_to_sub {
                     el.terminals[node_idx] = replacement_node;
                 }
+            }
+        }
+    }
+
+    // Constraint equations for fixed voltage sources
+    for el : elements {
+        if el.type != .FIXED_VOLTAGE  continue;
+        fixed_node   := el.terminals[0];
+        node_symbol  := expr_symbol(fixed_node, *exprs);
+        param_symbol := expr_symbol(el.name,    *exprs);
+        for node, idx : eqn_nodes {
+            if node == fixed_node {
+                equations[idx] = expr_sub(node_symbol, param_symbol, *exprs);
+                break;
             }
         }
     }
@@ -412,6 +428,11 @@ generate_expressions :: (elements: [] Element,
     }
 
     add_expression_for_node :: (node: string) #expand {
+        // Skip nodes whose voltage is already defined by a FIXED_VOLTAGE element
+        // in the outer code (generate_impedance_defs emits them there).
+        for fv_el : elements {
+            if fv_el.type == .FIXED_VOLTAGE && fv_el.terminals[0] == node  return;
+        }
         node_symbol := expr_symbol(node, exprs);
         found_solve_var, solve_idx := array_find(solve_vars, node_symbol);
         if !found_solve_var  return;

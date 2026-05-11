@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 64cd039.
+// Auto-generated with netlist_codegen version d2c1c08.
 // Command: netlist_codegen reductions.net reductions.h
 
 #pragma once
