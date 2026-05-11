@@ -1,8 +1,6 @@
 # nodal_model_codegen
 
 TODO:
-- circuits with multiple inputs/outputs
-- constant voltage sources
 - nonlinear stuff
 - non-ideal op-amp model?
 - support Rust and/or Jai codegen?
