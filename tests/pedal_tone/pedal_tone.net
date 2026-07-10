@@ -1,0 +1,20 @@
+* Tone stage from a popular guitar pedal
+
+Vin vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+
+R8 vi n1 39k
+C8 n1  0 10n IC=0
+
+C9 vi n2  4n IC=0
+R5 n2  0 22k
+
+Rtp n2 vo 70k
+Rtm n1 vo 30k
+
+.tran 0 80m 0 20.0u
+* .ac dec 100 10 20k
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end
