@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version e0d236b.
+// Auto-generated with netlist_codegen version e70acf8.
 // Command: netlist_codegen rc_lowpass.net rc_lowpass.h
 
 #pragma once

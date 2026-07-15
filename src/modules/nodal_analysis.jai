@@ -40,10 +40,8 @@ RC_Internal :: struct {
 }
 
 // Model-parameter references for a nonlinear (DIODE / DIODE_PAIR / BJT)
-// element. Each `*_name` field names a runtime-tunable `Params` struct field
-// (parsed from a SPICE `.model` card by netlist_codegen.jai), the same way
-// e.g. a RESISTOR's value is referenced by `params.<name>` -- these are not
-// codegen-time constants.
+// element. Each `*_name` names a Params struct field (parsed from a SPICE
+// `.model` card by netlist_codegen.jai), same as a RESISTOR's params.<name>.
 Nonlinear_Model :: struct {
     is_name:    string; // saturation current, e.g. "D1_Is"
     vt_name:    string; // thermal voltage (already N/emission-coefficient-scaled), e.g. "D1_vt"
@@ -265,12 +263,10 @@ reduce_parallel_once :: (elements: *[..] Element) -> bool {
     return false;
 }
 
-// Attempt ONE antiparallel diode-pair collapse. Returns true if a collapse was made.
-// Two DIODE elements sharing both terminal nodes with reversed polarity, and
-// referencing the exact same .model parameters , collapse into one DIODE_PAIR
-// element. Diodes with different .model parameters (intentionally mismatched,
-// e.g. asymmetric clippers) are deliberately left as two separate DIODE
-// elements.
+// Attempt ONE antiparallel diode-pair collapse. Returns true if one was made.
+// Two DIODEs sharing both terminals with reversed polarity and the same
+// .model collapse into a DIODE_PAIR. Diodes with different .model params
+// (e.g. asymmetric clippers) are left as two separate DIODEs.
 reduce_diode_pairs_once :: (elements: *[..] Element) -> bool {
     for i : 0..elements.count-1 {
         el1 := (elements.*)[i];
@@ -363,11 +359,10 @@ Gen_Var :: struct {
     expr_id: Expr_ID;
 }
 
-// `dc_mode`: build and solve the DC-equivalent circuit.
-// At true DC: capacitors are open circuits, so CAPACITOR/RC_SERIES are
-// excluded from the KCL system entirely (zero current). RC_PARALLEL still
-// conducts through its resistor half, using the raw resistor param directly.
-// INDUCTOR DC handling (short circuit) isn't implemented yet. (@TODO)
+// `dc_mode`: build the DC-equivalent circuit instead. Capacitors are open
+// circuits at DC, so CAPACITOR/RC_SERIES are dropped entirely; RC_PARALLEL
+// still conducts through its resistor half. INDUCTOR DC (short circuit)
+// isn't implemented yet. (@TODO)
 generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, [..]Expr {
     eqn_nodes: [..] string;
 
@@ -516,12 +511,10 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
     for current_sub : currents  substitute(current_sub.id, current_sub.replace_id, *exprs);
     for voltage_sub : voltages  substitute(voltage_sub.id, voltage_sub.replace_id, *exprs);
 
-    // At DC, a node reachable only through a now-excluded capacitor and a
-    // diode/diode-pair branch ends up with a KCL row that doesn't mention
-    // any solve_var at all (just "-iDiode = 0"). Since the I-V law is odd
-    // (zero current at zero volts), zero current through that lone branch
-    // means zero junction voltage, so pin the node to its diode partner's
-    // voltage instead.
+    // At DC, a node reachable only through a dropped capacitor and a diode
+    // branch gets a KCL row with no solve_var at all (just "-iDiode = 0").
+    // Zero current through an odd I-V law means zero junction voltage, so
+    // just pin the node to its diode partner's voltage.
     if dc_mode {
         for node, idx : eqn_nodes {
             if equations[idx] == NO_EXPR continue;
@@ -649,9 +642,8 @@ generate_junction_voltage_expressions :: (elements: [] Element,
 }
 
 // Build the set of base loop-variant symbol names: inputs + state variables
-// + nonlinear branch currents (which, like state variables, are free
-// per-sample-varying symbols in the linear MNA solve rather than solved-for
-// MNA unknowns -- see generate_kcl_equations).
+// + nonlinear branch currents (free per-sample symbols, not solved-for MNA
+// unknowns -- see generate_kcl_equations).
 build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
     names: [..] string;
     for inp : inputs  array_add(*names, inp);
@@ -713,10 +705,9 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
 // Returns two strings:
 //   outer_code — loop-invariant CSE temporaries (hoist outside the sample loop)
 //   inner_code — loop-variant CSE temps + gen_var assignments + state updates
-// `extra_variant_names` lets a caller extend the loop-variant base beyond
-// what build_variant_base() derives from `elements`/`inputs` -- used by the
-// nonlinear pipeline (netlist_codegen.jai) to mark junction-voltage unknowns
-// (vD1, vBCQ1, ...) as sample-variant.
+// `extra_variant_names` lets a caller add more loop-variant names on top of
+// build_variant_base() -- the nonlinear pipeline uses this to mark junction
+// voltages (vD1, vBCQ1, ...) as sample-variant.
 codegen :: (elements: [] Element, inputs: [] string,
             gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
             exprs: [] Expr, options: Codegen_Options = .{},

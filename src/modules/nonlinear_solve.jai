@@ -1,35 +1,25 @@
-// nonlinear_solve -- Newton-Raphson system construction for nonlinear
-// circuit elements (DIODE / DIODE_PAIR / BJT), built on top of the linear
-// MNA core in nodal_analysis.jai / sym_algebra.jai.
+// Newton-Raphson system construction for nonlinear elements (DIODE /
+// DIODE_PAIR / BJT), on top of the linear MNA core in nodal_analysis.jai /
+// sym_algebra.jai.
 //
-// This automates the methodology that my previous Mathematica
-// notebooks perform by hand: nodal_analysis.jai's generate_kcl_equations
-// already leaves nonlinear branch currents (i<name>, iB<name>/iC<name>) as
-// free symbols in the linear KCL system, so solve() produces closed-form
-// node-voltage expressions parametrized by those currents. This module:
+// generate_kcl_equations() leaves nonlinear branch currents (i<name>,
+// iB<name>/iC<name>) as free symbols, so solve() gives closed-form node
+// voltages parametrized by those currents. From there we:
+//   1. Group devices into "clusters" -- connected components whose branch
+//      currents show up in each other's junction-voltage expressions, so
+//      they need one joint Newton-Raphson solve.
+//   2. Build each device's I-V law (Shockley for diodes, Ebers-Moll
+//      for BJT) as an Expr in its own junction voltage(s).
+//   3. Substitute those I-V laws in for the branch-current symbols.
+//   4. Build residuals f_j = closed_form_j - unknown_j, differentiate for
+//      the Jacobian, and solve J*delta = -f.
+//   5. Run cse()/licm()/recip_hoist() on the result, using the cluster's own
+//      unknowns as the variant base -- hoists Newton-iteration-invariant
+//      subexpressions the same way licm() hoists per-sample-invariant ones,
+//      just one loop level in.
 //
-//   1. Groups nonlinear devices into "clusters" -- connected components of
-//      devices whose branch currents appear in each other's closed-form
-//      junction-voltage expressions, and therefore must be solved as one
-//      joint Newton-Raphson system (build_nonlinear_clusters / cluster_devices).
-//   2. Builds each device's I-V law (Shockley/sinh for DIODE/DIODE_PAIR,
-//      Ebers-Moll for BJT) as an Expr in terms of its own junction voltage(s).
-//   3. Substitutes those I-V laws for the branch-current symbols wherever
-//      they appear.
-//   4. Builds residuals f_j = closed_form_j - unknown_j for each junction
-//      voltage unknown, differentiates them (sym_algebra.differentiate) to
-//      build the analytic Jacobian, and solves the linear system
-//      J*delta = -f (sym_algebra.solve).
-//   5. Runs the resulting named quantities (residuals, deltas) through the
-//      existing cse()/licm()/recip_hoist() passes, using the cluster's own
-//      junction-voltage unknowns as the "variant base" -- this hoists
-//      Newton-iteration-invariant subexpressions exactly like licm() already
-//      hoists per-sample-loop-invariant ones, just at a nested loop level.
-//
-// What this module deliberately does NOT do: emit any C/C++ text, or decide
-// damping / convergence / junction-voltage-limiting control flow -- that is
-// imperative, not a pure expression tree, and is generated directly by
-// netlist_codegen.jai using this module's output as building blocks.
+// This module doesn't emit any C/C++ or handle damping/convergence/limiter
+// control flow -- that's imperative and lives in netlist_codegen.jai.
 
 #import "Basic";
 String :: #import "String";
@@ -38,13 +28,11 @@ String :: #import "String";
 
 // One Newton unknown belonging to a cluster (a device's junction voltage).
 Cluster_Unknown :: struct {
-    name:          string; // e.g. "vBCQ1" -- also the persisted per-sample State field name
-    vt_name:       string; // Params field name (thermal voltage) for this junction -- used by the
-                           // codegen-emitted junction-voltage limiter's vcrit, not by this module
-    is_name:       string; // Params field name (saturation current) for this junction's owning
-                           // device -- also only used by codegen's vcrit computation
-    residual_name: string; // name of the named Gen_Var holding this unknown's residual f_j
-    delta_name:    string; // name of the named Gen_Var holding this unknown's Newton-Raphson delta
+    name:          string; // e.g. "vBCQ1" -- also the State field name
+    vt_name:       string; // Params field for thermal voltage (used for codegen's vcrit)
+    is_name:       string; // Params field for saturation current (also for vcrit)
+    residual_name: string; // Gen_Var name holding this unknown's residual f_j
+    delta_name:    string; // Gen_Var name holding this unknown's Newton delta
 }
 
 // A group of nonlinear devices solved via one joint Newton-Raphson system.
@@ -52,14 +40,12 @@ Nonlinear_Cluster :: struct {
     name:     string; // diagnostic name, e.g. "Q1_D1D2" (joined device names)
     unknowns: [..] Cluster_Unknown;
 
-    // Newton-iteration-invariant CSE temporaries: depend only on conductances/
-    // inputs/state, not on this cluster's unknowns. Emit once before the
-    // per-sample Newton loop starts.
+    // Newton-invariant CSE temps (don't depend on this cluster's unknowns) --
+    // emitted once before the per-sample Newton loop.
     invariant_items: [..] Gen_Var;
 
-    // Newton-iteration-variant CSE temporaries plus the named residual/delta
-    // Gen_Vars themselves, in dependency-topological order. Recomputed every
-    // Newton iteration.
+    // Newton-variant CSE temps plus the residual/delta Gen_Vars, topologically
+    // ordered. Recomputed every Newton iteration.
     iteration_items: [..] Gen_Var;
 }
 
@@ -177,13 +163,12 @@ Raw_Unknown :: struct {
 // Top-level entry point.
 // -----------------------------------------------------------------------
 //
-// Must be called after generate_kcl_equations()/solve() have produced
-// `solve_vars`/`solutions` over the (shared, mutable) `exprs` array, and
-// after any DIODE_PAIR reduction has already happened (reduce_circuit).
+// Call after generate_kcl_equations()/solve() have produced solve_vars/
+// solutions over `exprs`, and after reduce_circuit()'s DIODE_PAIR pass.
 //
-// As a side effect, every nonlinear branch-current symbol (i<name>,
-// iB<name>/iC<name>) is substituted with its device's I-V law, expressed
-// in terms of the junction-voltage unknowns.
+// Side effect: every nonlinear branch-current symbol (i<name>, iB<name>/
+// iC<name>) gets substituted with its device's I-V law, in terms of the
+// junction-voltage unknowns.
 build_nonlinear_clusters :: (elements: [] Element,
                              solve_vars: [] Expr_ID,
                              solutions: [] Expr_ID,
@@ -380,19 +365,15 @@ build_nonlinear_clusters :: (elements: [] Element,
                 residual_name = residual_name, delta_name = delta_name });
         }
 
-        // CSE / LICM / recip_hoist, exactly mirroring solve_and_codegen()'s
-        // recipe for the linear part -- except the "loop-variant base" here
-        // is this cluster's OWN unknowns (v_1..v_k), one nested loop level
-        // in from the per-sample base used for the linear part. This is what
-        // hoists Newton-iteration-invariant subexpressions automatically.
+        // Same CSE/LICM/recip_hoist recipe as solve_and_codegen(), but the
+        // loop-variant base is this cluster's own unknowns -- one loop level
+        // in from the per-sample base -- so it hoists Newton-invariant
+        // subexpressions automatically.
         gen_var_ids: [..] Expr_ID;
         for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
 
-        // A cluster-unique temp-name prefix: this cluster's Newton-loop code
-        // is emitted into the same per-sample C++ scope as the linear
-        // pipeline's own CSE'd temporaries (and any other cluster's), so
-        // "_t0"-style names collide across independently-numbered cse()
-        // calls unless each is given a distinct prefix.
+        // Cluster-unique temp prefix, since this Newton-loop code shares a
+        // C++ scope with the linear pipeline's own temps (and other clusters').
         temp_prefix := tprint("_%1_t", cluster.name);
 
         cse_vars := cse(gen_var_ids, exprs, temp_prefix);

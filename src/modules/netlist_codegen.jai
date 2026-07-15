@@ -63,6 +63,16 @@ Model_Def :: struct {
     betar_val: float32;
 }
 
+// Standard SPICE default model parameters.
+default_model :: () -> Model_Def {
+    model: Model_Def;
+    model.is_val    = 1.0e-14;
+    model.n_val     = 1.0;
+    model.betaf_val = 100.0;
+    model.betar_val = 1.0;
+    return model;
+}
+
 // Parse a `.model` line (leading "." already stripped/trimmed by the
 // caller), e.g. "model DCLIP D" or "model Q1M NPN (Is=2e-14 Bf=200 Br=4)".
 // Missing parameters get standard SPICE defaults.
@@ -71,13 +81,9 @@ parse_model_line :: (line: string) -> Model_Def {
     tokens: [..] string;
     for t : tokens_raw  if t.count > 0  array_add(*tokens, t);
 
-    model: Model_Def;
-    model.is_val    = 1.0e-14;
-    model.n_val     = 1.0;
-    model.betaf_val = 100.0;
-    model.betar_val = 1.0;
+    model := default_model();
 
-    if tokens.count < 3  return model; // malformed .model line; caller will get an empty-named model
+    if tokens.count < 3  return model; // malformed .model line; caller gets an empty-named model
 
     model.name = tokens[1];
     model.kind = String.to_upper_copy(tokens[2]);
@@ -110,12 +116,8 @@ parse_model_line :: (line: string) -> Model_Def {
 // Look up a parsed .model card by name, falling back to a default-parameter model.
 find_model :: (model_defs: [] Model_Def, name: string) -> Model_Def {
     for m : model_defs  if m.name == name  return m;
-    model: Model_Def;
-    model.name      = name;
-    model.is_val    = 1.0e-14;
-    model.n_val     = 1.0;
-    model.betaf_val = 100.0;
-    model.betar_val = 1.0;
+    model := default_model();
+    model.name = name;
     return model;
 }
 
@@ -498,10 +500,9 @@ generate_impedance_defs :: (elements: [] Element, type_name: string = "float", l
     return builder_to_string(*builder);
 }
 
-// SPICE-style Newton-Raphson junction-voltage step limiter, mirroring
-// ngspice's DEVpnjlim: bounds the proposed new junction voltage so that a
-// subsequent exp(v/vt) evaluation can never overflow, by capping the
-// per-iteration step once v exceeds vcrit. Emitted once per header..
+// Junction-voltage step limiter (like ngspice's DEVpnjlim): caps the
+// per-iteration step once v exceeds vcrit, so exp(v/vt) can't overflow.
+// Emitted once per header.
 generate_junction_limiter_helper :: (type_name: string, lang: string) -> string {
     if lang == "c" {
         template := #string DONE
@@ -607,9 +608,8 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, opt
     return builder_to_string(*builder);
 }
 
-// Builds the DC-equivalent circuit (see generate_kcl_equations(dc_mode=true))
-// over its own Expr array, solves it, and additionally derives the
-// steady-state z-value for each reactive element.
+// Builds and solves the DC-equivalent circuit (see generate_kcl_equations
+// dc_mode), and derives the steady-state z-value for each reactive element.
 build_dc_operating_point :: (elements: [] Element, inputs: [] string) -> (clusters: [] Nonlinear_Cluster, exprs: [..] Expr, z_init_vars: [] Gen_Var) {
     dc_solve_vars, dc_equations, dc_exprs := generate_kcl_equations(elements, inputs, true);
     dc_solutions := solve(dc_equations, dc_solve_vars, *dc_exprs);
@@ -642,12 +642,10 @@ build_dc_operating_point :: (elements: [] Element, inputs: [] string) -> (cluste
     return dc_clusters, dc_exprs, z_init_vars;
 }
 
-// Emits a `reset()` function that solves the circuit's DC operating point
-// analytically and writes the result directly into every channel's State.
-// Each circuit input gets its own `<input>_dc` parameter (default 0.0f in C++)
-// giving the constant value that input is assumed to be held at for DC analysis
-// purposes. Since the DC operating point doesn't depend on channel index,
-// it's solved once and copied to all `num_channels` entries of `state`.
+// Emits a `reset()` function that solves the DC operating point analytically
+// and writes it into every channel's State. Each input gets its own
+// `<input>_dc` parameter (the value it's held at for DC analysis) -- solved
+// once and copied to all `num_channels` states.
 generate_reset_function :: (elements: [] Element, inputs: [] string, lang: string, type_name: string) -> string {
     indent :: (in: string, prefix := "    ") -> string {
         if in.count == 0  return in;
@@ -706,7 +704,6 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         return out;
     }
 
-    // elements, inputs, outputs, values, newton_tol_sq, newton_max_iter := parse_netlist(netlist_str);
     net := parse_netlist(netlist_str);
     // print("%\n", net.elements);
     // print("%\n", net.inputs);
@@ -724,9 +721,9 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     cluster_exprs: [] Expr; // only valid/used when has_nonlinear
 
     if has_nonlinear {
-        // Inlined equivalent of solve_and_codegen(), with build_nonlinear_clusters()
+        // Same as solve_and_codegen(), but with build_nonlinear_clusters()
         // spliced in between solve() and generate_expressions() -- see
-        // nonlinear_solve.jai's module comment for why this ordering matters.
+        // nonlinear_solve.jai for why the ordering matters.
         reduce_circuit(*net.elements, net.inputs, net.outputs);
         solve_vars, equations, exprs := generate_kcl_equations(net.elements, net.inputs);
         solutions := solve(equations, solve_vars, *exprs);

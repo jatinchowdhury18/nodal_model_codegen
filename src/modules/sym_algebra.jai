@@ -176,22 +176,15 @@ make_unary :: (kind: Expr_Kind, a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
     return id;
 }
 
-// Deep-copy an expression subtree into fresh Expr array slots, so that later
-// IN-PLACE mutation of the copy (fold/simplify/cse -- all of which rewrite
-// nodes by ID rather than allocating new ones for the node being simplified)
-// cannot corrupt any other part of the tree that happens to share the same
-// underlying nodes. This matters whenever an Expr_ID is handed to more than
-// one independent consumer -- e.g. nonlinear_solve.jai builds a nonlinear
-// device's residual from the *same* closed-form node-voltage subtree that
-// generate_expressions() separately reads for circuit outputs; without a
-// copy, nonlinear_solve.jai's own CSE pass would rename shared internal nodes
-// to temporaries that don't exist outside that scope.
+// Deep-copy a subtree into fresh Expr slots, so later in-place mutation
+// (fold/simplify/cse) of the copy can't corrupt a shared original -- needed
+// whenever the same Expr_ID gets handed to more than one independent
+// consumer (e.g. a device residual and a circuit output reading the same
+// node-voltage subtree).
 //
-// SYMBOL leaves are deliberately NOT copied (returned as-is): symbols are
-// already interned by name via expr_symbol, sharing a leaf reference is
-// harmless (nothing ever mutates a SYMBOL node's identity in place), and
-// keeping them shared is what lets CSE/print_expr still recognize e.g. two
-// uses of "vi" as the same symbol.
+// SYMBOL leaves are returned as-is, not copied -- they're already interned
+// by name, and sharing them is what lets CSE/print_expr recognize repeated
+// uses of the same symbol.
 copy_expr :: (e: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
     ex := exprs.*[e];
     if ex.kind == .SYMBOL || ex.kind == .NULL  return e;
@@ -249,13 +242,10 @@ linear_is_constant :: (l: Linear) -> bool {
     return true;
 }
 
-// Does `e`'s tree reference any of `vars`? Used to let linearize() treat
-// an arbitrarily complex (even transcendental) sub-expression as an opaque
-// constant coefficient without recursing into it, as long as it doesn't
-// depend on the variables being solved for -- e.g. a Newton-Raphson
-// Jacobian entry (which may contain EXP nodes) is a valid *coefficient* when
-// solving J*delta=-f for `delta`, even though EXP itself is never linear in
-// anything.
+// Does `e`'s tree reference any of `vars`? Lets linearize() treat a
+// sub-expression (even a transcendental one, like a Jacobian entry with EXP
+// in it) as an opaque constant coefficient, as long as it doesn't depend on
+// the variables being solved for.
 expr_depends_on :: (e: Expr_ID, vars: [] Expr_ID, exprs: [] Expr) -> bool {
     for v : vars  if v == e  return true;
     ex := exprs[e];
@@ -364,21 +354,12 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, exprs: *[..] Expr) -> Linear {
 }
 
 // ===========================================================================
-// Symbolic differentiation.
+// Symbolic differentiation: differentiate(e, var, *exprs) -> d(e)/d(var).
+// `var` must come from the same expr_symbol(name, *exprs) call used in `e`.
+// Used to build the Newton-Raphson Jacobian (see nonlinear_solve.jai).
 //
-//   differentiate (e, var, *exprs) -> Expr_ID  -- d(e)/d(var)
-//
-// `var` must be an Expr_ID obtained from the same expr_symbol(name, *exprs)
-// call used to build `e`.
-//
-// This is used to build the Newton-Raphson Jacobian for nonlinear device
-// residuals (see nonlinear_solve.jai).
-//
-// The result is generally unsimplified (e.g. differentiating w.r.t. a symbol
-// that doesn't appear anywhere produces a tree full of literal 0s and 1s from
-// the base cases below). Callers should run simplify() on the result --
-// fold()'s 0+x->x / 0*x->0 / 1*x->x identities do most of the same collapsing
-// that Mathematica's Simplify[D[...]] does by hand.
+// Result is unsimplified -- run simplify() after, fold()'s identities
+// (0+x->x, 0*x->0, 1*x->x) clean up most of the 0/1 clutter.
 // ===========================================================================
 differentiate :: (e: Expr_ID, var: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
     expr := exprs.*[e]; // Copy the node before recursing.
@@ -1208,11 +1189,9 @@ expr_is_loop_variant :: (e: Expr_ID, exprs: [] Expr,
         || expr_is_loop_variant(ex.right, exprs, base_variant_names, cse_variant_names);
 }
 
-// `prefix` names the generated temporaries ("_t0", "_t1", ... by default).
-// Callers that emit more than one independently-scoped block of generated
-// code into the same C/C++ scope must pass a distinct prefix per block --
-// otherwise two unrelated cse() calls, each independently counting from 0,
-// can allocate the same name ("_t3") for two different values in the same scope.
+// `prefix` names the generated temps ("_t0", "_t1", ... by default). Pass a
+// distinct prefix if you're emitting more than one cse()'d block into the
+// same C/C++ scope, or their temp names will collide.
 cse :: (gen_var_ids: [] Expr_ID, exprs: *[..] Expr, prefix: string = "_t") -> [..] CSE_Var {
     cse_vars: [..] CSE_Var;
     counter: int = 0;
