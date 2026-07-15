@@ -200,7 +200,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
             line = String.trim(String.slice(line, 1, line.count - 1));
             if String.begins_with(line, "output:") {
                 output := String.trim(String.slice(line, 7, line.count - 7));
-                print("Adding output node: %\n", output);
+                log("Adding output node: %\n", output);
                 array_add(*outputs, output);
             }
             // `nr_solve(max_iter=<int>, tol=<val>)`.
@@ -240,7 +240,11 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
         name := tokens[0];
         n1, n2 := tokens[1], tokens[2];
         value := parse_value(tokens[3]);
-        if ! Math.is_nan_is_inf(value) array_add(*values, Element_Value.{ name, value });
+        if ! Math.is_nan_is_inf(value) {
+            array_add(*values, Element_Value.{ name, value });
+        } else {
+            log("Warning: couldn't parse value '%' for element '%'; it will default to 0.\n", tokens[3], name);
+        }
         prefix := String.to_upper(name[0]);
 
         etype: Element_Type;
@@ -308,7 +312,8 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 array_add(*elements, element);
                 continue;
             case;
-                continue; // ignore unsupported parts
+                log("Warning: unsupported element '%' (prefix '%'); ignoring.\n", name, prefix);
+                continue;
         }
         add_element(name, etype, .[n1, n2], has_no_combine);
     }
@@ -770,7 +775,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         if total == 0  return "0 ops";
         return tprint("% ops (%)", total, builder_to_string(*b));
     }
-    print("  Outer loop: %\n  Inner loop: %\n", flop_str(outer_flops), flop_str(inner_flops));
+    log("  Outer loop: %\n  Inner loop: %\n", flop_str(outer_flops), flop_str(inner_flops));
 
     decl_type := ifx lang == "c" then type_name else "auto";
 
