@@ -1,36 +1,36 @@
-// Auto-generated with netlist_codegen version d2c1c08.
+// Auto-generated with netlist_codegen version 1e4a320.
 // Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
 
 #pragma once
 
 struct Params {
-    double R13 = 4.75e+03f;
-    double R50 = 4.75e+03f;
-    double R23 = 7.5e+02f;
-    double Rboostm = 1.0e+04f;
-    double R11 = 1.0e+03f;
-    double R12 = 4.75e+03f;
-    double C8 = 3.3e-10f;
-    double R40 = 4.7e+03f;
-    double R17 = 1.8e+03f;
-    double R16 = 1.0e+03f;
-    double Rboostp = 1.5e+04f;
-    double R62 = 1.0e+05f;
-    double R24 = 7.5e+02f;
-    double Rq2 = 8.0e+03f;
-    double Rq1m = 8.0e+03f;
-    double R64 = 1.2e+04f;
-    double Rq1p = 2.0e+03f;
-    double Rf1 = 5.0e+04f;
-    double R18 = 4.3e+03f;
-    double C9 = 4.7e-09f;
-    double R20 = 4.7e+02f;
-    double C11 = 1.0e-04f;
-    double R22 = 9.1e+02f;
-    double R21 = 1.8e+03f;
-    double R19 = 5.1e+03f;
-    double Rf2 = 5.0e+04f;
-    double C10 = 4.7e-09f;
+    double R13 = 4.75e+03;
+    double R50 = 4.75e+03;
+    double R23 = 7.5e+02;
+    double Rboostm = 1.0e+04;
+    double R11 = 1.0e+03;
+    double R12 = 4.75e+03;
+    double C8 = 3.3e-10;
+    double R40 = 4.7e+03;
+    double R17 = 1.8e+03;
+    double R16 = 1.0e+03;
+    double Rboostp = 1.5e+04;
+    double R62 = 1.0e+05;
+    double R24 = 7.5e+02;
+    double Rq2 = 8.0e+03;
+    double Rq1m = 8.0e+03;
+    double R64 = 1.2e+04;
+    double Rq1p = 2.0e+03;
+    double Rf1 = 5.0e+04;
+    double R18 = 4.3e+03;
+    double C9 = 4.7e-09;
+    double R20 = 4.7e+02;
+    double C11 = 1.0e-04;
+    double R22 = 9.1e+02;
+    double R21 = 1.8e+03;
+    double R19 = 5.1e+03;
+    double Rf2 = 5.0e+04;
+    double C10 = 4.7e-09;
 };
 
 struct State {
@@ -45,54 +45,54 @@ static void compute (const float* const* input, float** output, int num_channels
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
     
-    const auto gR13 = 1.0f / params.R13;
+    const auto gR13 = 1.0 / params.R13;
     
-    const auto gR50 = 1.0f / params.R50;
+    const auto gR50 = 1.0 / params.R50;
     
-    const auto gR23 = 1.0f / params.R23;
+    const auto gR23 = 1.0 / params.R23;
     
     const auto RboostmR11 = sum(params.Rboostm, params.R11);
-    const auto gRboostmR11 = 1.0f / RboostmR11;
+    const auto gRboostmR11 = 1.0 / RboostmR11;
     
     const auto R12 = params.R12;
     const auto C8 = params.C8;
-    const auto gR12C8 = 2.0f * sample_rate * C8 + (1.0f / R12);
-    const auto gzR12C8 = 4.0f * sample_rate * C8;
+    const auto gR12C8 = 2.0 * sample_rate * C8 + (1.0 / R12);
+    const auto gzR12C8 = 4.0 * sample_rate * C8;
     
     const auto R40R17 = recip_sum(params.R40, params.R17);
-    const auto gR40R17 = 1.0f / R40R17;
+    const auto gR40R17 = 1.0 / R40R17;
     
     const auto R16Rboostp = sum(params.R16, params.Rboostp);
-    const auto gR16Rboostp = 1.0f / R16Rboostp;
+    const auto gR16Rboostp = 1.0 / R16Rboostp;
     
-    const auto gR62 = 1.0f / params.R62;
+    const auto gR62 = 1.0 / params.R62;
     
     const auto R24Rq2 = sum(params.R24, params.Rq2);
-    const auto gR24Rq2 = 1.0f / R24Rq2;
+    const auto gR24Rq2 = 1.0 / R24Rq2;
     
-    const auto gRq1m = 1.0f / params.Rq1m;
+    const auto gRq1m = 1.0 / params.Rq1m;
     
-    const auto gR64 = 1.0f / params.R64;
+    const auto gR64 = 1.0 / params.R64;
     
-    const auto gRq1p = 1.0f / params.Rq1p;
+    const auto gRq1p = 1.0 / params.Rq1p;
     
     const auto Rf1R18 = sum(params.Rf1, params.R18);
     const auto C9 = params.C9;
-    const auto gRf1R18C9 = (2.0f * sample_rate * C9) / (1.0f + 2.0f * sample_rate * Rf1R18 * C9);
-    const auto gnRf1R18C9 = gRf1R18C9 * (2.0f * sample_rate * Rf1R18 * C9 - 1.0f) / (2.0f * sample_rate * C9);
+    const auto gRf1R18C9 = (2.0 * sample_rate * C9) / (1.0 + 2.0 * sample_rate * Rf1R18 * C9);
+    const auto gnRf1R18C9 = gRf1R18C9 * (2.0 * sample_rate * Rf1R18 * C9 - 1.0) / (2.0 * sample_rate * C9);
     
-    const auto gR20 = 1.0f / params.R20;
+    const auto gR20 = 1.0 / params.R20;
     
-    const auto gC11 = 2.0f * sample_rate * params.C11;
+    const auto gC11 = 2.0 * sample_rate * params.C11;
     
-    const auto gR22 = 1.0f / params.R22;
+    const auto gR22 = 1.0 / params.R22;
     
-    const auto gR21 = 1.0f / params.R21;
+    const auto gR21 = 1.0 / params.R21;
     
     const auto R19Rf2 = sum(params.R19, params.Rf2);
     const auto C10 = params.C10;
-    const auto gR19Rf2C10 = 2.0f * sample_rate * C10 + (1.0f / R19Rf2);
-    const auto gzR19Rf2C10 = 4.0f * sample_rate * C10;
+    const auto gR19Rf2C10 = 2.0 * sample_rate * C10 + (1.0 / R19Rf2);
+    const auto gzR19Rf2C10 = 4.0 * sample_rate * C10;
     
     const auto _t1 = ((((gRboostmR11 + gR40R17) + gR16Rboostp) + gR64) + gRf1R18C9);
     const auto _t4 = ((gR62 + gRq1m) + gRq1p);

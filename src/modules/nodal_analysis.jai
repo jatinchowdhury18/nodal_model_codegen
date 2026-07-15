@@ -9,6 +9,10 @@ Element_Type :: enum {
     FIXED_VOLTAGE;
     RC_SERIES;
     RC_PARALLEL;
+    DIODE;       // 2-terminal: [anode, cathode]. Shockley I-V law.
+    DIODE_PAIR;  // 2-terminal: [anode, cathode]. Antiparallel diode pair collapsed
+                 // to one junction-voltage unknown via a closed-form sinh I-V law.
+    BJT;         // 3-terminal: [collector, base, emitter]. Ebers-Moll I-V law.
 }
 
 Combo_Op_Type :: enum {
@@ -35,6 +39,18 @@ RC_Internal :: struct {
     cap_expr: *Param_Expr;
 }
 
+// Model-parameter references for a nonlinear (DIODE / DIODE_PAIR / BJT)
+// element. Each `*_name` field names a runtime-tunable `Params` struct field
+// (parsed from a SPICE `.model` card by netlist_codegen.jai), the same way
+// e.g. a RESISTOR's value is referenced by `params.<name>` -- these are not
+// codegen-time constants.
+Nonlinear_Model :: struct {
+    is_name:    string; // saturation current, e.g. "D1_Is"
+    vt_name:    string; // thermal voltage (already N/emission-coefficient-scaled), e.g. "D1_vt"
+    betaf_name: string; // BJT only; empty string for DIODE / DIODE_PAIR
+    betar_name: string; // BJT only; empty string for DIODE / DIODE_PAIR
+}
+
 Element :: struct {
     name: string;
 
@@ -48,6 +64,13 @@ Element :: struct {
 
     // For RC_SERIES / RC_PARALLEL combined elements.
     rc_internal: RC_Internal;
+
+    // For DIODE / DIODE_PAIR / BJT elements.
+    nonlinear: Nonlinear_Model;
+
+    // Set from a "; no_combine" inline netlist comment (R/C/D only) -- opts
+    // this element out of series/parallel/antiparallel-pair reduction.
+    no_combine: bool;
 };
 
 // Return a Param_Expr leaf for an element.
@@ -117,6 +140,7 @@ reduce_series_once :: (elements: *[..] Element, inputs: [] string, outputs: [] s
         idx2 := connected[1];
         el1  := (elements.*)[idx1];
         el2  := (elements.*)[idx2];
+        if el1.no_combine || el2.no_combine  continue;
         other1 := ifx el1.terminals[0] == node then el1.terminals[1] else el1.terminals[0];
         other2 := ifx el2.terminals[0] == node then el2.terminals[1] else el2.terminals[0];
 
@@ -172,6 +196,7 @@ reduce_parallel_once :: (elements: *[..] Element) -> bool {
         for j : i+1..elements.count-1 {
             el2 := (elements.*)[j];
             if el2.type != el1.type  continue;
+            if el1.no_combine || el2.no_combine  continue;
 
             n1a := el1.terminals[0]; n2a := el1.terminals[1];
             n1b := el2.terminals[0]; n2b := el2.terminals[1];
@@ -209,6 +234,7 @@ reduce_parallel_once :: (elements: *[..] Element) -> bool {
             if j == i  continue;
             el2 := (elements.*)[j];
             if el2.type != .CAPACITOR  continue;
+            if el1.no_combine || el2.no_combine  continue;
 
             n1a := el1.terminals[0]; n2a := el1.terminals[1];
             n1b := el2.terminals[0]; n2b := el2.terminals[1];
@@ -239,6 +265,49 @@ reduce_parallel_once :: (elements: *[..] Element) -> bool {
     return false;
 }
 
+// Attempt ONE antiparallel diode-pair collapse. Returns true if a collapse was made.
+// Two DIODE elements sharing both terminal nodes with reversed polarity, and
+// referencing the exact same .model parameters , collapse into one DIODE_PAIR
+// element. Diodes with different .model parameters (intentionally mismatched,
+// e.g. asymmetric clippers) are deliberately left as two separate DIODE
+// elements.
+reduce_diode_pairs_once :: (elements: *[..] Element) -> bool {
+    for i : 0..elements.count-1 {
+        el1 := (elements.*)[i];
+        if el1.type != .DIODE  continue;
+
+        for j : i+1..elements.count-1 {
+            el2 := (elements.*)[j];
+            if el2.type != .DIODE  continue;
+            if el1.no_combine || el2.no_combine  continue;
+
+            same_pair := el1.terminals[0] == el2.terminals[1] && el1.terminals[1] == el2.terminals[0];
+            if !same_pair  continue;
+
+            same_model := el1.nonlinear.is_name == el2.nonlinear.is_name
+                       && el1.nonlinear.vt_name == el2.nonlinear.vt_name;
+            if !same_model  continue;
+
+            print("Combining antiparallel diode pair: % || %\n", el1.name, el2.name);
+
+            new_el: Element;
+            new_el.name = tprint("%1%2", el1.name, el2.name);
+            new_el.type = .DIODE_PAIR;
+            array_add(*new_el.terminals, el1.terminals[0]);
+            array_add(*new_el.terminals, el1.terminals[1]);
+            new_el.nonlinear = el1.nonlinear;
+
+            hi := max(i, j);
+            lo := min(i, j);
+            array_unordered_remove_by_index(elements, hi);
+            array_unordered_remove_by_index(elements, lo);
+            array_add(elements, new_el);
+            return true;
+        }
+    }
+    return false;
+}
+
 // Reduce the circuit by combining series/parallel elements until no more
 // reductions are possible. Mirrors the Python reduce_circuit() function.
 reduce_circuit :: (elements: *[..] Element, inputs: [] string, outputs: [] string) {
@@ -247,6 +316,7 @@ reduce_circuit :: (elements: *[..] Element, inputs: [] string, outputs: [] strin
         prev_count = elements.count;
         reduce_series_once(elements, inputs, outputs);
         reduce_parallel_once(elements);
+        reduce_diode_pairs_once(elements);
     }
 }
 
@@ -293,7 +363,12 @@ Gen_Var :: struct {
     expr_id: Expr_ID;
 }
 
-generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID, []Expr_ID, [..]Expr {
+// `dc_mode`: build and solve the DC-equivalent circuit.
+// At true DC: capacitors are open circuits, so CAPACITOR/RC_SERIES are
+// excluded from the KCL system entirely (zero current). RC_PARALLEL still
+// conducts through its resistor half, using the raw resistor param directly.
+// INDUCTOR DC handling (short circuit) isn't implemented yet. (@TODO)
+generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, [..]Expr {
     eqn_nodes: [..] string;
 
     for el : elements {
@@ -319,9 +394,13 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
     solve_vars: [..]Expr_ID;
     for node : eqn_nodes array_add(*solve_vars, expr_symbol(node, *exprs));
 
-    // all linear elemements beside op-amps and fixed voltage sources
+    // All 2-terminal elements beside op-amps, fixed voltage sources, and BJTs
     for el : elements {
-        if el.type == .AMP || el.type == .FIXED_VOLTAGE  continue;
+        if el.type == .AMP || el.type == .FIXED_VOLTAGE || el.type == .BJT  continue;
+        if dc_mode {
+            if el.type == .CAPACITOR || el.type == .RC_SERIES  continue; // open circuit at DC -- excluded entirely, not left as a free symbol
+            assert(el.type != .INDUCTOR, "generate_kcl_equations(dc_mode=true): INDUCTOR DC handling (short circuit) is not implemented");
+        }
 
         pos_node := el.terminals[0];
         neg_node := el.terminals[1];
@@ -347,10 +426,34 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
             case .RC_SERIES;
                 current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
             case .RC_PARALLEL;
-                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
+                if dc_mode {
+                    // only the resistor half conducts at DC -- use its raw param, not the trapezoidal g
+                    res_symbol := expr_symbol(el.rc_internal.res_name, *exprs);
+                    current_expr = expr_div(expr_sub(pos_node_symbol, neg_node_symbol, *exprs), res_symbol, *exprs);
+                } else {
+                    current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
+                }
         }
         // assert(current_expr != NO_EXPR);
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
+    }
+
+    for el : elements {
+        if el.type != .BJT  continue;
+
+        collector_node := el.terminals[0];
+        base_node      := el.terminals[1];
+        emitter_node   := el.terminals[2];
+
+        ib_symbol := expr_symbol(tprint("iB%", el.name), *exprs);
+        ic_symbol := expr_symbol(tprint("iC%", el.name), *exprs);
+        ie_expr   := expr_add(ib_symbol, ic_symbol, *exprs); // iE = iB + iC
+
+        for node, idx : eqn_nodes {
+            if node == collector_node equations[idx] = combine(equations[idx], ic_symbol, .SUB, *exprs);
+            if node == base_node      equations[idx] = combine(equations[idx], ib_symbol, .SUB, *exprs);
+            if node == emitter_node   equations[idx] = combine(equations[idx], ie_expr,   .ADD, *exprs);
+        }
     }
 
     // @TODO: I am not sure this is doing anything?
@@ -413,6 +516,31 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string) -> []Expr_ID
     for current_sub : currents  substitute(current_sub.id, current_sub.replace_id, *exprs);
     for voltage_sub : voltages  substitute(voltage_sub.id, voltage_sub.replace_id, *exprs);
 
+    // At DC, a node reachable only through a now-excluded capacitor and a
+    // diode/diode-pair branch ends up with a KCL row that doesn't mention
+    // any solve_var at all (just "-iDiode = 0"). Since the I-V law is odd
+    // (zero current at zero volts), zero current through that lone branch
+    // means zero junction voltage, so pin the node to its diode partner's
+    // voltage instead.
+    if dc_mode {
+        for node, idx : eqn_nodes {
+            if equations[idx] == NO_EXPR continue;
+            if expr_depends_on(equations[idx], solve_vars, exprs) continue;
+
+            for el : elements {
+                if el.type != .DIODE && el.type != .DIODE_PAIR continue;
+                other := "";
+                if      el.terminals[0] == node then other = el.terminals[1];
+                else if el.terminals[1] == node then other = el.terminals[0];
+                if other.count == 0 continue;
+
+                other_symbol := ifx other == "0" then expr_const(0, *exprs) else expr_symbol(other, *exprs);
+                equations[idx] = expr_sub(expr_symbol(node, *exprs), other_symbol, *exprs);
+                break;
+            }
+        }
+    }
+
     return solve_vars, equations, exprs;
 }
 
@@ -472,7 +600,58 @@ generate_expressions :: (elements: [] Element,
     return gen_vars;
 }
 
-// Build the set of base loop-variant symbol names: inputs + state variables.
+// Look up the closed-form linear MNA solution for `node`.
+lookup_node_voltage :: (node: string, solve_vars: [] Expr_ID, solutions: [] Expr_ID, exprs: *[..] Expr, inputs: [] string = .[]) -> Expr_ID {
+    if node == "0"  return expr_const(0, exprs);
+    if array_find(inputs, node)  return expr_symbol(node, exprs);
+    node_symbol := expr_symbol(node, exprs);
+    found, idx := array_find(solve_vars, node_symbol);
+    assert(found, "Nonlinear element terminal references a node that isn't part of the solved MNA system");
+    return solutions[idx];
+}
+
+// One junction-voltage unknown belonging to a nonlinear element: "vD<name>"
+// for DIODE/DIODE_PAIR, "vBC<name>"/"vBE<name>" for BJT.
+Junction_Voltage :: struct {
+    name:    string;
+    expr_id: Expr_ID;
+}
+
+// For each nonlinear (DIODE / DIODE_PAIR / BJT) element, build the closed-form
+// expression for its own junction voltage(s).
+generate_junction_voltage_expressions :: (elements: [] Element,
+                                          solve_vars: [] Expr_ID,
+                                          solutions: [] Expr_ID,
+                                          exprs: *[..] Expr) -> [] Junction_Voltage {
+    junctions: [..] Junction_Voltage;
+
+    for el : elements {
+        if el.type == {
+            case .DIODE; #through;
+            case .DIODE_PAIR;
+                anode_v   := lookup_node_voltage(el.terminals[0], solve_vars, solutions, exprs);
+                cathode_v := lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs);
+                v := simplify(expr_sub(anode_v, cathode_v, exprs), exprs);
+                array_add(*junctions, .{ name = tprint("v%", el.name), expr_id = v });
+
+            case .BJT;
+                collector_v := lookup_node_voltage(el.terminals[0], solve_vars, solutions, exprs);
+                base_v      := lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs);
+                emitter_v   := lookup_node_voltage(el.terminals[2], solve_vars, solutions, exprs);
+                vbc := simplify(expr_sub(base_v, collector_v, exprs), exprs);
+                vbe := simplify(expr_sub(base_v, emitter_v,   exprs), exprs);
+                array_add(*junctions, .{ name = tprint("vBC%", el.name), expr_id = vbc });
+                array_add(*junctions, .{ name = tprint("vBE%", el.name), expr_id = vbe });
+        }
+    }
+
+    return junctions;
+}
+
+// Build the set of base loop-variant symbol names: inputs + state variables
+// + nonlinear branch currents (which, like state variables, are free
+// per-sample-varying symbols in the linear MNA solve rather than solved-for
+// MNA unknowns -- see generate_kcl_equations).
 build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
     names: [..] string;
     for inp : inputs  array_add(*names, inp);
@@ -480,6 +659,13 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
         if el.type == .CAPACITOR || el.type == .INDUCTOR
            || el.type == .RC_SERIES || el.type == .RC_PARALLEL {
             array_add(*names, tprint("z%", el.name));
+        }
+        if el.type == .DIODE || el.type == .DIODE_PAIR {
+            array_add(*names, tprint("i%", el.name));
+        }
+        if el.type == .BJT {
+            array_add(*names, tprint("iB%", el.name));
+            array_add(*names, tprint("iC%", el.name));
         }
     }
     return names;
@@ -527,15 +713,21 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
 // Returns two strings:
 //   outer_code — loop-invariant CSE temporaries (hoist outside the sample loop)
 //   inner_code — loop-variant CSE temps + gen_var assignments + state updates
+// `extra_variant_names` lets a caller extend the loop-variant base beyond
+// what build_variant_base() derives from `elements`/`inputs` -- used by the
+// nonlinear pipeline (netlist_codegen.jai) to mark junction-voltage unknowns
+// (vD1, vBCQ1, ...) as sample-variant.
 codegen :: (elements: [] Element, inputs: [] string,
             gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
-            exprs: [] Expr, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
+            exprs: [] Expr, options: Codegen_Options = .{},
+            extra_variant_names: [] string = .[]) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
 
     variant_base := build_variant_base(elements, inputs);
     // Gen_vars are computed inside the per-sample loop; treat their names as
     // loop-variant base symbols so that any CSE temp depending on them is
     // correctly classified as loop-variant.
     for gv : gen_vars  array_add(*variant_base, gv.name);
+    for n : extra_variant_names  array_add(*variant_base, n);
 
     // Accumulate names of CSE temps that are loop-variant so we can propagate
     // variant-ness through the (topologically ordered) temp list.

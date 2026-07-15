@@ -1,0 +1,46 @@
+* Drive stage from a popular guitar pedal
+
+Vin vi 0 SIN(0 1 50)
+
+* input network
+C5  vi v1 100n
+R19 v1 vb  10k
+R20 vb  0 100k
+
+* emitter network
+R21 ve  0 150
+
+* vcc network
+Vp  vp  0 DC 9
+R18 vp vc 10k
+
+* feedback network
+R17 vb vc 470k
+C12 vb vc 470p
+C6  vb vd 1u
+D3  vd vc D1N914
+D4  vc vd D1N914
+
+* BJT
+Q1 vc vb ve Q2N5089 ; C B E
+
+* 1N914 diode model
+.model D1N914 D (IS=2.52E-9 N=1.752)
+
+* 2N5089 model
+.model Q2N5089 NPN (IS=5E-14 BF=600 BR=50)
+
+* output network
+Cout vc vo 100n ; no_combine
+Rout vo  0 100k
+
+* Newton-Raphson solver config
+* nr_solve(max_iter=10, tol=1.0e-4)
+
+.tran 0 80m 0 20.0u
+* .ac dec 100 10 20k
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end

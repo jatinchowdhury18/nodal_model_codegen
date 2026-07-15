@@ -23,3 +23,8 @@ test eq_filter
 test eq_filter2
 test summing_amp
 test multi_svf
+test diode_circuit
+test diode_clipper
+test common_emitter
+test pedal_tone
+test pedal_drive

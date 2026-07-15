@@ -1,0 +1,17 @@
+* Single-diode negative clipper
+* V1 vi  0 SIN(0 0.75 60) ; 10 Vpp, 1 kHz sine
+V1 vi  0 PULSE(-1 1 0 20m 1u 1u 20m)
+R1 vi vo 1k
+C1 vo  0 1u IC=0
+D1 vo  0 D1N914   ; diode to ground
+D2  0 vo D1N914
+
+* 1N914 diode model
+.model D1N914 D (IS=2.52E-9 N=1.752)
+
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end

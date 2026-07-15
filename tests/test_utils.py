@@ -66,7 +66,7 @@ def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace
 
 def compile_run_cpp(name):
     subprocess.run([
-        "clang",
+        "clang++",
         f"{name}.cpp",
         "--std=c++20",
         "-D_CRT_SECURE_NO_WARNINGS",

@@ -3,7 +3,11 @@
 // This module can be used to represent, simplify, and solve
 // mathematical expressions sybmolically. The module can also
 // be used to generate code to evaluate these expressions.
-// At the moment only linear expressions are supported.
+//
+// The linear solver (linearize/solve) only supports linear expressions.
+// EXP (and differentiate()) exist to support building and solving small
+// nonlinear systems (e.g. Newton-Raphson for diode/BJT device equations)
+// on top of the linear core -- see nonlinear_solve.jai.
 //
 // ===========================================================================
 // REPRESENTATION
@@ -106,6 +110,14 @@ Expr_Kind :: enum {
     SUB;
     MUL;
     DIV;
+    EXP; // unary; operand is `left`. exp(left)
+}
+
+// Kinds whose node has a single operand (in `left`), rather than the usual
+// binary `left`/`right` pair. Tree-walkers that generically recurse over
+// `left`/`right` need to check this to avoid reading a bogus `right` child.
+is_unary :: (kind: Expr_Kind) -> bool {
+    return kind == .NEG || kind == .EXP;
 }
 
 Expr_ID :: s64;
@@ -143,6 +155,49 @@ expr_neg :: (a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
 
 expr_neg :: (a: string, exprs: *[..] Expr) -> Expr_ID {
     return expr_neg(expr_symbol(a), exprs);
+}
+
+expr_exp :: (a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+    id := exprs.count;
+    array_add(exprs, Expr.{ kind = .EXP, left = a });
+    return id;
+}
+
+expr_exp :: (a: string, exprs: *[..] Expr) -> Expr_ID {
+    return expr_exp(expr_symbol(a, exprs), exprs);
+}
+
+// Rebuild a unary (NEG/EXP) node with the given operand. Used by passes
+// (cse_pass, licm_walk) that hoist a node into a fresh temporary and need
+// to reconstruct it generically, without hardcoding NEG.
+make_unary :: (kind: Expr_Kind, a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+    id := exprs.count;
+    array_add(exprs, Expr.{ kind = kind, left = a });
+    return id;
+}
+
+// Deep-copy an expression subtree into fresh Expr array slots, so that later
+// IN-PLACE mutation of the copy (fold/simplify/cse -- all of which rewrite
+// nodes by ID rather than allocating new ones for the node being simplified)
+// cannot corrupt any other part of the tree that happens to share the same
+// underlying nodes. This matters whenever an Expr_ID is handed to more than
+// one independent consumer -- e.g. nonlinear_solve.jai builds a nonlinear
+// device's residual from the *same* closed-form node-voltage subtree that
+// generate_expressions() separately reads for circuit outputs; without a
+// copy, nonlinear_solve.jai's own CSE pass would rename shared internal nodes
+// to temporaries that don't exist outside that scope.
+//
+// SYMBOL leaves are deliberately NOT copied (returned as-is): symbols are
+// already interned by name via expr_symbol, sharing a leaf reference is
+// harmless (nothing ever mutates a SYMBOL node's identity in place), and
+// keeping them shared is what lets CSE/print_expr still recognize e.g. two
+// uses of "vi" as the same symbol.
+copy_expr :: (e: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+    ex := exprs.*[e];
+    if ex.kind == .SYMBOL || ex.kind == .NULL  return e;
+    if ex.kind == .CONST  return expr_const(ex.value, exprs);
+    if is_unary(ex.kind)  return make_unary(ex.kind, copy_expr(ex.left, exprs), exprs);
+    return expr_bin(ex.kind, copy_expr(ex.left, exprs), copy_expr(ex.right, exprs), exprs);
 }
 
 expr_const :: (value: s64, exprs: *[..] Expr) -> Expr_ID {
@@ -194,6 +249,21 @@ linear_is_constant :: (l: Linear) -> bool {
     return true;
 }
 
+// Does `e`'s tree reference any of `vars`? Used to let linearize() treat
+// an arbitrarily complex (even transcendental) sub-expression as an opaque
+// constant coefficient without recursing into it, as long as it doesn't
+// depend on the variables being solved for -- e.g. a Newton-Raphson
+// Jacobian entry (which may contain EXP nodes) is a valid *coefficient* when
+// solving J*delta=-f for `delta`, even though EXP itself is never linear in
+// anything.
+expr_depends_on :: (e: Expr_ID, vars: [] Expr_ID, exprs: [] Expr) -> bool {
+    for v : vars  if v == e  return true;
+    ex := exprs[e];
+    if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return false;
+    if is_unary(ex.kind)  return expr_depends_on(ex.left, vars, exprs);
+    return expr_depends_on(ex.left, vars, exprs) || expr_depends_on(ex.right, vars, exprs);
+}
+
 // Combine two optional expression IDs with ADD or SUB, treating NO_EXPR as zero.
 // For SUB with `a` absent: produces (0 - b), i.e. negation.
 combine :: (a: Expr_ID, b: Expr_ID, op: Expr_Kind, exprs: *[..] Expr) -> Expr_ID {
@@ -214,6 +284,13 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, exprs: *[..] Expr) -> Linear {
     result: Linear;
     for i: 0..vars.count-1  array_add(*result.coeffs, NO_EXPR);
     result.constant = NO_EXPR;
+
+    // If this subtree doesn't reference any of `vars` at all, treat it as an
+    // opaque constant coefficient without recursing into its structure.
+    if !expr_depends_on(e, vars, exprs.*) {
+        result.constant = e;
+        return result;
+    }
 
     // Copy the node before recursing: array_add inside recursive calls may
     // reallocate, but Expr is a value type so this local copy stays valid.
@@ -276,9 +353,79 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, exprs: *[..] Expr) -> Linear {
                 if la.constant != NO_EXPR
                     result.constant = expr_div(la.constant, divisor, exprs);
             }
+
+        case .EXP;
+            // EXP is transcendental, never linear. Nonlinear device I-V laws
+            // must be kept out of the KCL system that gets linearize()'d/solve()'d.
+            assert(false, "Expression is not linear! (contains EXP; nonlinear device equations must not reach the linear MNA solve)");
     }
 
     return result;
+}
+
+// ===========================================================================
+// Symbolic differentiation.
+//
+//   differentiate (e, var, *exprs) -> Expr_ID  -- d(e)/d(var)
+//
+// `var` must be an Expr_ID obtained from the same expr_symbol(name, *exprs)
+// call used to build `e`.
+//
+// This is used to build the Newton-Raphson Jacobian for nonlinear device
+// residuals (see nonlinear_solve.jai).
+//
+// The result is generally unsimplified (e.g. differentiating w.r.t. a symbol
+// that doesn't appear anywhere produces a tree full of literal 0s and 1s from
+// the base cases below). Callers should run simplify() on the result --
+// fold()'s 0+x->x / 0*x->0 / 1*x->x identities do most of the same collapsing
+// that Mathematica's Simplify[D[...]] does by hand.
+// ===========================================================================
+differentiate :: (e: Expr_ID, var: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+    expr := exprs.*[e]; // Copy the node before recursing.
+
+    if expr.kind == {
+        case .CONST;
+            return expr_const(0, exprs);
+
+        case .SYMBOL;
+            if e == var  return expr_const(1, exprs);   // d/dvar(var) = 1
+            return expr_const(0, exprs);                // d/dvar(other symbol) = 0
+
+        case .NEG;
+            return expr_neg(differentiate(expr.left, var, exprs), exprs);
+
+        case .ADD;
+            return expr_add(differentiate(expr.left, var, exprs),
+                             differentiate(expr.right, var, exprs), exprs);
+
+        case .SUB;
+            return expr_sub(differentiate(expr.left, var, exprs),
+                             differentiate(expr.right, var, exprs), exprs);
+
+        case .MUL;
+            // Product rule: d(u*v) = u'*v + u*v'
+            du := differentiate(expr.left,  var, exprs);
+            dv := differentiate(expr.right, var, exprs);
+            return expr_add(expr_mul(du, expr.right, exprs),
+                             expr_mul(expr.left, dv, exprs), exprs);
+
+        case .DIV;
+            // Quotient rule: d(u/v) = (u'*v - u*v') / v^2
+            du := differentiate(expr.left,  var, exprs);
+            dv := differentiate(expr.right, var, exprs);
+            numerator   := expr_sub(expr_mul(du, expr.right, exprs),
+                                     expr_mul(expr.left, dv, exprs), exprs);
+            denominator := expr_mul(expr.right, expr.right, exprs);
+            return expr_div(numerator, denominator, exprs);
+
+        case .EXP;
+            // Chain rule: d(exp(u)) = exp(u) * u'
+            du := differentiate(expr.left, var, exprs);
+            return expr_mul(e, du, exprs); // reuse `e` itself as exp(u)
+    }
+
+    assert(false, "differentiate: unhandled Expr_Kind");
+    return NO_EXPR;
 }
 
 //==================================================
@@ -302,6 +449,9 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
             } else if child.kind == .SUB {
                 exprs.*[e] = .{ kind = .SUB, left = child.right, right = child.left }; // -(a-b) → b-a
             }
+
+        case .EXP;
+            fold(expr.left, exprs); // no further constant-folding for a transcendental of a non-literal operand
 
         case; // ADD, SUB, MUL, DIV
             fold(expr.left,  exprs);
@@ -391,6 +541,7 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
             }
             if expr.kind == .DIV {
                 if right.kind == .CONST && right.value == 1 { exprs.*[e] = left; return; } // x / 1 → x
+                if left.kind  == .CONST && left.value  == 0 { exprs.*[e] = left; return; } // 0 / x → 0 (x assumed nonzero; other identities here also don't guard divide-by-zero either)
                 // (-a) / (-b) → a / b : cancel double negation (check this before single-NEG cases)
                 if left.kind == .NEG && right.kind == .NEG {
                     exprs.*[e] = .{ kind = .DIV, left = left.left, right = right.left };
@@ -897,7 +1048,7 @@ simplify_mul :: (e: Expr_ID, exprs: *[..] Expr) {
 simplify_node :: (e: Expr_ID, exprs: *[..] Expr) {
     expr := exprs.*[e];
     if expr.kind == .CONST || expr.kind == .SYMBOL || expr.kind == .NULL  return;
-    if expr.kind == .NEG {
+    if is_unary(expr.kind) {
         simplify_node(expr.left, exprs);
     } else {
         simplify_node(expr.left,  exprs);
@@ -934,6 +1085,11 @@ print_expr :: (e: Expr_ID, exprs: [] Expr) -> string {
                 expr_to_builder(builder, exprs[e].left, exprs);
                 append(builder, ")");
 
+            case .EXP;
+                append(builder, "exp(");
+                expr_to_builder(builder, exprs[e].left, exprs);
+                append(builder, ")");
+
             case;
                 append(builder, "(");
                 expr_to_builder(builder, exprs[e].left, exprs);
@@ -962,7 +1118,7 @@ CSE_Var :: struct {
 cse_expr_size :: (e: Expr_ID, exprs: [] Expr) -> int {
     ex := exprs[e];
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return 0;
-    if ex.kind == .NEG  return 1 + cse_expr_size(ex.left, exprs);
+    if is_unary(ex.kind)  return 1 + cse_expr_size(ex.left, exprs);
     return 1 + cse_expr_size(ex.left, exprs) + cse_expr_size(ex.right, exprs);
 }
 
@@ -978,7 +1134,7 @@ cse_count_refs :: (e: Expr_ID, exprs: [] Expr,
     }
     array_add(ids,    e);
     array_add(counts, 1);
-    if ex.kind == .NEG {
+    if is_unary(ex.kind) {
         cse_count_refs(ex.left, exprs, ids, counts);
     } else {
         cse_count_refs(ex.left,  exprs, ids, counts);
@@ -987,7 +1143,7 @@ cse_count_refs :: (e: Expr_ID, exprs: [] Expr,
 }
 
 cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
-             exprs: *[..] Expr, counter: *int) -> bool {
+             exprs: *[..] Expr, counter: *int, prefix: string) -> bool {
     ids:    [..] Expr_ID;
     counts: [..] int;
     for v  : gen_var_ids  cse_count_refs(v,          exprs.*, *ids, *counts);
@@ -1015,12 +1171,12 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
         if counts[i] < 2                         continue;  // not shared enough to CSE
         if cse_expr_size(ids[i], exprs.*) == 0   continue;  // trivial (leaf) node
 
-        temp_name := tprint("_t%", counter.*);
+        temp_name := tprint("%1%2", prefix, counter.*);
         counter.* += 1;
 
         ex       := exprs.*[ids[i]];
-        saved_id := ifx ex.kind == .NEG
-                    then expr_neg(ex.left, exprs)
+        saved_id := ifx is_unary(ex.kind)
+                    then make_unary(ex.kind, ex.left, exprs)
                     else expr_bin(ex.kind, ex.left, ex.right, exprs);
         array_add(cse_vars, .{ name = temp_name, expr_id = saved_id });
 
@@ -1045,19 +1201,24 @@ expr_is_loop_variant :: (e: Expr_ID, exprs: [] Expr,
         for n : cse_variant_names   if ex.name == n  return true;
         return false;
     }
-    if ex.kind == .NEG {
+    if is_unary(ex.kind) {
         return expr_is_loop_variant(ex.left, exprs, base_variant_names, cse_variant_names);
     }
     return expr_is_loop_variant(ex.left,  exprs, base_variant_names, cse_variant_names)
         || expr_is_loop_variant(ex.right, exprs, base_variant_names, cse_variant_names);
 }
 
-cse :: (gen_var_ids: [] Expr_ID, exprs: *[..] Expr) -> [..] CSE_Var {
+// `prefix` names the generated temporaries ("_t0", "_t1", ... by default).
+// Callers that emit more than one independently-scoped block of generated
+// code into the same C/C++ scope must pass a distinct prefix per block --
+// otherwise two unrelated cse() calls, each independently counting from 0,
+// can allocate the same name ("_t3") for two different values in the same scope.
+cse :: (gen_var_ids: [] Expr_ID, exprs: *[..] Expr, prefix: string = "_t") -> [..] CSE_Var {
     cse_vars: [..] CSE_Var;
     counter: int = 0;
     MAX_PASSES :: 20;
     for 0..MAX_PASSES-1 {
-        if !cse_pass(gen_var_ids, *cse_vars, exprs, *counter)  break;
+        if !cse_pass(gen_var_ids, *cse_vars, exprs, *counter, prefix)  break;
     }
     return cse_vars;
 }
@@ -1104,26 +1265,26 @@ sort_cse_topological :: (cse_vars: *[..] CSE_Var, exprs: [] Expr) {
 // into new_vars as new CSE temporaries (even if they appear only once).
 licm_walk :: (e: Expr_ID, exprs: *[..] Expr,
               new_vars: *[..] CSE_Var, counter: *int,
-              variant_base: [] string, variant_cse_names: [] string) -> bool {
+              variant_base: [] string, variant_cse_names: [] string, prefix: string) -> bool {
     ex := (exprs.*)[e];
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return false;
 
     made_progress := false;
-    n_children := ifx ex.kind == .NEG then 1 else 2;
+    n_children := ifx is_unary(ex.kind) then 1 else 2;
     for ci : 0..n_children-1 {
         child_id := ifx ci == 0 then ex.left else ex.right;
         ch := (exprs.*)[child_id];
         if ch.kind == .CONST || ch.kind == .SYMBOL || ch.kind == .NULL  continue;
         if !expr_is_loop_variant(child_id, exprs.*, variant_base, variant_cse_names) {
             // Loop-invariant compound sub-expression inside a loop-variant context -- hoist it.
-            temp_name := tprint("_t%", counter.*);  counter.* += 1;
-            saved_id  := ifx ch.kind == .NEG
-                         then expr_neg(ch.left, exprs)
+            temp_name := tprint("%1%2", prefix, counter.*);  counter.* += 1;
+            saved_id  := ifx is_unary(ch.kind)
+                         then make_unary(ch.kind, ch.left, exprs)
                          else expr_bin(ch.kind, ch.left, ch.right, exprs);
             array_add(new_vars, .{ name = temp_name, expr_id = saved_id });
             (exprs.*)[child_id] = (exprs.*)[expr_symbol(temp_name, exprs)];
             made_progress = true;
-        } else if licm_walk(child_id, exprs, new_vars, counter, variant_base, variant_cse_names) {
+        } else if licm_walk(child_id, exprs, new_vars, counter, variant_base, variant_cse_names, prefix) {
             made_progress = true;
         }
     }
@@ -1134,9 +1295,10 @@ licm_walk :: (e: Expr_ID, exprs: *[..] Expr,
 // Loop-Invariant Code Motion pass: extract loop-invariant sub-expressions from
 // loop-variant expressions, even when they appear only once.  Newly extracted
 // temporaries are appended to cse_vars; codegen will hoist them outside the
-// per-sample loop because they classify as loop-invariant.
+// per-sample loop because they classify as loop-invariant. `prefix` must
+// match whatever prefix cse_vars' own names were generated with (see cse()).
 licm :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
-         variant_base: [] string) {
+         variant_base: [] string, prefix: string = "_t") {
     // Propagate variant-ness through the existing (topologically ordered) CSE temps
     // so that expr_is_loop_variant correctly handles temps that depend on other temps.
     variant_cse_names: [..] string;
@@ -1154,14 +1316,14 @@ licm :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
 
         for gv_id : gen_var_ids {
             if expr_is_loop_variant(gv_id, exprs.*, variant_base, variant_cse_names) {
-                if licm_walk(gv_id, exprs, *new_vars, *counter, variant_base, variant_cse_names)
+                if licm_walk(gv_id, exprs, *new_vars, *counter, variant_base, variant_cse_names, prefix)
                     made_progress = true;
             }
         }
 
         for cv : cse_vars.* {
             if expr_is_loop_variant(cv.expr_id, exprs.*, variant_base, variant_cse_names) {
-                if licm_walk(cv.expr_id, exprs, *new_vars, *counter, variant_base, variant_cse_names)
+                if licm_walk(cv.expr_id, exprs, *new_vars, *counter, variant_base, variant_cse_names, prefix)
                     made_progress = true;
             }
         }
@@ -1182,7 +1344,7 @@ collect_symbol_names :: (e: Expr_ID, exprs: [] Expr, names: *[..] string) {
         return;
     }
     if ex.kind == .CONST || ex.kind == .NULL  return;
-    if ex.kind == .NEG {
+    if is_unary(ex.kind) {
         collect_symbol_names(ex.left, exprs, names);
         return;
     }
@@ -1202,7 +1364,7 @@ count_sym_uses_by_name :: (e: Expr_ID, sym_name: string, exprs: [] Expr,
         if ex.name == sym_name  other_count.* += 1;
         return;
     }
-    if ex.kind == .NEG {
+    if is_unary(ex.kind) {
         count_sym_uses_by_name(ex.left, sym_name, exprs, div_count, other_count);
         return;
     }
@@ -1225,7 +1387,7 @@ count_sym_uses_by_name :: (e: Expr_ID, sym_name: string, exprs: [] Expr,
 replace_div_by_name :: (e: Expr_ID, sym_name: string, recip_sym_id: Expr_ID, exprs: *[..] Expr) {
     ex := (exprs.*)[e];
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return;
-    if ex.kind == .NEG {
+    if is_unary(ex.kind) {
         replace_div_by_name(ex.left, sym_name, recip_sym_id, exprs);
         return;
     }
@@ -1254,8 +1416,10 @@ replace_div_by_name :: (e: Expr_ID, sym_name: string, recip_sym_id: Expr_ID, exp
 //     replace every inner-loop (x / _tN) with (x * _tN).
 //   - Otherwise: add a new outer-loop temp (1 / _tN) and replace inner-loop
 //     (x / _tN) with (x * new_temp).
+// `prefix` must match whatever prefix cse_vars' own names were generated
+// with (see cse()) -- new dedicated-reciprocal temporaries are named after it.
 recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
-                variant_base: [] string) {
+                variant_base: [] string, prefix: string = "_t") {
     // Classify each CSE temp as inner (loop-variant) or outer (loop-invariant).
     variant_cse_names: [..] string;
     for cv : cse_vars.* {
@@ -1319,7 +1483,7 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] E
             }
         } else {
             // Temp is used elsewhere too; add a dedicated reciprocal.
-            recip_name := tprint("_t%", counter);
+            recip_name := tprint("%1%2", prefix, counter);
             counter += 1;
             one_id := expr_const(1, exprs);
             recip_expr_id := expr_bin(.DIV, one_id, sym_id, exprs);

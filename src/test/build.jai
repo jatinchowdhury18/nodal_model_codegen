@@ -6,11 +6,12 @@
 build :: () {
     set_build_options_dc(.{do_output = false});
 
-    build_target("netlist_codegen", "netlist_codegen.jai");
-    build_target("solve_test",      "solve_test.jai");
-    build_target("simplify_test",   "simplify_test.jai");
-    build_target("circuit_test",    "circuit_test.jai");
-    build_target("netlist_test",    "netlist_test.jai");
+    build_target("solve_test.exe",         "solve_test.jai");
+    build_target("simplify_test.exe",      "simplify_test.jai");
+    build_target("circuit_test.exe",       "circuit_test.jai");
+    build_target("netlist_test.exe",       "netlist_test.jai");
+    build_target("differentiate_test.exe", "differentiate_test.jai");
+    build_target("nonlinear_test.exe",     "nonlinear_test.jai");
 }
 
 build_target :: (name: string, source: string) {
