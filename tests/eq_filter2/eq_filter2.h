@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 1e4a320.
+// Auto-generated with netlist_codegen version e0d236b.
 // Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
 
 #pragma once

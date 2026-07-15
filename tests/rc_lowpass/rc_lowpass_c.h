@@ -1,11 +1,11 @@
-// Auto-generated with netlist_codegen version 1e4a320.
+// Auto-generated with netlist_codegen version e0d236b.
 // Command: netlist_codegen rc_lowpass.net rc_lowpass_c.h -lang c
 
 #pragma once
 
 typedef struct {
-    float R1;
-    float C1;
+    float R1; // = 1.0e+03
+    float C1; // = 1.0e-06
 } Params;
 
 typedef struct {

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 1e4a320.
+// Auto-generated with netlist_codegen version e0d236b.
 // Command: netlist_codegen common_emitter.net common_emitter_c.h -lang c -type_name double
 
 #pragma once
@@ -6,18 +6,18 @@
 #include <math.h>
 
 typedef struct {
-    double VCC;
-    double C1;
-    double R1;
-    double R2;
-    double RE;
-    double RC;
-    double Q2N5089_Is;
-    double Q2N5089_vt;
-    double Q2N5089_BetaF;
-    double Q2N5089_BetaR;
-    double C2;
-    double RL;
+    double VCC; // = 9.0e+00
+    double C1; // = 1.0e-07
+    double R1; // = 4.7e+05
+    double R2; // = 1.0e+05
+    double RE; // = 2.7e+03
+    double RC; // = 1.2e+04
+    double Q2N5089_Is; // = 5.0e-14
+    double Q2N5089_vt; // = 2.585e-02
+    double Q2N5089_BetaF; // = 6.0e+02
+    double Q2N5089_BetaR; // = 5.0e+01
+    double C2; // = 1.0e-07
+    double RL; // = 1.0e+05
 } Params;
 
 typedef struct {

@@ -323,11 +323,11 @@ generate_params_struct :: (elements: [] Element,
 
     suffix := ifx type_name == "float" then "f" else ""; // only "float" gets literal f-suffixes; "double" etc. get bare literals
     write_value :: (name: string) -> string #expand {
-        if lang == "c" {
-            return tprint("    % %;\n", type_name, name);
-        }
         for val : values {
-            if val.name == name return tprint("    %1 %2 = %3%4;\n", type_name, name, val.value, suffix);
+            if val.name == name {
+                if lang == "c"  return tprint("    % %; // = %\n", type_name, name, val.value);
+                          else  return tprint("    %1 %2 = %3%4;\n", type_name, name, val.value, suffix);
+            }
         }
         return tprint("    % %;\n", type_name, name);
     }
