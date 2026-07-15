@@ -8,6 +8,7 @@
 *.bin
 *.wav
 *.exe
+*.a
 *.pdf
 *.dSYM
 *.pdb
