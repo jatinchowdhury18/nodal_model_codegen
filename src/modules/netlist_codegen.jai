@@ -243,7 +243,8 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
         if ! Math.is_nan_is_inf(value) {
             array_add(*values, Element_Value.{ name, value });
         } else {
-            log("Warning: couldn't parse value '%' for element '%'; it will default to 0.\n", tokens[3], name);
+            // @TODO: this warning always throws on the input voltage source...
+            // log("Warning: couldn't parse value '%' for element '%'; it will default to 0.\n", tokens[3], name);
         }
         prefix := String.to_upper(name[0]);
 
@@ -714,7 +715,10 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     // print("%\n", net.inputs);
     // print("%\n", net.values);
 
-    if net.outputs.count == 0  array_add(*net.outputs, "vo");
+    if net.outputs.count == 0 {
+        log("Adding output node: vo\n");
+        array_add(*net.outputs, "vo");
+    }
 
     has_nonlinear := false;
     for el : net.elements  if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .BJT { has_nonlinear = true; break; }
