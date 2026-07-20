@@ -57,10 +57,12 @@ Element_Value :: struct {
 Model_Def :: struct {
     name:      string;
     kind:      string; // "D", "NPN", "PNP" -- kept for diagnostics; PNP is not yet handled specially
-    is_val:    float32;
+    is_val:    float32; // diode/BJT saturation current
     n_val:     float32; // diode-only; folded into vt_val at parse time
     betaf_val: float32;
     betar_val: float32;
+    vp_val:    float32; // JFET-only pinch-off voltage (VTO)
+    beta_val:  float32; // JFET-only transconductance coefficient (BETA).
 }
 
 // Standard SPICE default model parameters.
@@ -70,14 +72,41 @@ default_model :: () -> Model_Def {
     model.n_val     = 1.0;
     model.betaf_val = 100.0;
     model.betar_val = 1.0;
+    model.vp_val    = -2.0;
+    model.beta_val  = 1.0e-4;
     return model;
+}
+
+// Parse a bare number with an optional trailing SPICE SI-scale suffix
+// (M=1e6, k=1e3, m=1e-3, u=1e-6, n=1e-9, p=1e-12), e.g. "2m" -> 0.002.
+// Used both for element values (R/C/L/...) and .model key=val parameters.
+parse_spice_value :: (val_str: string) -> float32 {
+    val, success, remainder := string_to_float(val_str);
+    if !success return Math.FLOAT32_NAN;
+    if remainder.count == 0 { return val; }
+    if remainder[0] == {
+        case #char "M";
+            val *= 1.0e6;
+        case #char "k";
+            val *= 1.0e3;
+        case #char "m";
+            val *= 1.0e-3;
+        case #char "u";
+            val *= 1.0e-6;
+        case #char "n";
+            val *= 1.0e-9;
+        case #char "p";
+            val *= 1.0e-12;
+    }
+    return val;
 }
 
 // Parse a `.model` line (leading "." already stripped/trimmed by the
 // caller), e.g. "model DCLIP D" or "model Q1M NPN (Is=2e-14 Bf=200 Br=4)".
 // Missing parameters get standard SPICE defaults.
 parse_model_line :: (line: string) -> Model_Def {
-    tokens_raw := String.split(line, #char " ");
+    normalized, _ := String.replace(line, "(", " (");
+    tokens_raw := String.split(normalized, #char " ");
     tokens: [..] string;
     for t : tokens_raw  if t.count > 0  array_add(*tokens, t);
 
@@ -99,18 +128,28 @@ parse_model_line :: (line: string) -> Model_Def {
             parts := String.split(kv, #char "=");
             if parts.count != 2  continue;
             key := String.to_upper_copy(String.trim(parts[0]));
-            val, success := string_to_float(String.trim(parts[1]));
-            if !success  continue;
+            val := parse_spice_value(String.trim(parts[1]));
+            if Math.is_nan_is_inf(val)  continue;
             if key == {
                 case "IS"; model.is_val = val;
                 case "N";  model.n_val = val;
                 case "BF"; model.betaf_val = val;
                 case "BR"; model.betar_val = val;
+                case "VTO"; model.vp_val = val;
+                case "BETA"; model.beta_val = val;
             }
         }
     }
 
     return model;
+}
+
+// Part numbers like "2N5485" aren't valid C identifiers; prefix with "_" when
+// building Params field names (e.g. "2N5485_Beta"). find_model() must keep
+// using the raw, un-prefixed name for lookups.
+ident_safe_name :: (name: string) -> string {
+    if name.count > 0 && is_digit(name[0])  return tprint("_%", name);
+    return name;
 }
 
 // Look up a parsed .model card by name, falling back to a default-parameter model.
@@ -143,24 +182,7 @@ Netlist_Info :: struct {
 
 parse_netlist :: (netlist_str: string) -> Netlist_Info {
     parse_value :: (val_str: string) -> float32 {
-        val, success, remainder := string_to_float(val_str);
-        if !success return Math.FLOAT32_NAN;
-        if remainder.count == 0 { return val; }
-        if remainder[0] == {
-            case #char "M";
-                val *= 1.0e6;
-            case #char "k";
-                val *= 1.0e3;
-            case #char "m";
-                val *= 1.0e-3;
-            case #char "u";
-                val *= 1.0e-6;
-            case #char "n";
-                val *= 1.0e-9;
-            case #char "p";
-                val *= 1.0e-12;
-        }
-        return val;
+        return parse_spice_value(val_str);
     }
 
     using netlist_info : Netlist_Info;
@@ -281,8 +303,8 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
             case "D";
                 // D<name> <anode> <cathode> <model>
                 model := find_model(model_defs, tokens[3]);
-                is_name := tprint("%_Is", model.name);
-                vt_name := tprint("%_vt", model.name);
+                is_name := tprint("%_Is", ident_safe_name(model.name));
+                vt_name := tprint("%_vt", ident_safe_name(model.name));
                 add_value_once(*values, is_name, model.is_val);
                 add_value_once(*values, vt_name, cast(float32)(model.n_val * VT_ROOM));
 
@@ -296,21 +318,43 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 // Q<name> <collector> <base> <emitter> <model>.
                 emitter    := tokens[3];
                 model      := find_model(model_defs, tokens[4]);
-                is_name    := tprint("%_Is", model.name);
-                vt_name    := tprint("%_vt", model.name);
-                betaf_name := tprint("%_BetaF", model.name);
-                betar_name := tprint("%_BetaR", model.name);
-                add_value_once(*values, is_name, model.is_val);
-                add_value_once(*values, vt_name, cast(float32)(model.n_val * VT_ROOM));
-                add_value_once(*values, betaf_name, model.betaf_val);
-                add_value_once(*values, betar_name, model.betar_val);
+                if model.kind == {
+                    case "NPN"; // @TODO: handle PNP here also
+                        is_name    := tprint("%_Is", ident_safe_name(model.name));
+                        vt_name    := tprint("%_vt", ident_safe_name(model.name));
+                        betaf_name := tprint("%_BetaF", ident_safe_name(model.name));
+                        betar_name := tprint("%_BetaR", ident_safe_name(model.name));
+                        add_value_once(*values, is_name, model.is_val);
+                        add_value_once(*values, vt_name, cast(float32)(model.n_val * VT_ROOM));
+                        add_value_once(*values, betaf_name, model.betaf_val);
+                        add_value_once(*values, betar_name, model.betar_val);
 
-                element := Element.{ name = name, type = .BJT };
-                array_add(*element.terminals, n1);      // collector
-                array_add(*element.terminals, n2);      // base
-                array_add(*element.terminals, emitter); // emitter
-                element.nonlinear = .{ is_name = is_name, vt_name = vt_name, betaf_name = betaf_name, betar_name = betar_name };
-                array_add(*elements, element);
+                        element := Element.{ name = name, type = .BJT };
+                        array_add(*element.terminals, n1);      // collector
+                        array_add(*element.terminals, n2);      // base
+                        array_add(*element.terminals, emitter); // emitter
+                        element.nonlinear = .{ is_name = is_name, vt_name = vt_name, betaf_name = betaf_name, betar_name = betar_name };
+                        array_add(*elements, element);
+                }
+                continue;
+            case "J";
+                // J<name> <drain> <gate> <source> <model>.
+                source := tokens[3];
+                model  := find_model(model_defs, tokens[4]);
+                if model.kind == {
+                    case "NJF"; // @TODO: handle PJF here also
+                        beta_name := tprint("%_Beta", ident_safe_name(model.name));
+                        vp_name   := tprint("%_vp", ident_safe_name(model.name));
+                        add_value_once(*values, beta_name, model.beta_val);
+                        add_value_once(*values, vp_name, model.vp_val);
+
+                        element := Element.{ name = name, type = .JFET };
+                        array_add(*element.terminals, n1);     // drain
+                        array_add(*element.terminals, n2);     // gate
+                        array_add(*element.terminals, source); // source
+                        element.nonlinear = .{ beta_name = beta_name, vp_name = vp_name };
+                        array_add(*elements, element);
+                }
                 continue;
             case;
                 log("Warning: unsupported element '%' (prefix '%'); ignoring.\n", name, prefix);
@@ -383,6 +427,9 @@ generate_params_struct :: (elements: [] Element,
                 emit_nonlinear_param(el.nonlinear.vt_name);
                 emit_nonlinear_param(el.nonlinear.betaf_name);
                 emit_nonlinear_param(el.nonlinear.betar_name);
+            case .JFET;
+                emit_nonlinear_param(el.nonlinear.beta_name);
+                emit_nonlinear_param(el.nonlinear.vp_name);
         }
     }
 
@@ -449,11 +496,13 @@ generate_impedance_defs :: (elements: [] Element, type_name: string = "float", l
     }
 
     for el : elements {
-        if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .BJT {
+        if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .BJT || el.type == .JFET {
             emit_nonlinear_alias(el.nonlinear.is_name);
             emit_nonlinear_alias(el.nonlinear.vt_name);
             emit_nonlinear_alias(el.nonlinear.betaf_name);
             emit_nonlinear_alias(el.nonlinear.betar_name);
+            emit_nonlinear_alias(el.nonlinear.vp_name);
+            emit_nonlinear_alias(el.nonlinear.beta_name);
         }
     }
     if emitted_nonlinear_aliases.count > 0  append(*builder, "\n");
@@ -547,6 +596,29 @@ DONE
 DONE;
 }
 
+// JFET vGS step limiter: clamps Newton steps at pinch-off (vGS < Vp), where
+// the square law curves back up instead of cutting off like a real JFET.
+// No upper clamp -- the quadratic stays valid (if approximate) above vGS=0.
+generate_jfet_limiter_helper :: (type_name: string, lang: string) -> string {
+    if lang == "c" {
+        template := #string DONE
+static % limit_jfet_vgs(% v_new, % vp) {
+    if (v_new < vp) return vp;
+    return v_new;
+}
+DONE
+        return tprint(template, type_name, type_name);
+    }
+
+    return #string DONE
+[[maybe_unused]] static auto limit_jfet_vgs = [](auto v_new, auto vp)
+{
+    if (v_new < vp) return vp;
+    return v_new;
+};
+DONE;
+}
+
 // vcrit = vt * log(vt / (sqrt(2) * Is)) per junction-voltage unknown, derived
 // once from Params fields.
 generate_vcrit_defs :: (clusters: [] Nonlinear_Cluster, type_name: string, lang: string) -> string {
@@ -558,6 +630,7 @@ generate_vcrit_defs :: (clusters: [] Nonlinear_Cluster, type_name: string, lang:
     emitted: [..] string;
     for c : clusters {
         for u : c.unknowns {
+            if u.vt_name.count == 0  continue; // no exponential blowup here (e.g. JFET)
             if array_find(emitted, u.vt_name)  continue;
             array_add(*emitted, u.vt_name);
             print_to_builder(*builder, "const %1 vcrit_%2 = %2 * %3(%2 / (%4(2.0) * %5));\n",
@@ -599,8 +672,16 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, opt
     for u : cluster.unknowns  print_to_builder(*inner_builder, "step_norm_sq += %1 * %1;\n", u.delta_name);
     append(*inner_builder, "\n");
     for u : cluster.unknowns {
-        print_to_builder(*inner_builder, "%1 = limit_junction_voltage(%1 + %2, %1, %3, vcrit_%3);\n",
-                         u.name, u.delta_name, u.vt_name);
+        if u.vt_name.count > 0 {
+            print_to_builder(*inner_builder, "%1 = limit_junction_voltage(%1 + %2, %1, %3, vcrit_%3);\n",
+                             u.name, u.delta_name, u.vt_name);
+        } else if u.vp_name.count > 0 {
+            print_to_builder(*inner_builder, "%1 = limit_jfet_vgs(%1 + %2, %3);\n",
+                             u.name, u.delta_name, u.vp_name);
+        } else {
+            // No known blowup to guard against -- plain Newton step.
+            print_to_builder(*inner_builder, "%1 = %1 + %2;\n", u.name, u.delta_name);
+        }
     }
     append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");
 
@@ -703,6 +784,7 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, lang: strin
 
 netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "") -> string {
     indent :: (in: string, prefix := "    ") -> string {
+        if in.count == 0  return in;
         ends_with_newline := in[in.count - 1] == #char "\n";
         out := String.replace(in, "\n", tprint("\n%", prefix));
         out = tprint("%1%2", prefix, out);
@@ -721,7 +803,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     }
 
     has_nonlinear := false;
-    for el : net.elements  if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .BJT { has_nonlinear = true; break; }
+    for el : net.elements  if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .BJT || el.type == .JFET { has_nonlinear = true; break; }
 
     outer_code: string;
     loop_code:  string;
@@ -806,6 +888,12 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     if has_nonlinear {
         append(*builder, generate_junction_limiter_helper(type_name, lang));
         append(*builder, "\n");
+        has_jfet_unknown := false;
+        for el : net.elements  if el.type == .JFET { has_jfet_unknown = true; break; }
+        if has_jfet_unknown {
+            append(*builder, generate_jfet_limiter_helper(type_name, lang));
+            append(*builder, "\n");
+        }
         append(*builder, generate_newton_constants(net.newton_tol_sq, net.newton_max_iter, type_name, lang));
     }
 

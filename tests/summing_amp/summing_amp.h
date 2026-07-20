@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version e70acf8.
+// Auto-generated with netlist_codegen version 7f8889c.
 // Command: netlist_codegen summing_amp.net summing_amp.h
 
 #pragma once

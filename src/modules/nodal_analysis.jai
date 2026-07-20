@@ -13,6 +13,7 @@ Element_Type :: enum {
     DIODE_PAIR;  // 2-terminal: [anode, cathode]. Antiparallel diode pair collapsed
                  // to one junction-voltage unknown via a closed-form sinh I-V law.
     BJT;         // 3-terminal: [collector, base, emitter]. Ebers-Moll I-V law.
+    JFET;        // 3-terminal: [drain, gate, source]. Square-law I-V law.
 }
 
 Combo_Op_Type :: enum {
@@ -39,7 +40,7 @@ RC_Internal :: struct {
     cap_expr: *Param_Expr;
 }
 
-// Model-parameter references for a nonlinear (DIODE / DIODE_PAIR / BJT)
+// Model-parameter references for a nonlinear (DIODE / DIODE_PAIR / BJT / JFET)
 // element. Each `*_name` names a Params struct field (parsed from a SPICE
 // `.model` card by netlist_codegen.jai), same as a RESISTOR's params.<name>.
 Nonlinear_Model :: struct {
@@ -47,6 +48,8 @@ Nonlinear_Model :: struct {
     vt_name:    string; // thermal voltage (already N/emission-coefficient-scaled), e.g. "D1_vt"
     betaf_name: string; // BJT only; empty string for DIODE / DIODE_PAIR
     betar_name: string; // BJT only; empty string for DIODE / DIODE_PAIR
+    vp_name:    string; // JFET only; pinch-off voltage
+    beta_name:  string; // JFET only; transconductance coefficient
 }
 
 Element :: struct {
@@ -391,7 +394,7 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
 
     // All 2-terminal elements beside op-amps, fixed voltage sources, and BJTs
     for el : elements {
-        if el.type == .AMP || el.type == .FIXED_VOLTAGE || el.type == .BJT  continue;
+        if el.type == .AMP || el.type == .FIXED_VOLTAGE || el.type == .BJT || el.type == .JFET  continue;
         if dc_mode {
             if el.type == .CAPACITOR || el.type == .RC_SERIES  continue; // open circuit at DC -- excluded entirely, not left as a free symbol
             assert(el.type != .INDUCTOR, "generate_kcl_equations(dc_mode=true): INDUCTOR DC handling (short circuit) is not implemented");
@@ -434,20 +437,33 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
     }
 
     for el : elements {
-        if el.type != .BJT  continue;
+        if el.type == .BJT {
+            collector_node := el.terminals[0];
+            base_node      := el.terminals[1];
+            emitter_node   := el.terminals[2];
 
-        collector_node := el.terminals[0];
-        base_node      := el.terminals[1];
-        emitter_node   := el.terminals[2];
+            ib_symbol := expr_symbol(tprint("iB%", el.name), *exprs);
+            ic_symbol := expr_symbol(tprint("iC%", el.name), *exprs);
+            ie_expr   := expr_add(ib_symbol, ic_symbol, *exprs); // iE = iB + iC
 
-        ib_symbol := expr_symbol(tprint("iB%", el.name), *exprs);
-        ic_symbol := expr_symbol(tprint("iC%", el.name), *exprs);
-        ie_expr   := expr_add(ib_symbol, ic_symbol, *exprs); // iE = iB + iC
+            for node, idx : eqn_nodes {
+                if node == collector_node equations[idx] = combine(equations[idx], ic_symbol, .SUB, *exprs);
+                if node == base_node      equations[idx] = combine(equations[idx], ib_symbol, .SUB, *exprs);
+                if node == emitter_node   equations[idx] = combine(equations[idx], ie_expr,   .ADD, *exprs);
+            }
+        } else if el.type == .JFET {
+            drain_node  := el.terminals[0];
+            gate_node   := el.terminals[1];
+            source_node := el.terminals[2];
 
-        for node, idx : eqn_nodes {
-            if node == collector_node equations[idx] = combine(equations[idx], ic_symbol, .SUB, *exprs);
-            if node == base_node      equations[idx] = combine(equations[idx], ib_symbol, .SUB, *exprs);
-            if node == emitter_node   equations[idx] = combine(equations[idx], ie_expr,   .ADD, *exprs);
+            // Square-law JFET: single branch current flows drain -> source;
+            // the gate draws no current in this model.
+            id_symbol := expr_symbol(tprint("i%", el.name), *exprs);
+
+            for node, idx : eqn_nodes {
+                if node == drain_node  equations[idx] = combine(equations[idx], id_symbol, .SUB, *exprs);
+                if node == source_node equations[idx] = combine(equations[idx], id_symbol, .ADD, *exprs);
+            }
         }
     }
 
@@ -635,6 +651,12 @@ generate_junction_voltage_expressions :: (elements: [] Element,
                 vbe := simplify(expr_sub(base_v, emitter_v,   exprs), exprs);
                 array_add(*junctions, .{ name = tprint("vBC%", el.name), expr_id = vbc });
                 array_add(*junctions, .{ name = tprint("vBE%", el.name), expr_id = vbe });
+
+            case .JFET;
+                gate_v   := lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs);
+                source_v := lookup_node_voltage(el.terminals[2], solve_vars, solutions, exprs);
+                vgs := simplify(expr_sub(gate_v, source_v, exprs), exprs);
+                array_add(*junctions, .{ name = tprint("vGS%", el.name), expr_id = vgs });
         }
     }
 
@@ -658,6 +680,9 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
         if el.type == .BJT {
             array_add(*names, tprint("iB%", el.name));
             array_add(*names, tprint("iC%", el.name));
+        }
+        if el.type == .JFET {
+            array_add(*names, tprint("i%", el.name));
         }
     }
     return names;

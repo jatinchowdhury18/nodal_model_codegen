@@ -29,8 +29,9 @@ String :: #import "String";
 // One Newton unknown belonging to a cluster (a device's junction voltage).
 Cluster_Unknown :: struct {
     name:          string; // e.g. "vBCQ1" -- also the State field name
-    vt_name:       string; // Params field for thermal voltage (used for codegen's vcrit)
+    vt_name:       string; // Params field for thermal voltage (used for codegen's vcrit); blank for JFET
     is_name:       string; // Params field for saturation current (also for vcrit)
+    vp_name:       string; // JFET only: Params field for pinch-off voltage (used for codegen's clamp)
     residual_name: string; // Gen_Var name holding this unknown's residual f_j
     delta_name:    string; // Gen_Var name holding this unknown's Newton delta
 }
@@ -104,11 +105,20 @@ bjt_iv_laws :: (vbc_name: string, vbe_name: string, model: Nonlinear_Model, expr
     return ib, ic;
 }
 
+// SPICE Level-1 JFET drain-current I-V law: iD = Beta*(vGS - Vp)^2.
+jfet_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, exprs: *[..] Expr) -> Expr_ID {
+    vgs  := expr_symbol(junction_voltage_name, exprs);
+    vp   := expr_symbol(model.vp_name, exprs);
+    beta := expr_symbol(model.beta_name, exprs);
+    diff := expr_sub(vgs, vp, exprs);
+    return expr_mul(beta, expr_mul(diff, diff, exprs), exprs);
+}
+
 // Branch-current symbol name(s) this device contributes as free symbols in
 // the linear KCL system (see nodal_analysis.generate_kcl_equations).
 branch_current_names :: (el: Element) -> [..] string {
     names: [..] string;
-    if el.type == .DIODE || el.type == .DIODE_PAIR  array_add(*names, tprint("i%", el.name));
+    if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .JFET  array_add(*names, tprint("i%", el.name));
     if el.type == .BJT {
         array_add(*names, tprint("iB%", el.name));
         array_add(*names, tprint("iC%", el.name));
@@ -155,6 +165,7 @@ Raw_Unknown :: struct {
     name:        string; // e.g. "vBCQ1"
     vt_name:     string;
     is_name:     string;
+    vp_name:     string; // JFET only
     linear_form: Expr_ID; // closed-form node-voltage-difference; still references raw branch-current symbols
     device_idx:  int;     // index into `devices`
 }
@@ -206,6 +217,17 @@ build_nonlinear_clusters :: (elements: [] Element,
                 array_add(*raw_unknowns, .{ name = tprint("vBE%", el.name), vt_name = el.nonlinear.vt_name,
                                              is_name = el.nonlinear.is_name,
                                              linear_form = vbe, device_idx = device_idx });
+
+            case .JFET;
+                device_idx := devices.count;
+                array_add(*devices, el);
+                gate_v   := copy_expr(lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs), exprs);
+                source_v := copy_expr(lookup_node_voltage(el.terminals[2], solve_vars, solutions, exprs), exprs);
+                vgs := simplify(expr_sub(gate_v, source_v, exprs), exprs);
+                // vt_name blank: no exponential to clamp here; vp_name feeds the pinch-off clamp instead.
+                array_add(*raw_unknowns, .{ name = tprint("vGS%", el.name), vt_name = "", is_name = "",
+                                             vp_name = el.nonlinear.vp_name,
+                                             linear_form = vgs, device_idx = device_idx });
         }
     }
 
@@ -279,6 +301,12 @@ build_nonlinear_clusters :: (elements: [] Element,
             array_add(*iv_law_names, tprint("iB%", d.name));
             array_add(*iv_law_ids,   ic);
             array_add(*iv_law_names, tprint("iC%", d.name));
+        } else if d.type == .JFET {
+            v_name := "";
+            for ru : raw_unknowns  if ru.device_idx == idx  v_name = ru.name;
+            iv := jfet_iv_law(v_name, d.nonlinear, exprs);
+            array_add(*iv_law_ids,   iv);
+            array_add(*iv_law_names, tprint("i%", d.name));
         }
     }
 
@@ -354,14 +382,15 @@ build_nonlinear_clusters :: (elements: [] Element,
             array_add(*gen_vars, Gen_Var.{ name = residual_name, expr_id = f_ids[j] });
             array_add(*gen_vars, Gen_Var.{ name = delta_name,    expr_id = delta_solutions[j] });
 
-            vt_name := ""; is_name := "";
+            vt_name := ""; is_name := ""; vp_name := "";
             for ru : raw_unknowns {
                 if ru.name != name  continue;
                 vt_name = ru.vt_name;
                 is_name = ru.is_name;
+                vp_name = ru.vp_name;
             }
             array_add(*cluster.unknowns, Cluster_Unknown.{
-                name = name, vt_name = vt_name, is_name = is_name,
+                name = name, vt_name = vt_name, is_name = is_name, vp_name = vp_name,
                 residual_name = residual_name, delta_name = delta_name });
         }
 

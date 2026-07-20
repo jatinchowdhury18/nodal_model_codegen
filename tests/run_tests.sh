@@ -28,3 +28,4 @@ test diode_clipper
 test common_emitter
 test pedal_tone
 test pedal_drive
+test common_drain
