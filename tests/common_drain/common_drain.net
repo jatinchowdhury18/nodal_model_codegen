@@ -23,7 +23,7 @@ RL vo 0 100k
 J1 vd vg vs 2N5485
 
 * 2N5485 model
-.model 2N5485 NJF(IDSS=2m VTO=-1)
+.model 2N5485 NJF(BETA=2m VTO=-1)
 
 Escale1 vi_scaled 0 value = {V(vi)*0.1} ; netlist_skip
 Escale2 vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip

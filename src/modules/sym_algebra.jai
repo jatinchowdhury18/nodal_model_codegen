@@ -1056,7 +1056,7 @@ print_expr :: (e: Expr_ID, exprs: [] Expr) -> string {
     expr_to_builder :: (builder: *String_Builder, e: Expr_ID, exprs: [] Expr) {
         if exprs[e].kind == {
             case .CONST;
-                print_to_builder(builder, "%", exprs[e].value);
+                print_to_builder(builder, "%.0", exprs[e].value);
 
             case .SYMBOL;
                 append(builder, exprs[e].name);

@@ -1,6 +1,8 @@
 // Newton-Raphson system construction for nonlinear elements (DIODE /
-// DIODE_PAIR / BJT), on top of the linear MNA core in nodal_analysis.jai /
-// sym_algebra.jai.
+// DIODE_PAIR / BJT / JFET), on top of the linear MNA core in
+// nodal_analysis.jai / sym_algebra.jai. Which unknowns/branch currents each
+// device type contributes is data (nonlinear_device_spec(), nodal_analysis.jai);
+// the actual I-V law per type is code (device_iv_law(), below).
 //
 // generate_kcl_equations() leaves nonlinear branch currents (i<name>,
 // iB<name>/iC<name>) as free symbols, so solve() gives closed-form node
@@ -28,12 +30,13 @@ String :: #import "String";
 
 // One Newton unknown belonging to a cluster (a device's junction voltage).
 Cluster_Unknown :: struct {
-    name:          string; // e.g. "vBCQ1" -- also the State field name
-    vt_name:       string; // Params field for thermal voltage (used for codegen's vcrit); blank for JFET
-    is_name:       string; // Params field for saturation current (also for vcrit)
-    vp_name:       string; // JFET only: Params field for pinch-off voltage (used for codegen's clamp)
-    residual_name: string; // Gen_Var name holding this unknown's residual f_j
-    delta_name:    string; // Gen_Var name holding this unknown's Newton delta
+    name:          string;       // e.g. "vBCQ1" -- also the State field name
+    limiter_kind:  Limiter_Kind;
+    vt_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for thermal voltage
+    is_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for saturation current
+    vp_name:       string;       // valid when limiter_kind == .JFET_PINCHOFF; Params field for pinch-off voltage
+    residual_name: string;       // Gen_Var name holding this unknown's residual f_j
+    delta_name:    string;       // Gen_Var name holding this unknown's Newton delta
 }
 
 // A group of nonlinear devices solved via one joint Newton-Raphson system.
@@ -114,15 +117,48 @@ jfet_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, exprs: *[
     return expr_mul(beta, expr_mul(diff, diff, exprs), exprs);
 }
 
+// One device current, in terms of its junction-voltage unknown(s): the
+// branch-current symbol `i<suffix><el.name>` (see Device_Kcl_Term) gets
+// substituted with `expr`.
+Device_Branch_Current :: struct {
+    suffix: string;
+    expr:   Expr_ID;
+}
+
+// Dispatches to the right I-V law function above for `el.type`. This is the
+// one place that needs a new case when adding a device type -- everything
+// else in this file is driven generically by nonlinear_device_spec().
+device_iv_law :: (el: Element, unknown_names: [] string, exprs: *[..] Expr) -> [] Device_Branch_Current {
+    result: [..] Device_Branch_Current;
+    if el.type == {
+        case .DIODE;
+            iv := diode_iv_law(unknown_names[0], el.nonlinear, exprs);
+            array_add(*result, .{ suffix = "", expr = iv });
+        case .DIODE_PAIR;
+            iv := diode_pair_iv_law(unknown_names[0], el.nonlinear, exprs);
+            array_add(*result, .{ suffix = "", expr = iv });
+        case .BJT;
+            vbc_name := ""; vbe_name := "";
+            for n : unknown_names {
+                if String.begins_with(n, "vBC")  vbc_name = n;
+                if String.begins_with(n, "vBE")  vbe_name = n;
+            }
+            ib, ic := bjt_iv_laws(vbc_name, vbe_name, el.nonlinear, exprs);
+            array_add(*result, .{ suffix = "B", expr = ib });
+            array_add(*result, .{ suffix = "C", expr = ic });
+        case .JFET;
+            iv := jfet_iv_law(unknown_names[0], el.nonlinear, exprs);
+            array_add(*result, .{ suffix = "", expr = iv });
+    }
+    return result;
+}
+
 // Branch-current symbol name(s) this device contributes as free symbols in
 // the linear KCL system (see nodal_analysis.generate_kcl_equations).
 branch_current_names :: (el: Element) -> [..] string {
     names: [..] string;
-    if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .JFET  array_add(*names, tprint("i%", el.name));
-    if el.type == .BJT {
-        array_add(*names, tprint("iB%", el.name));
-        array_add(*names, tprint("iC%", el.name));
-    }
+    spec := nonlinear_device_spec(el.type);
+    for term : spec.kcl_terms  array_add_if_unique(*names, tprint("i%1%2", term.branch_suffix, el.name));
     return names;
 }
 
@@ -162,12 +198,13 @@ uf_union :: (uf: *Union_Find, a: int, b: int) {
 // One nonlinear device plus its not-yet-substituted junction-voltage
 // unknown(s), before clustering/I-V substitution.
 Raw_Unknown :: struct {
-    name:        string; // e.g. "vBCQ1"
-    vt_name:     string;
-    is_name:     string;
-    vp_name:     string; // JFET only
-    linear_form: Expr_ID; // closed-form node-voltage-difference; still references raw branch-current symbols
-    device_idx:  int;     // index into `devices`
+    name:         string; // e.g. "vBCQ1"
+    limiter_kind: Limiter_Kind;
+    vt_name:      string;
+    is_name:      string;
+    vp_name:      string;
+    linear_form:  Expr_ID; // closed-form node-voltage-difference; still references raw branch-current symbols
+    device_idx:   int;     // index into `devices`
 }
 
 // -----------------------------------------------------------------------
@@ -190,44 +227,19 @@ build_nonlinear_clusters :: (elements: [] Element,
     raw_unknowns: [..] Raw_Unknown;
 
     for el : elements {
-        if el.type == {
-            case .DIODE; #through;
-            case .DIODE_PAIR;
-                device_idx := devices.count;
-                array_add(*devices, el);
-                anode_v   := copy_expr(lookup_node_voltage(el.terminals[0], solve_vars, solutions, exprs), exprs);
-                cathode_v := copy_expr(lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs), exprs);
-                v := simplify(expr_sub(anode_v, cathode_v, exprs), exprs);
-                array_add(*raw_unknowns, .{ name = tprint("v%", el.name), vt_name = el.nonlinear.vt_name,
-                                             is_name = el.nonlinear.is_name,
-                                             linear_form = v, device_idx = device_idx });
+        spec := nonlinear_device_spec(el.type);
+        if spec.unknowns.count == 0  continue;
 
-            case .BJT;
-                device_idx := devices.count;
-                array_add(*devices, el);
-                collector_v := copy_expr(lookup_node_voltage(el.terminals[0], solve_vars, solutions, exprs), exprs);
-                base_v_bc   := copy_expr(lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs), exprs);
-                base_v_be   := copy_expr(lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs), exprs);
-                emitter_v   := copy_expr(lookup_node_voltage(el.terminals[2], solve_vars, solutions, exprs), exprs);
-                vbc := simplify(expr_sub(base_v_bc, collector_v, exprs), exprs);
-                vbe := simplify(expr_sub(base_v_be, emitter_v,   exprs), exprs);
-                array_add(*raw_unknowns, .{ name = tprint("vBC%", el.name), vt_name = el.nonlinear.vt_name,
-                                             is_name = el.nonlinear.is_name,
-                                             linear_form = vbc, device_idx = device_idx });
-                array_add(*raw_unknowns, .{ name = tprint("vBE%", el.name), vt_name = el.nonlinear.vt_name,
-                                             is_name = el.nonlinear.is_name,
-                                             linear_form = vbe, device_idx = device_idx });
-
-            case .JFET;
-                device_idx := devices.count;
-                array_add(*devices, el);
-                gate_v   := copy_expr(lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs), exprs);
-                source_v := copy_expr(lookup_node_voltage(el.terminals[2], solve_vars, solutions, exprs), exprs);
-                vgs := simplify(expr_sub(gate_v, source_v, exprs), exprs);
-                // vt_name blank: no exponential to clamp here; vp_name feeds the pinch-off clamp instead.
-                array_add(*raw_unknowns, .{ name = tprint("vGS%", el.name), vt_name = "", is_name = "",
-                                             vp_name = el.nonlinear.vp_name,
-                                             linear_form = vgs, device_idx = device_idx });
+        device_idx := devices.count;
+        array_add(*devices, el);
+        for u : spec.unknowns {
+            pos_v := copy_expr(lookup_node_voltage(el.terminals[u.pos_terminal], solve_vars, solutions, exprs), exprs);
+            neg_v := copy_expr(lookup_node_voltage(el.terminals[u.neg_terminal], solve_vars, solutions, exprs), exprs);
+            v := simplify(expr_sub(pos_v, neg_v, exprs), exprs);
+            vt_name, is_name, vp_name := device_limiter_names(u.limiter, el.nonlinear);
+            array_add(*raw_unknowns, .{ name = tprint("%1%2", u.name_prefix, el.name), limiter_kind = u.limiter,
+                                         vt_name = vt_name, is_name = is_name, vp_name = vp_name,
+                                         linear_form = v, device_idx = device_idx });
         }
     }
 
@@ -277,36 +289,17 @@ build_nonlinear_clusters :: (elements: [] Element,
         array_add(*root_members[idx], d);
     }
 
-    // Build the I-V law for every device up front.
-    iv_law_ids:   [..] Expr_ID; // parallel to `devices`; for BJT this holds iC (iB handled separately below)
-    iv_law_names: [..] string;  // branch-current symbol name this iv_law_ids entry replaces
+    // Build the I-V law for every device up front, via device_iv_law()'s
+    // per-type dispatch.
+    iv_law_ids:   [..] Expr_ID; // parallel entries: branch current expr...
+    iv_law_names: [..] string;  // ...and the symbol name it replaces
     for d, idx : devices {
-        if d.type == .DIODE || d.type == .DIODE_PAIR {
-            // Find this device's (only) unknown name.
-            v_name := "";
-            for ru : raw_unknowns  if ru.device_idx == idx  v_name = ru.name;
-            iv := ifx d.type == .DIODE then diode_iv_law(v_name, d.nonlinear, exprs)
-                                       else diode_pair_iv_law(v_name, d.nonlinear, exprs);
-            array_add(*iv_law_ids,   iv);
-            array_add(*iv_law_names, tprint("i%", d.name));
-        } else if d.type == .BJT {
-            vbc_name := ""; vbe_name := "";
-            for ru : raw_unknowns {
-                if ru.device_idx != idx  continue;
-                if String.begins_with(ru.name, "vBC")  vbc_name = ru.name;
-                if String.begins_with(ru.name, "vBE")  vbe_name = ru.name;
-            }
-            ib, ic := bjt_iv_laws(vbc_name, vbe_name, d.nonlinear, exprs);
-            array_add(*iv_law_ids,   ib);
-            array_add(*iv_law_names, tprint("iB%", d.name));
-            array_add(*iv_law_ids,   ic);
-            array_add(*iv_law_names, tprint("iC%", d.name));
-        } else if d.type == .JFET {
-            v_name := "";
-            for ru : raw_unknowns  if ru.device_idx == idx  v_name = ru.name;
-            iv := jfet_iv_law(v_name, d.nonlinear, exprs);
-            array_add(*iv_law_ids,   iv);
-            array_add(*iv_law_names, tprint("i%", d.name));
+        unknown_names: [..] string;
+        for ru : raw_unknowns  if ru.device_idx == idx  array_add(*unknown_names, ru.name);
+
+        for bc : device_iv_law(d, unknown_names, exprs) {
+            array_add(*iv_law_ids,   bc.expr);
+            array_add(*iv_law_names, tprint("i%1%2", bc.suffix, d.name));
         }
     }
 
@@ -382,15 +375,16 @@ build_nonlinear_clusters :: (elements: [] Element,
             array_add(*gen_vars, Gen_Var.{ name = residual_name, expr_id = f_ids[j] });
             array_add(*gen_vars, Gen_Var.{ name = delta_name,    expr_id = delta_solutions[j] });
 
-            vt_name := ""; is_name := ""; vp_name := "";
+            limiter_kind: Limiter_Kind; vt_name := ""; is_name := ""; vp_name := "";
             for ru : raw_unknowns {
                 if ru.name != name  continue;
+                limiter_kind = ru.limiter_kind;
                 vt_name = ru.vt_name;
                 is_name = ru.is_name;
                 vp_name = ru.vp_name;
             }
             array_add(*cluster.unknowns, Cluster_Unknown.{
-                name = name, vt_name = vt_name, is_name = is_name, vp_name = vp_name,
+                name = name, limiter_kind = limiter_kind, vt_name = vt_name, is_name = is_name, vp_name = vp_name,
                 residual_name = residual_name, delta_name = delta_name });
         }
 

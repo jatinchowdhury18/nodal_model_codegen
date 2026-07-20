@@ -1,0 +1,62 @@
+* ProCo RAT Model (source: https://electrosmash.mas-effects.com/ElectroSmash%20-%20ProCo%20Rat%20Analysis.pdf)
+
+* Supply voltages
+Vpp vpp 0 DC 9
+Vp  vp  0 DC 4.5
+
+* Input voltage
+Vi  vi 0 SINE(0 1 60 0 0 0 10)
+
+* Input network
+R5 vi 0 1M
+C3 vi     v1 22n
+R4 vi     vp 1Meg
+R6 v1   vpos 1k
+C4 vpos    0 1n
+
+* Op-Amp [out, 0, pos, neg, gain] @TODO: replace with LM308 model
+Eamp v2 0 vpos vneg 1e6
+
+* Feedback network
+R7 vneg vn1 560
+R8 vneg vn2 47
+C6  vn1   0 4.7u
+C7  vn2   0 2.2u
+C5 vneg  v2 100p
+Rd vneg  v2 100k ; A100k pot
+
+* Diode Network
+R9  v2  v3 1k
+C9  v3 vdp 4.7u
+D1 vdp   0 D1N914
+D2   0 vdp D1N914
+
+* Filter
+Rf  vdp v4 100k ; A100k pot
+R10  v4 vf 1.6k
+C11  vf  0 3.3n
+
+* Output Amp
+C12 vf vg 22n
+R11 vg  0 1Meg
+R13 vs  0 10k
+C13 vs vo 10u
+RL  vo  0 100k
+J1 vpp vg vs 2N5485
+
+
+* 1N914 diode model
+.model D1N914 D (IS=2.52E-9 N=1.752)
+
+* 2N5485 model
+.model 2N5485 NJF(BETA=2m VTO=-1)
+
+* Newton-Raphson solver config
+* nr_solve(max_iter=20, tol=1.0e-6)
+
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end

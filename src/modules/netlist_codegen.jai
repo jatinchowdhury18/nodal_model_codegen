@@ -419,17 +419,10 @@ generate_params_struct :: (elements: [] Element,
             case .FIXED_VOLTAGE;
                 append(*builder, write_value(el.name));
             case .DIODE; #through;
-            case .DIODE_PAIR;
-                emit_nonlinear_param(el.nonlinear.is_name);
-                emit_nonlinear_param(el.nonlinear.vt_name);
-            case .BJT;
-                emit_nonlinear_param(el.nonlinear.is_name);
-                emit_nonlinear_param(el.nonlinear.vt_name);
-                emit_nonlinear_param(el.nonlinear.betaf_name);
-                emit_nonlinear_param(el.nonlinear.betar_name);
+            case .DIODE_PAIR; #through;
+            case .BJT; #through;
             case .JFET;
-                emit_nonlinear_param(el.nonlinear.beta_name);
-                emit_nonlinear_param(el.nonlinear.vp_name);
+                for pname : device_model_param_names(el.type, el.nonlinear)  emit_nonlinear_param(pname);
         }
     }
 
@@ -485,25 +478,18 @@ generate_impedance_defs :: (elements: [] Element, type_name: string = "float", l
     auto_or_type := ifx lang == "c" then type_name else "auto";
     suffix       := ifx type_name == "float" then "f" else ""; // only "float" gets literal f-suffixes; "double" etc. get bare literals
 
-    // DIODE/DIODE_PAIR/BJT I-V-law expressions (built in nonlinear_solve.jai)
-    // reference Is/vt/BetaF/BetaR as bare symbol names (e.g. "D1_Is").
+    // Nonlinear I-V-law expressions (built in nonlinear_solve.jai) reference
+    // their Params fields as bare symbol names (e.g. "D1_Is").
     emitted_nonlinear_aliases: [..] string;
     emit_nonlinear_alias :: (pname: string) #expand {
-        if pname.count == 0  return; // BJT-only fields left blank on DIODE/DIODE_PAIR elements
+        if pname.count == 0  return;
         if array_find(emitted_nonlinear_aliases, pname)  return;
         array_add(*emitted_nonlinear_aliases, pname);
         append(*builder, tprint("const %1 %2 = params.%2;\n", auto_or_type, pname));
     }
 
     for el : elements {
-        if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .BJT || el.type == .JFET {
-            emit_nonlinear_alias(el.nonlinear.is_name);
-            emit_nonlinear_alias(el.nonlinear.vt_name);
-            emit_nonlinear_alias(el.nonlinear.betaf_name);
-            emit_nonlinear_alias(el.nonlinear.betar_name);
-            emit_nonlinear_alias(el.nonlinear.vp_name);
-            emit_nonlinear_alias(el.nonlinear.beta_name);
-        }
+        for pname : device_model_param_names(el.type, el.nonlinear)  emit_nonlinear_alias(pname);
     }
     if emitted_nonlinear_aliases.count > 0  append(*builder, "\n");
 
@@ -607,7 +593,7 @@ static % limit_jfet_vgs(% v_new, % vp) {
     return v_new;
 }
 DONE
-        return tprint(template, type_name, type_name);
+        return tprint(template, type_name, type_name, type_name);
     }
 
     return #string DONE
@@ -630,7 +616,7 @@ generate_vcrit_defs :: (clusters: [] Nonlinear_Cluster, type_name: string, lang:
     emitted: [..] string;
     for c : clusters {
         for u : c.unknowns {
-            if u.vt_name.count == 0  continue; // no exponential blowup here (e.g. JFET)
+            if u.limiter_kind != .EXP_JUNCTION  continue;
             if array_find(emitted, u.vt_name)  continue;
             array_add(*emitted, u.vt_name);
             print_to_builder(*builder, "const %1 vcrit_%2 = %2 * %3(%2 / (%4(2.0) * %5));\n",
@@ -666,21 +652,21 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, opt
     emit_topological_order(cluster.iteration_items, exprs, *inner_builder, options);
 
     decl_type := ifx options.lang == "c" then options.type_name else "auto";
-    print_to_builder(*inner_builder, "\n%1 residual_norm_sq = 0;\n", decl_type);
+    print_to_builder(*inner_builder, "\n%1 residual_norm_sq = 0.0;\n", decl_type);
     for u : cluster.unknowns  print_to_builder(*inner_builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
-    print_to_builder(*inner_builder, "%1 step_norm_sq = 0;\n", decl_type);
+    print_to_builder(*inner_builder, "%1 step_norm_sq = 0.0;\n", decl_type);
     for u : cluster.unknowns  print_to_builder(*inner_builder, "step_norm_sq += %1 * %1;\n", u.delta_name);
     append(*inner_builder, "\n");
     for u : cluster.unknowns {
-        if u.vt_name.count > 0 {
-            print_to_builder(*inner_builder, "%1 = limit_junction_voltage(%1 + %2, %1, %3, vcrit_%3);\n",
-                             u.name, u.delta_name, u.vt_name);
-        } else if u.vp_name.count > 0 {
-            print_to_builder(*inner_builder, "%1 = limit_jfet_vgs(%1 + %2, %3);\n",
-                             u.name, u.delta_name, u.vp_name);
-        } else {
-            // No known blowup to guard against -- plain Newton step.
-            print_to_builder(*inner_builder, "%1 = %1 + %2;\n", u.name, u.delta_name);
+        if u.limiter_kind == {
+            case .EXP_JUNCTION;
+                print_to_builder(*inner_builder, "%1 = limit_junction_voltage(%1 + %2, %1, %3, vcrit_%3);\n",
+                                 u.name, u.delta_name, u.vt_name);
+            case .JFET_PINCHOFF;
+                print_to_builder(*inner_builder, "%1 = limit_jfet_vgs(%1 + %2, %3);\n",
+                                 u.name, u.delta_name, u.vp_name);
+            case .NONE;
+                print_to_builder(*inner_builder, "%1 = %1 + %2;\n", u.name, u.delta_name);
         }
     }
     append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");
@@ -698,13 +684,13 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, opt
 // Builds and solves the DC-equivalent circuit (see generate_kcl_equations
 // dc_mode), and derives the steady-state z-value for each reactive element.
 build_dc_operating_point :: (elements: [] Element, inputs: [] string) -> (clusters: [] Nonlinear_Cluster, exprs: [..] Expr, z_init_vars: [] Gen_Var) {
-    dc_solve_vars, dc_equations, dc_exprs := generate_kcl_equations(elements, inputs, true);
+    dc_solve_vars, dc_equations, dc_exprs, dc_elements := generate_kcl_equations(elements, inputs, true);
     dc_solutions := solve(dc_equations, dc_solve_vars, *dc_exprs);
 
     dc_clusters := build_nonlinear_clusters(elements, dc_solve_vars, dc_solutions, *dc_exprs);
 
     z_init_vars: [..] Gen_Var;
-    for el : elements {
+    for el : dc_elements {
         if el.type != .CAPACITOR && el.type != .RC_SERIES && el.type != .RC_PARALLEL  continue;
 
         // copy_expr: pos_v/neg_v can alias a solution node shared by another
@@ -803,7 +789,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     }
 
     has_nonlinear := false;
-    for el : net.elements  if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .BJT || el.type == .JFET { has_nonlinear = true; break; }
+    for el : net.elements  if nonlinear_device_spec(el.type).unknowns.count > 0 { has_nonlinear = true; break; }
 
     outer_code: string;
     loop_code:  string;
@@ -816,10 +802,10 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         // spliced in between solve() and generate_expressions() -- see
         // nonlinear_solve.jai for why the ordering matters.
         reduce_circuit(*net.elements, net.inputs, net.outputs);
-        solve_vars, equations, exprs := generate_kcl_equations(net.elements, net.inputs);
+        solve_vars, equations, exprs, kcl_elements := generate_kcl_equations(net.elements, net.inputs);
         solutions := solve(equations, solve_vars, *exprs);
 
-        clusters = build_nonlinear_clusters(net.elements, solve_vars, solutions, *exprs);
+        clusters = build_nonlinear_clusters(kcl_elements, solve_vars, solutions, *exprs);
 
         // Junction-voltage unknowns (vD1, vBCQ1, ...) only appear in the tree
         // *after* nonlinear_solve.jai substitutes them in for branch-current
@@ -827,7 +813,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         cluster_variant_names: [..] string;
         for c : clusters  for u : c.unknowns  array_add(*cluster_variant_names, u.name);
 
-        gen_vars := generate_expressions(net.elements, net.outputs, solve_vars, solutions, *exprs);
+        gen_vars := generate_expressions(kcl_elements, net.outputs, solve_vars, solutions, *exprs);
 
         gen_var_ids: [..] Expr_ID;
         for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
@@ -835,14 +821,14 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         cse_vars := cse(gen_var_ids, *exprs);
         sort_cse_topological(*cse_vars, exprs);
 
-        licm_variant_base := build_variant_base(net.elements, net.inputs);
+        licm_variant_base := build_variant_base(kcl_elements, net.inputs);
         for gv : gen_vars  array_add(*licm_variant_base, gv.name);
         for n : cluster_variant_names  array_add(*licm_variant_base, n);
         licm(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
         recip_hoist(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
 
         outer_code, loop_code, outer_flops, inner_flops =
-            codegen(net.elements, net.inputs, gen_vars, cse_vars, exprs, .{ lang = lang, type_name = type_name }, cluster_variant_names);
+            codegen(kcl_elements, net.inputs, gen_vars, cse_vars, exprs, .{ lang = lang, type_name = type_name }, cluster_variant_names);
         cluster_exprs = exprs;
     } else {
         outer_code, loop_code, outer_flops, inner_flops =
@@ -886,11 +872,11 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     append(*builder, "\n");
 
     if has_nonlinear {
-        append(*builder, generate_junction_limiter_helper(type_name, lang));
-        append(*builder, "\n");
-        has_jfet_unknown := false;
-        for el : net.elements  if el.type == .JFET { has_jfet_unknown = true; break; }
-        if has_jfet_unknown {
+        if circuit_uses_limiter_kind(net.elements, .EXP_JUNCTION) {
+            append(*builder, generate_junction_limiter_helper(type_name, lang));
+            append(*builder, "\n");
+        }
+        if circuit_uses_limiter_kind(net.elements, .JFET_PINCHOFF) {
             append(*builder, generate_jfet_limiter_helper(type_name, lang));
             append(*builder, "\n");
         }

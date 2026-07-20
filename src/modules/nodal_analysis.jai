@@ -52,6 +52,126 @@ Nonlinear_Model :: struct {
     beta_name:  string; // JFET only; transconductance coefficient
 }
 
+// -----------------------------------------------------------------------
+// Nonlinear device registry -- adding a new nonlinear element type means
+// filling out one case in nonlinear_device_spec() (below), device_iv_law()
+// (nonlinear_solve.jai) and device_model_param_names() (below), plus the
+// SPICE line parsing in netlist_codegen.jai (not generalized here -- that
+// part is inherently SPICE-grammar-specific, not device-physics-specific).
+// -----------------------------------------------------------------------
+
+// Per-iteration Newton-step limiter for one unknown -- caps a bad step
+// before it wanders into a region the I-V law approximates badly.
+Limiter_Kind :: enum {
+    NONE;           // plain Newton step
+    EXP_JUNCTION;   // diode/BJT-style: clamp near vcrit = vt*log(vt/(sqrt(2)*Is))
+    JFET_PINCHOFF;  // JFET-style: clamp at Vp (see generate_jfet_limiter_helper)
+}
+
+// One Newton unknown (junction voltage) a device contributes: named
+// `name_prefix + el.name`, valued terminals[pos_terminal] - terminals[neg_terminal].
+Device_Unknown :: struct {
+    name_prefix:  string;
+    pos_terminal: int;
+    neg_terminal: int;
+    limiter:      Limiter_Kind;
+}
+
+// One term in a device's KCL contribution: the branch current named
+// `i<branch_suffix><el.name>` (suffix "" for a single-branch device) either
+// enters or leaves terminals[terminal_idx]. Terms sharing a terminal
+// accumulate -- e.g. BJT's iE = iB + iC is two ADD terms on the emitter,
+// not a pre-summed expression.
+Device_Kcl_Term :: struct {
+    terminal_idx:  int;
+    branch_suffix: string;
+    entering:      bool; // true: current enters this terminal (KCL .ADD); false: leaves (.SUB)
+}
+
+// Everything generic nonlinear-device code needs about one Element_Type.
+// The actual I-V law stays a named function in nonlinear_solve.jai (that's
+// real physics, not something worth generalizing away) -- see device_iv_law().
+Nonlinear_Device_Spec :: struct {
+    unknowns:  [] Device_Unknown;
+    kcl_terms: [] Device_Kcl_Term;
+}
+
+// Empty for any non-nonlinear (or unhandled) type -- every generic pass
+// below treats an empty spec as "this element contributes nothing."
+nonlinear_device_spec :: (type: Element_Type) -> Nonlinear_Device_Spec {
+    if type == {
+        case .DIODE; #through;
+        case .DIODE_PAIR;
+            return .{
+                unknowns  = Device_Unknown.[ .{ name_prefix = "v", pos_terminal = 0, neg_terminal = 1, limiter = .EXP_JUNCTION } ],
+                kcl_terms = Device_Kcl_Term.[
+                    .{ terminal_idx = 0, branch_suffix = "", entering = false }, // anode -= i
+                    .{ terminal_idx = 1, branch_suffix = "", entering = true },  // cathode += i
+                ],
+            };
+        case .BJT;
+            return .{
+                unknowns  = Device_Unknown.[
+                    .{ name_prefix = "vBC", pos_terminal = 1, neg_terminal = 0, limiter = .EXP_JUNCTION },
+                    .{ name_prefix = "vBE", pos_terminal = 1, neg_terminal = 2, limiter = .EXP_JUNCTION },
+                ],
+                kcl_terms = Device_Kcl_Term.[
+                    .{ terminal_idx = 0, branch_suffix = "C", entering = false }, // collector -= iC
+                    .{ terminal_idx = 1, branch_suffix = "B", entering = false }, // base -= iB
+                    .{ terminal_idx = 2, branch_suffix = "B", entering = true },  // emitter += iB
+                    .{ terminal_idx = 2, branch_suffix = "C", entering = true },  // emitter += iC
+                ],
+            };
+        case .JFET;
+            return .{
+                unknowns  = Device_Unknown.[ .{ name_prefix = "vGS", pos_terminal = 1, neg_terminal = 2, limiter = .JFET_PINCHOFF } ],
+                kcl_terms = Device_Kcl_Term.[
+                    .{ terminal_idx = 0, branch_suffix = "", entering = false }, // drain -= iD
+                    .{ terminal_idx = 2, branch_suffix = "", entering = true },  // source += iD
+                ],
+            };
+    }
+    empty: Nonlinear_Device_Spec;
+    return empty;
+}
+
+// Given a limiter kind and a device's Nonlinear_Model, pick out the Params
+// field names its Newton-step limiter needs (see generate_cluster_newton_code
+// / generate_vcrit_defs in netlist_codegen.jai).
+device_limiter_names :: (kind: Limiter_Kind, m: Nonlinear_Model) -> (vt_name: string, is_name: string, vp_name: string) {
+    if kind == {
+        case .EXP_JUNCTION;  return m.vt_name, m.is_name, "";
+        case .JFET_PINCHOFF; return "", "", m.vp_name;
+    }
+    return "", "", "";
+}
+
+// Params struct field names a device's .model card populates -- used for
+// both Params-struct emission and impedance-alias emission.
+device_model_param_names :: (type: Element_Type, m: Nonlinear_Model) -> [..] string {
+    names: [..] string;
+    if type == {
+        case .DIODE; #through;
+        case .DIODE_PAIR;
+            array_add(*names, m.is_name, m.vt_name);
+        case .BJT;
+            array_add(*names, m.is_name, m.vt_name, m.betaf_name, m.betar_name);
+        case .JFET;
+            array_add(*names, m.beta_name, m.vp_name);
+    }
+    return names;
+}
+
+// True if any element in `elements` has an unknown using this limiter kind
+// -- used to decide which limiter helper functions to emit.
+circuit_uses_limiter_kind :: (elements: [] Element, kind: Limiter_Kind) -> bool {
+    for el : elements {
+        spec := nonlinear_device_spec(el.type);
+        for u : spec.unknowns  if u.limiter == kind  return true;
+    }
+    return false;
+}
+
 Element :: struct {
     name: string;
 
@@ -66,7 +186,7 @@ Element :: struct {
     // For RC_SERIES / RC_PARALLEL combined elements.
     rc_internal: RC_Internal;
 
-    // For DIODE / DIODE_PAIR / BJT elements.
+    // For DIODE / DIODE_PAIR / BJT / JFET elements.
     nonlinear: Nonlinear_Model;
 
     // Set from a "; no_combine" inline netlist comment (R/C/D only) -- opts
@@ -366,7 +486,20 @@ Gen_Var :: struct {
 // circuits at DC, so CAPACITOR/RC_SERIES are dropped entirely; RC_PARALLEL
 // still conducts through its resistor half. INDUCTOR DC (short circuit)
 // isn't implemented yet. (@TODO)
-generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, [..]Expr {
+generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, [..]Expr, []Element {
+    // Op-amp handling below (substitute_node) mutates terminals in place.
+    // Callers reuse the same Element array across an AC-mode call and a
+    // separate DC-mode call (build_dc_operating_point) -- work on a local
+    // copy so one call's substitutions can't corrupt the other's terminals.
+    elements: [..] Element;
+    for el : elements_in {
+        el_copy := el;
+        fresh_terminals: [..] string;
+        for t : el.terminals  array_add(*fresh_terminals, t);
+        el_copy.terminals = fresh_terminals;
+        array_add(*elements, el_copy);
+    }
+
     eqn_nodes: [..] string;
 
     for el : elements {
@@ -392,9 +525,12 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
     solve_vars: [..]Expr_ID;
     for node : eqn_nodes array_add(*solve_vars, expr_symbol(node, *exprs));
 
-    // All 2-terminal elements beside op-amps, fixed voltage sources, and BJTs
+    // All 2-terminal elements beside op-amps, fixed voltage sources, and
+    // nonlinear devices (those get their branch currents wired up below,
+    // generically, via nonlinear_device_spec()).
     for el : elements {
-        if el.type == .AMP || el.type == .FIXED_VOLTAGE || el.type == .BJT || el.type == .JFET  continue;
+        if el.type == .AMP || el.type == .FIXED_VOLTAGE  continue;
+        if nonlinear_device_spec(el.type).kcl_terms.count > 0  continue;
         if dc_mode {
             if el.type == .CAPACITOR || el.type == .RC_SERIES  continue; // open circuit at DC -- excluded entirely, not left as a free symbol
             assert(el.type != .INDUCTOR, "generate_kcl_equations(dc_mode=true): INDUCTOR DC handling (short circuit) is not implemented");
@@ -436,33 +572,19 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
     }
 
+    // Nonlinear devices: branch currents stay free symbols here (no
+    // current_expr substitution, unlike the linear pass above), so solve()
+    // gives a closed-form node voltage parametrized by them. Terms sharing a
+    // terminal accumulate -- see Device_Kcl_Term's comment (nonlinear_solve.jai
+    // picks these symbols back up when building each device's I-V law).
     for el : elements {
-        if el.type == .BJT {
-            collector_node := el.terminals[0];
-            base_node      := el.terminals[1];
-            emitter_node   := el.terminals[2];
-
-            ib_symbol := expr_symbol(tprint("iB%", el.name), *exprs);
-            ic_symbol := expr_symbol(tprint("iC%", el.name), *exprs);
-            ie_expr   := expr_add(ib_symbol, ic_symbol, *exprs); // iE = iB + iC
-
-            for node, idx : eqn_nodes {
-                if node == collector_node equations[idx] = combine(equations[idx], ic_symbol, .SUB, *exprs);
-                if node == base_node      equations[idx] = combine(equations[idx], ib_symbol, .SUB, *exprs);
-                if node == emitter_node   equations[idx] = combine(equations[idx], ie_expr,   .ADD, *exprs);
-            }
-        } else if el.type == .JFET {
-            drain_node  := el.terminals[0];
-            gate_node   := el.terminals[1];
-            source_node := el.terminals[2];
-
-            // Square-law JFET: single branch current flows drain -> source;
-            // the gate draws no current in this model.
-            id_symbol := expr_symbol(tprint("i%", el.name), *exprs);
-
-            for node, idx : eqn_nodes {
-                if node == drain_node  equations[idx] = combine(equations[idx], id_symbol, .SUB, *exprs);
-                if node == source_node equations[idx] = combine(equations[idx], id_symbol, .ADD, *exprs);
+        spec := nonlinear_device_spec(el.type);
+        for term : spec.kcl_terms {
+            symbol := expr_symbol(tprint("i%1%2", term.branch_suffix, el.name), *exprs);
+            node   := el.terminals[term.terminal_idx];
+            op     := ifx term.entering then Expr_Kind.ADD else Expr_Kind.SUB;
+            for n, idx : eqn_nodes {
+                if n == node  equations[idx] = combine(equations[idx], symbol, op, *exprs);
             }
         }
     }
@@ -478,6 +600,12 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
         }
     }
 
+    // Tracks which rows already hold an exact constraint (fixed voltage, an
+    // op-amp virtual-short pin, or the diode-partner DC fallback below) --
+    // the DC gmin pass further down must not perturb those with leakage.
+    pinned: [..] bool;
+    for _ : eqn_nodes  array_add(*pinned, false);
+
     // Constraint equations for fixed voltage sources
     for el : elements {
         if el.type != .FIXED_VOLTAGE  continue;
@@ -487,6 +615,30 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
         for node, idx : eqn_nodes {
             if node == fixed_node {
                 equations[idx] = expr_sub(node_symbol, param_symbol, *exprs);
+                pinned[idx] = true;
+                break;
+            }
+        }
+    }
+
+    // Fill the KCL row for `node` with a direct constraint node = value, but
+    // only if that row is still empty. Eliminating a node from solve_vars (below)
+    // doesn't remove its now-meaningless KCL row. At DC, a node whose only
+    // neighbors are dropped capacitors/RC_SERIES elements is left with an empty
+    // NO_EXPR row, which under-constrains the system.
+    pin_node_equation :: (node: string, value: Expr_ID) #expand {
+        for n, idx : eqn_nodes {
+            if n == node {
+                if equations[idx] == NO_EXPR {
+                    // At DC, a node with no real content of its own can have
+                    // undefined `value` undefined, which leaves the pair jointly
+                    // floating instead of fixed. Ground it instead, mirroring
+                    // the gmin-to-ground regularization a real SPICE solver
+                    // uses to converge otherwise-floating nodes at DC.
+                    pin_value := ifx dc_mode then expr_const(0, *exprs) else value;
+                    equations[idx] = expr_sub(expr_symbol(node, *exprs), pin_value, *exprs);
+                    pinned[idx] = true;
+                }
                 break;
             }
         }
@@ -509,16 +661,19 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
             print("Setting % → 0\n", neg_node);
             array_add(*voltages, .{ expr_symbol(neg_node, *exprs), expr_const(0, *exprs) });
             array_unordered_remove_by_value(*solve_vars, expr_symbol(neg_node, *exprs));
+            pin_node_equation(neg_node, expr_const(0, *exprs));
             substitute_node(neg_node, "0");
         } else if neg_node == "0" {
             print("Setting % → 0\n", pos_node);
             array_add(*voltages, .{ expr_symbol(pos_node, *exprs), expr_const(0, *exprs) });
             array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
+            pin_node_equation(pos_node, expr_const(0, *exprs));
             substitute_node(pos_node, "0");
         } else {
             print("Setting % → %\n", pos_node, neg_node);
             array_add(*voltages, .{ expr_symbol(pos_node, *exprs), expr_symbol(neg_node, *exprs) });
             array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
+            pin_node_equation(pos_node, expr_symbol(neg_node, *exprs));
             substitute_node(pos_node, neg_node);
         }
     }
@@ -545,12 +700,32 @@ generate_kcl_equations :: (elements: [] Element, inputs: [] string, dc_mode := f
 
                 other_symbol := ifx other == "0" then expr_const(0, *exprs) else expr_symbol(other, *exprs);
                 equations[idx] = expr_sub(expr_symbol(node, *exprs), other_symbol, *exprs);
+                pinned[idx] = true;
                 break;
             }
         }
     }
 
-    return solve_vars, equations, exprs;
+    // gmin: a real DC path can still leave a *group* of nodes jointly
+    // floating even though none of them is individually empty -- e.g. a
+    // resistor chain hanging off a diode-pinned node, where every row in the
+    // group is real but the group's coefficient submatrix is rank-deficient
+    // (each node only relates to its neighbor, nothing anchors the group to
+    // ground). A tiny leakage conductance to ground on every non-pinned node
+    // breaks that degeneracy without visibly perturbing the DC solution --
+    // the same gmin-to-ground regularization every SPICE solver relies on.
+    if dc_mode {
+        // expr_const only takes integer literals -- build 1e-9 as 1/1e9 instead.
+        gmin := expr_div(expr_const(1, *exprs), expr_const(1_000_000_000, *exprs), *exprs);
+        for node, idx : eqn_nodes {
+            if equations[idx] == NO_EXPR continue;
+            if pinned[idx] continue;
+            leak := expr_mul(gmin, expr_symbol(node, *exprs), *exprs);
+            equations[idx] = expr_sub(equations[idx], leak, *exprs);
+        }
+    }
+
+    return solve_vars, equations, exprs, elements;
 }
 
 generate_expressions :: (elements: [] Element,
@@ -626,8 +801,8 @@ Junction_Voltage :: struct {
     expr_id: Expr_ID;
 }
 
-// For each nonlinear (DIODE / DIODE_PAIR / BJT) element, build the closed-form
-// expression for its own junction voltage(s).
+// For each nonlinear element, build the closed-form expression for its own
+// junction voltage(s), driven by nonlinear_device_spec().
 generate_junction_voltage_expressions :: (elements: [] Element,
                                           solve_vars: [] Expr_ID,
                                           solutions: [] Expr_ID,
@@ -635,28 +810,12 @@ generate_junction_voltage_expressions :: (elements: [] Element,
     junctions: [..] Junction_Voltage;
 
     for el : elements {
-        if el.type == {
-            case .DIODE; #through;
-            case .DIODE_PAIR;
-                anode_v   := lookup_node_voltage(el.terminals[0], solve_vars, solutions, exprs);
-                cathode_v := lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs);
-                v := simplify(expr_sub(anode_v, cathode_v, exprs), exprs);
-                array_add(*junctions, .{ name = tprint("v%", el.name), expr_id = v });
-
-            case .BJT;
-                collector_v := lookup_node_voltage(el.terminals[0], solve_vars, solutions, exprs);
-                base_v      := lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs);
-                emitter_v   := lookup_node_voltage(el.terminals[2], solve_vars, solutions, exprs);
-                vbc := simplify(expr_sub(base_v, collector_v, exprs), exprs);
-                vbe := simplify(expr_sub(base_v, emitter_v,   exprs), exprs);
-                array_add(*junctions, .{ name = tprint("vBC%", el.name), expr_id = vbc });
-                array_add(*junctions, .{ name = tprint("vBE%", el.name), expr_id = vbe });
-
-            case .JFET;
-                gate_v   := lookup_node_voltage(el.terminals[1], solve_vars, solutions, exprs);
-                source_v := lookup_node_voltage(el.terminals[2], solve_vars, solutions, exprs);
-                vgs := simplify(expr_sub(gate_v, source_v, exprs), exprs);
-                array_add(*junctions, .{ name = tprint("vGS%", el.name), expr_id = vgs });
+        spec := nonlinear_device_spec(el.type);
+        for u : spec.unknowns {
+            pos_v := lookup_node_voltage(el.terminals[u.pos_terminal], solve_vars, solutions, exprs);
+            neg_v := lookup_node_voltage(el.terminals[u.neg_terminal], solve_vars, solutions, exprs);
+            v := simplify(expr_sub(pos_v, neg_v, exprs), exprs);
+            array_add(*junctions, .{ name = tprint("%1%2", u.name_prefix, el.name), expr_id = v });
         }
     }
 
@@ -674,15 +833,9 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
            || el.type == .RC_SERIES || el.type == .RC_PARALLEL {
             array_add(*names, tprint("z%", el.name));
         }
-        if el.type == .DIODE || el.type == .DIODE_PAIR {
-            array_add(*names, tprint("i%", el.name));
-        }
-        if el.type == .BJT {
-            array_add(*names, tprint("iB%", el.name));
-            array_add(*names, tprint("iC%", el.name));
-        }
-        if el.type == .JFET {
-            array_add(*names, tprint("i%", el.name));
+        spec := nonlinear_device_spec(el.type);
+        for term : spec.kcl_terms {
+            array_add_if_unique(*names, tprint("i%1%2", term.branch_suffix, el.name));
         }
     }
     return names;
@@ -803,11 +956,14 @@ codegen :: (elements: [] Element, inputs: [] string,
 solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
     reduce_circuit(elements, inputs, outputs);
 
-    solve_vars, equations, exprs := generate_kcl_equations(elements.*, inputs);
+    solve_vars, equations, exprs, kcl_elements := generate_kcl_equations(elements.*, inputs);
 
     solutions := solve(equations, solve_vars, *exprs);
 
-    gen_vars := generate_expressions(elements.*, outputs, solve_vars, solutions, *exprs);
+    // kcl_elements (not elements.*) below: an op-amp input node eliminated by
+    // the ideal-op-amp virtual-short (e.g. vpos -> vneg) only has its aliased
+    // terminal in kcl_elements.
+    gen_vars := generate_expressions(kcl_elements, outputs, solve_vars, solutions, *exprs);
 
     // Collect gen_var expression IDs for CSE.
     gen_var_ids: [..] Expr_ID;
@@ -817,11 +973,11 @@ solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] st
     sort_cse_topological(*cse_vars, exprs);  // ensure deps appear before dependents
 
     // Build the variant base for LICM (inputs + state vars + gen_var names).
-    licm_variant_base := build_variant_base(elements.*, inputs);
+    licm_variant_base := build_variant_base(kcl_elements, inputs);
     for gv : gen_vars  array_add(*licm_variant_base, gv.name);
     licm(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
     recip_hoist(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
 
-    outer_code, inner_code, outer_flops, inner_flops := codegen(elements.*, inputs, gen_vars, cse_vars, exprs, options);
+    outer_code, inner_code, outer_flops, inner_flops := codegen(kcl_elements, inputs, gen_vars, cse_vars, exprs, options);
     return outer_code, inner_code, outer_flops, inner_flops;
 }

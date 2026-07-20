@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 8313881.
+// Auto-generated with netlist_codegen version 516e92e.
 // Command: netlist_codegen common_drain.net common_drain.h -type_name double
 
 #pragma once
@@ -12,7 +12,7 @@ struct Params {
     double R13 = 1.0e+04;
     double C13 = 1.0e-05;
     double RL = 1.0e+05;
-    double _2N5485_Beta = 1.0e-04;
+    double _2N5485_Beta = 2.0e-03;
     double _2N5485_vp = -1.0e+00;
 };
 
@@ -20,23 +20,6 @@ struct State {
     double zC12 {};
     double zC13 {};
     double vGSJ1 {};
-};
-
-[[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
-{
-    if (v_new > vcrit && std::abs(v_new - v_old) > 2 * vt)
-    {
-        if (v_old > 0)
-        {
-            const auto arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
-        }
-        else
-        {
-            v_new = vt * std::log(v_new / vt);
-        }
-    }
-    return v_new;
 };
 
 [[maybe_unused]] static auto limit_jfet_vgs = [](auto v_new, auto vp)
@@ -53,8 +36,8 @@ static void compute (const float* const* input, float** output, int num_channels
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
     
-    const auto _2N5485_vp = params._2N5485_vp;
     const auto _2N5485_Beta = params._2N5485_Beta;
+    const auto _2N5485_vp = params._2N5485_vp;
     
     const auto VCC = params.VCC;
     
@@ -72,8 +55,8 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto _t2 = (gR13 + gC13);
     const auto _t4 = (gC13 + gRL);
-    const auto _t3 = (1 / ((_t2 * _t4) - (gC13 * gC13)));
-    const auto _t5 = (1 / (gC12 + gR11));
+    const auto _t3 = (1.0 / ((_t2 * _t4) - (gC13 * gC13)));
+    const auto _t5 = (1.0 / (gC12 + gR11));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC12 = state[ch].zC12;
@@ -85,7 +68,7 @@ static void compute (const float* const* input, float** output, int num_channels
 
             // --- Newton-Raphson solve: J1
             const auto _J1_t3 = (gC13 + gRL);
-            const auto _J1_t4 = (1 / (((gR13 + gC13) * _J1_t3) - (gC13 * gC13)));
+            const auto _J1_t4 = (1.0 / (((gR13 + gC13) * _J1_t3) - (gC13 * gC13)));
             const auto _J1_t5 = ((zC12 - (gC12 * vi)) / (gC12 + gR11));
             const auto _J1_t6 = (gC13 * zC13);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
@@ -94,11 +77,11 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _J1_t1 = (_J1_t5 + (((((_2N5485_Beta * (_J1_t2 * _J1_t2)) + zC13) * _J1_t3) - _J1_t6) * _J1_t4));
                 const auto _J1_t0 = (_J1_t1 + vGSJ1);
                 const auto res_vGSJ1 = (-_J1_t0);
-                const auto delta_vGSJ1 = (-(_J1_t0 / ((((_2N5485_Beta * (_J1_t2 + _J1_t2)) * _J1_t3) * _J1_t4) + 1)));
+                const auto delta_vGSJ1 = (-(_J1_t0 / ((((_2N5485_Beta * (_J1_t2 + _J1_t2)) * _J1_t3) * _J1_t4) + 1.0)));
             
-                auto residual_norm_sq = 0;
+                auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vGSJ1 * res_vGSJ1;
-                auto step_norm_sq = 0;
+                auto step_norm_sq = 0.0;
                 step_norm_sq += delta_vGSJ1 * delta_vGSJ1;
             
                 vGSJ1 = limit_jfet_vgs(vGSJ1 + delta_vGSJ1, _2N5485_vp);
@@ -132,8 +115,8 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
     
-    const auto _2N5485_vp = params._2N5485_vp;
     const auto _2N5485_Beta = params._2N5485_Beta;
+    const auto _2N5485_vp = params._2N5485_vp;
     
     const auto VCC = params.VCC;
     
@@ -154,17 +137,18 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     double vGSJ1 = 0;
 
     // --- Newton-Raphson solve: J1
+    const auto _J1_t3 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
     for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
     {
         const auto _J1_t2 = (vGSJ1 - _2N5485_vp);
-        const auto _J1_t1 = ((_2N5485_Beta * (_J1_t2 * _J1_t2)) / gR13);
+        const auto _J1_t1 = ((_2N5485_Beta * (_J1_t2 * _J1_t2)) * _J1_t3);
         const auto _J1_t0 = (_J1_t1 + vGSJ1);
         const auto res_vGSJ1 = (-_J1_t0);
-        const auto delta_vGSJ1 = (-(_J1_t0 / (((_2N5485_Beta * (_J1_t2 + _J1_t2)) / gR13) + 1)));
+        const auto delta_vGSJ1 = (-(_J1_t0 / (((_2N5485_Beta * (_J1_t2 + _J1_t2)) * _J1_t3) + 1.0)));
     
-        auto residual_norm_sq = 0;
+        auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vGSJ1 * res_vGSJ1;
-        auto step_norm_sq = 0;
+        auto step_norm_sq = 0.0;
         step_norm_sq += delta_vGSJ1 * delta_vGSJ1;
     
         vGSJ1 = limit_jfet_vgs(vGSJ1 + delta_vGSJ1, _2N5485_vp);
@@ -174,7 +158,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         
     }
     const auto zC12 = (gC12 * vi);
-    const auto zC13 = ((gC13 * ((_2N5485_Beta * (vGSJ1 - _2N5485_vp)) * (vGSJ1 - _2N5485_vp))) / gR13);
+    const auto zC13 = ((gC13 * ((_2N5485_Beta * (vGSJ1 - _2N5485_vp)) * (vGSJ1 - _2N5485_vp))) / (gR13 + (1.0 / 1000000000.0)));
 
     for (int ch = 0; ch < num_channels; ++ch)
     {
