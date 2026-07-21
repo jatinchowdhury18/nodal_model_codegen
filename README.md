@@ -112,7 +112,26 @@ meaningfully reduce the number of arithmetic operations in the generated code.
 
 ### Nonlinear Circuit Elements
 
-@TODO...
+Nonlinear elements are solved with Newton-Raphson iteration, layered on top of
+the same symbolic MNA core used for the linear elements: `netlist_codegen`
+leaves each device's branch current as a free symbol, so the linear solve
+still gives closed-form node voltages parametrized by those currents. From
+there, the device's real I-V law is substituted in as an expression, and the
+Jacobian is derived automatically via symbolic differentiation. The following
+device types are currently supported:
+
+- **Diode / antiparallel diode pair** — Shockley exponential I-V law
+- **BJT** — Ebers-Moll, with independent base-collector/base-emitter unknowns
+- **JFET** — square-law I-V, clamped at pinch-off
+- **Non-ideal op-amp output stage** — Vsat clipping and slew-rate limiting,
+  as a hard clamp on the same free-symbol unknown used for the linear VCVS
+
+Devices whose branch currents depend on each other's junction voltages (e.g.
+a BJT's vBC/vBE, or two diodes sharing a node) are grouped into "clusters"
+and solved jointly, one Newton loop per cluster. Each unknown also gets a
+per-iteration step limiter, so a bad step doesn't wander into a region the I-V
+law approximates badly. Solver tolerance and iteration count are tunable per
+netlist via a `nr_solve(max_iter=.. tol=..)` comment directive.
 
 ### Code-generation optimizations
 
