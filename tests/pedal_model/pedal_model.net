@@ -14,8 +14,18 @@ R4 vi     vp 1Meg
 R6 v1   vpos 1k
 C4 vpos    0 1n
 
-* Op-Amp [out, 0, pos, neg, gain] @TODO: replace with LM308 model
-Eamp v2 0 vpos vneg 1e6
+* Op-Amp: LM308 non-ideal model. The literal gain=1e6 VCVS below is what
+* LTspice actually simulates (kept as plain valid SPICE); the trailing
+* comment redirects our own tool to the full non-ideal model instead.
+* Vsat+/Vsat-/slew are left out for now -- enabling them here (Vsat+=9
+* Vsat-=0 slew=300k) makes the generated model diverge, because this is
+* the first circuit where the op-amp's AMP_CLIP Newton unknown ends up in
+* the same cluster as other nonlinear devices (D1/D2 diode pair, J1 JFET);
+* that combination has a real bug (not a convergence/iteration-count issue
+* -- max_iter=500 gives byte-identical output to max_iter=20). Flagged as
+* a known issue, not fixed here.
+* nodal_model: LM308 OPAMP (Aol=300k Ccomp=30p Rin=40Meg Rout=200 Vos=2m Ios=1n Ibias=7n)
+Eamp v2 0 vpos vneg 1e6 ; nodal_model: LM308
 
 * Feedback network
 R7 vneg vn1 560
