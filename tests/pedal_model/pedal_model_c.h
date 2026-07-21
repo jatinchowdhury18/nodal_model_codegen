@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version efb5eff.
+// Auto-generated with netlist_codegen version ff7740f.
 // Command: netlist_codegen pedal_model.net pedal_model_c.h -lang c -type_name double
 
 #pragma once
@@ -56,6 +56,13 @@ static double limit_junction_voltage(double v_new, double v_old, double vt, doub
             v_new = arg > 0 ? v_old + vt * log(arg) : vcrit;
         } else {
             v_new = vt * log(v_new / vt);
+        }
+    } else if (v_new < -vcrit && fabs(v_new - v_old) > 2 * vt) {
+        if (v_old < 0) {
+            double arg = 1 + (v_old - v_new) / vt;
+            v_new = arg > 0 ? v_old - vt * log(arg) : -vcrit;
+        } else {
+            v_new = -vt * log(-v_new / vt);
         }
     }
     return v_new;
@@ -162,10 +169,11 @@ static void compute (const float* const* input, float** output, int num_channels
     const double _t20 = (1.0 / ((gC13 * _t21) - (_t24 * _t0)));
     const double _t53 = (gC13 * _t48);
     const double _t54 = (_t2 * _t48);
-    const double _t55 = (_t44 * _t12);
-    const double _t56 = (_t44 * _t6);
-    const double _t57 = (_t44 * _t50);
-    const double _t58 = (_t44 * _t52);
+    const double _t55 = (1.0 / 1000.0);
+    const double _t56 = (_t44 * _t12);
+    const double _t57 = (_t44 * _t6);
+    const double _t58 = (_t44 * _t50);
+    const double _t59 = (_t44 * _t52);
     for (int ch = 0; ch < num_channels; ++ch)
     {
         double zC4 = state[ch].zC4;
@@ -197,31 +205,32 @@ static void compute (const float* const* input, float** output, int num_channels
             const double _J1_D1D2_t38 = (gC13 + gR13);
             const double _J1_D1D2_t46 = (gC12 * _J1_D1D2_t9);
             const double _J1_D1D2_t48 = (gR11 + gC12);
-            const double _J1_D1D2_t66 = (1.0 / D1N914_vt);
-            const double _J1_D1D2_t77 = (gC12 * gRfR10);
-            const double _J1_D1D2_t83 = (_J1_D1D2_t25 * gRfR10);
-            const double _J1_D1D2_t95 = (gC12 * gR9C9);
+            const double _J1_D1D2_t59 = (1.0 / 1000.0);
+            const double _J1_D1D2_t68 = (1.0 / D1N914_vt);
+            const double _J1_D1D2_t79 = (gC12 * gRfR10);
+            const double _J1_D1D2_t85 = (_J1_D1D2_t25 * gRfR10);
+            const double _J1_D1D2_t97 = (gC12 * gR9C9);
             const double _J1_D1D2_t7 = (_J1_D1D2_t8 + gRfR10);
             const double _J1_D1D2_t14 = (_J1_D1D2_t15 + zR6C3);
             const double _J1_D1D2_t17 = (_J1_D1D2_t18 + gRdC5);
             const double _J1_D1D2_t24 = (_J1_D1D2_t25 * _J1_D1D2_t9);
             const double _J1_D1D2_t34 = (_J1_D1D2_t35 + zRdC5);
             const double _J1_D1D2_t45 = (gRdC5 * _J1_D1D2_t46);
-            const double _J1_D1D2_t76 = (gRdC5 * _J1_D1D2_t77);
-            const double _J1_D1D2_t86 = (_J1_D1D2_t7 * gR9C9);
-            const double _J1_D1D2_t88 = (_J1_D1D2_t17 * _J1_D1D2_t86);
-            const double _J1_D1D2_t94 = (_J1_D1D2_t34 * _J1_D1D2_t95);
-            const double _J1_D1D2_t97 = (_J1_D1D2_t17 * _J1_D1D2_t95);
+            const double _J1_D1D2_t78 = (gRdC5 * _J1_D1D2_t79);
+            const double _J1_D1D2_t88 = (_J1_D1D2_t7 * gR9C9);
+            const double _J1_D1D2_t90 = (_J1_D1D2_t17 * _J1_D1D2_t88);
+            const double _J1_D1D2_t96 = (_J1_D1D2_t34 * _J1_D1D2_t97);
+            const double _J1_D1D2_t99 = (_J1_D1D2_t17 * _J1_D1D2_t97);
             const double _J1_D1D2_t6 = (_J1_D1D2_t7 * _J1_D1D2_t9);
             const double _J1_D1D2_t13 = (zC4 + _J1_D1D2_t14);
             const double _J1_D1D2_t16 = (_J1_D1D2_t17 * _J1_D1D2_t19);
             const double _J1_D1D2_t33 = (_J1_D1D2_t34 * _J1_D1D2_t19);
             const double _J1_D1D2_t44 = (_J1_D1D2_t3 * _J1_D1D2_t45);
             const double _J1_D1D2_t52 = (_J1_D1D2_t38 * _J1_D1D2_t44);
-            const double _J1_D1D2_t75 = (_J1_D1D2_t3 * _J1_D1D2_t76);
-            const double _J1_D1D2_t85 = (_J1_D1D2_t34 * _J1_D1D2_t86);
-            const double _J1_D1D2_t87 = (_J1_D1D2_t13 * _J1_D1D2_t88);
-            const double _J1_D1D2_t96 = (_J1_D1D2_t13 * _J1_D1D2_t97);
+            const double _J1_D1D2_t77 = (_J1_D1D2_t3 * _J1_D1D2_t78);
+            const double _J1_D1D2_t87 = (_J1_D1D2_t34 * _J1_D1D2_t88);
+            const double _J1_D1D2_t89 = (_J1_D1D2_t13 * _J1_D1D2_t90);
+            const double _J1_D1D2_t98 = (_J1_D1D2_t13 * _J1_D1D2_t99);
             const double _J1_D1D2_t5 = (_J1_D1D2_t6 - _J1_D1D2_t10);
             const double _J1_D1D2_t12 = (_J1_D1D2_t13 * _J1_D1D2_t16);
             const double _J1_D1D2_t43 = (gC13 * _J1_D1D2_t44);
@@ -238,65 +247,66 @@ static void compute (const float* const* input, float** output, int num_channels
             const double _J1_D1D2_t49 = (_J1_D1D2_t36 * _J1_D1D2_t50);
             const double _J1_D1D2_t40 = (gC13 * _J1_D1D2_t41);
             const double _J1_D1D2_t39 = (1.0 / (_J1_D1D2_t40 - _J1_D1D2_t49));
-            const double _J1_D1D2_t102 = (zC12 * (gC13 * _J1_D1D2_t75));
-            const double _J1_D1D2_t103 = (zC12 * (_J1_D1D2_t38 * _J1_D1D2_t75));
-            const double _J1_D1D2_t104 = (zC12 * _J1_D1D2_t1);
-            const double _J1_D1D2_t105 = (zC12 * _J1_D1D2_t37);
-            const double _J1_D1D2_t106 = (zC13 * _J1_D1D2_t41);
+            const double _J1_D1D2_t104 = (zC12 * (gC13 * _J1_D1D2_t77));
+            const double _J1_D1D2_t105 = (zC12 * (_J1_D1D2_t38 * _J1_D1D2_t77));
+            const double _J1_D1D2_t106 = (zC12 * _J1_D1D2_t1);
+            const double _J1_D1D2_t107 = (zC12 * _J1_D1D2_t37);
+            const double _J1_D1D2_t108 = (zC13 * _J1_D1D2_t41);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const double _J1_D1D2_t31 = (vD1D2 / D1N914_vt);
-                const double _J1_D1D2_t57 = (vGSJ1 - _2N5485_vp);
-                const double _J1_D1D2_t101 = (_J1_D1D2_t57 + _J1_D1D2_t57);
+                const double _J1_D1D2_t58 = (vGSJ1 - _2N5485_vp);
                 const double _J1_D1D2_t30 = exp(_J1_D1D2_t31);
                 const double _J1_D1D2_t32 = (1.0 / _J1_D1D2_t30);
-                const double _J1_D1D2_t56 = (_J1_D1D2_t57 * _J1_D1D2_t57);
-                const double _J1_D1D2_t64 = (_J1_D1D2_t30 / D1N914_vt);
-                const double _J1_D1D2_t65 = (_J1_D1D2_t66 / _J1_D1D2_t30);
-                const double _J1_D1D2_t100 = (_2N5485_Beta * _J1_D1D2_t101);
+                const double _J1_D1D2_t57 = (_J1_D1D2_t58 + _J1_D1D2_t59);
+                const double _J1_D1D2_t66 = (_J1_D1D2_t30 / D1N914_vt);
+                const double _J1_D1D2_t67 = (_J1_D1D2_t68 / _J1_D1D2_t30);
+                const double _J1_D1D2_t103 = (_J1_D1D2_t57 + _J1_D1D2_t57);
                 const double _J1_D1D2_t29 = (_J1_D1D2_t30 - _J1_D1D2_t32);
-                const double _J1_D1D2_t55 = (_2N5485_Beta * _J1_D1D2_t56);
-                const double _J1_D1D2_t63 = (_J1_D1D2_t64 + _J1_D1D2_t65);
+                const double _J1_D1D2_t56 = (_J1_D1D2_t57 * _J1_D1D2_t57);
+                const double _J1_D1D2_t65 = (_J1_D1D2_t66 + _J1_D1D2_t67);
+                const double _J1_D1D2_t102 = (_2N5485_Beta * _J1_D1D2_t103);
                 const double _J1_D1D2_t28 = (D1N914_Is * _J1_D1D2_t29);
-                const double _J1_D1D2_t54 = (zC13 + _J1_D1D2_t55);
-                const double _J1_D1D2_t62 = (D1N914_Is * _J1_D1D2_t63);
-                const double _J1_D1D2_t69 = (_J1_D1D2_t7 * _J1_D1D2_t62);
-                const double _J1_D1D2_t72 = (gRfR10 * _J1_D1D2_t62);
+                const double _J1_D1D2_t55 = (_2N5485_Beta * _J1_D1D2_t56);
+                const double _J1_D1D2_t64 = (D1N914_Is * _J1_D1D2_t65);
+                const double _J1_D1D2_t71 = (_J1_D1D2_t7 * _J1_D1D2_t64);
+                const double _J1_D1D2_t74 = (gRfR10 * _J1_D1D2_t64);
                 const double _J1_D1D2_t27 = (zR9C9 + _J1_D1D2_t28);
-                const double _J1_D1D2_t61 = (gC12 * _J1_D1D2_t62);
-                const double _J1_D1D2_t68 = (gRdC5 * _J1_D1D2_t69);
-                const double _J1_D1D2_t71 = (gRdC5 * _J1_D1D2_t72);
-                const double _J1_D1D2_t84 = (_J1_D1D2_t7 * _J1_D1D2_t27);
-                const double _J1_D1D2_t93 = (gC12 * _J1_D1D2_t27);
+                const double _J1_D1D2_t54 = (zC13 + _J1_D1D2_t55);
+                const double _J1_D1D2_t63 = (gC12 * _J1_D1D2_t64);
+                const double _J1_D1D2_t70 = (gRdC5 * _J1_D1D2_t71);
+                const double _J1_D1D2_t73 = (gRdC5 * _J1_D1D2_t74);
+                const double _J1_D1D2_t86 = (_J1_D1D2_t7 * _J1_D1D2_t27);
+                const double _J1_D1D2_t95 = (gC12 * _J1_D1D2_t27);
                 const double _J1_D1D2_t26 = (gRfR10 * _J1_D1D2_t27);
-                const double _J1_D1D2_t60 = (gRdC5 * _J1_D1D2_t61);
-                const double _J1_D1D2_t67 = (_J1_D1D2_t3 * _J1_D1D2_t68);
-                const double _J1_D1D2_t70 = (_J1_D1D2_t3 * _J1_D1D2_t71);
-                const double _J1_D1D2_t82 = (_J1_D1D2_t83 - _J1_D1D2_t84);
-                const double _J1_D1D2_t92 = (gRdC5 * _J1_D1D2_t93);
+                const double _J1_D1D2_t62 = (gRdC5 * _J1_D1D2_t63);
+                const double _J1_D1D2_t69 = (_J1_D1D2_t3 * _J1_D1D2_t70);
+                const double _J1_D1D2_t72 = (_J1_D1D2_t3 * _J1_D1D2_t73);
+                const double _J1_D1D2_t84 = (_J1_D1D2_t85 - _J1_D1D2_t86);
+                const double _J1_D1D2_t94 = (gRdC5 * _J1_D1D2_t95);
                 const double _J1_D1D2_t23 = (_J1_D1D2_t24 - _J1_D1D2_t26);
-                const double _J1_D1D2_t59 = (_J1_D1D2_t3 * _J1_D1D2_t60);
-                const double _J1_D1D2_t81 = (gRdC5 * _J1_D1D2_t82);
-                const double _J1_D1D2_t91 = (_J1_D1D2_t92 + _J1_D1D2_t94);
+                const double _J1_D1D2_t61 = (_J1_D1D2_t3 * _J1_D1D2_t62);
+                const double _J1_D1D2_t83 = (gRdC5 * _J1_D1D2_t84);
+                const double _J1_D1D2_t93 = (_J1_D1D2_t94 + _J1_D1D2_t96);
                 const double _J1_D1D2_t22 = (gRdC5 * _J1_D1D2_t23);
-                const double _J1_D1D2_t80 = (_J1_D1D2_t81 - _J1_D1D2_t85);
-                const double _J1_D1D2_t90 = (_J1_D1D2_t3 * _J1_D1D2_t91);
+                const double _J1_D1D2_t82 = (_J1_D1D2_t83 - _J1_D1D2_t87);
+                const double _J1_D1D2_t92 = (_J1_D1D2_t3 * _J1_D1D2_t93);
                 const double _J1_D1D2_t21 = (_J1_D1D2_t22 - _J1_D1D2_t33);
-                const double _J1_D1D2_t79 = (_J1_D1D2_t3 * _J1_D1D2_t80);
-                const double _J1_D1D2_t89 = (_J1_D1D2_t90 - _J1_D1D2_t96);
+                const double _J1_D1D2_t81 = (_J1_D1D2_t3 * _J1_D1D2_t82);
+                const double _J1_D1D2_t91 = (_J1_D1D2_t92 - _J1_D1D2_t98);
                 const double _J1_D1D2_t20 = (_J1_D1D2_t3 * _J1_D1D2_t21);
-                const double _J1_D1D2_t58 = ((((_J1_D1D2_t36 * ((gC12 * (_J1_D1D2_t38 * _J1_D1D2_t59)) - (_J1_D1D2_t48 * (_J1_D1D2_t38 * _J1_D1D2_t67)))) - (gC13 * ((gC12 * (gC13 * _J1_D1D2_t59)) - (_J1_D1D2_t48 * (gC13 * _J1_D1D2_t67))))) * _J1_D1D2_t39) - 1.0);
-                const double _J1_D1D2_t78 = (_J1_D1D2_t79 + _J1_D1D2_t87);
-                const double _J1_D1D2_t99 = (((_J1_D1D2_t36 * ((gC12 * (_J1_D1D2_t100 * _J1_D1D2_t44)) - (_J1_D1D2_t48 * (_J1_D1D2_t100 * _J1_D1D2_t2)))) * _J1_D1D2_t39) - 1.0);
+                const double _J1_D1D2_t60 = ((((_J1_D1D2_t36 * ((gC12 * (_J1_D1D2_t38 * _J1_D1D2_t61)) - (_J1_D1D2_t48 * (_J1_D1D2_t38 * _J1_D1D2_t69)))) - (gC13 * ((gC12 * (gC13 * _J1_D1D2_t61)) - (_J1_D1D2_t48 * (gC13 * _J1_D1D2_t69))))) * _J1_D1D2_t39) - 1.0);
+                const double _J1_D1D2_t80 = (_J1_D1D2_t81 + _J1_D1D2_t89);
+                const double _J1_D1D2_t101 = (((_J1_D1D2_t36 * ((gC12 * (_J1_D1D2_t102 * _J1_D1D2_t44)) - (_J1_D1D2_t48 * (_J1_D1D2_t102 * _J1_D1D2_t2)))) * _J1_D1D2_t39) - 1.0);
                 const double _J1_D1D2_t11 = (_J1_D1D2_t12 + _J1_D1D2_t20);
-                const double _J1_D1D2_t74 = (((gC13 * (_J1_D1D2_t102 - ((_J1_D1D2_t48 * (gC13 * _J1_D1D2_t78)) + (gC12 * (gC13 * _J1_D1D2_t89))))) - (_J1_D1D2_t36 * (_J1_D1D2_t103 - ((_J1_D1D2_t48 * (_J1_D1D2_t38 * _J1_D1D2_t78)) + (gC12 * (_J1_D1D2_t38 * _J1_D1D2_t89)))))) * _J1_D1D2_t39);
-                const double _J1_D1D2_t98 = (_J1_D1D2_t99 * _J1_D1D2_t58);
-                const double _J1_D1D2_t0 = ((((gC13 * (_J1_D1D2_t104 - (gC12 * (gC13 * _J1_D1D2_t11)))) - (_J1_D1D2_t36 * (_J1_D1D2_t105 - (gC12 * (_J1_D1D2_t38 * _J1_D1D2_t11))))) * _J1_D1D2_t39) - ((_J1_D1D2_t106 - (_J1_D1D2_t36 * ((gC12 * (_J1_D1D2_t54 * _J1_D1D2_t44)) - (_J1_D1D2_t48 * (_J1_D1D2_t54 * _J1_D1D2_t2))))) * _J1_D1D2_t39));
-                const double _J1_D1D2_t73 = (vD1D2 - _J1_D1D2_t74);
+                const double _J1_D1D2_t76 = (((gC13 * (_J1_D1D2_t104 - ((_J1_D1D2_t48 * (gC13 * _J1_D1D2_t80)) + (gC12 * (gC13 * _J1_D1D2_t91))))) - (_J1_D1D2_t36 * (_J1_D1D2_t105 - ((_J1_D1D2_t48 * (_J1_D1D2_t38 * _J1_D1D2_t80)) + (gC12 * (_J1_D1D2_t38 * _J1_D1D2_t91)))))) * _J1_D1D2_t39);
+                const double _J1_D1D2_t100 = (_J1_D1D2_t101 * _J1_D1D2_t60);
+                const double _J1_D1D2_t0 = ((((gC13 * (_J1_D1D2_t106 - (gC12 * (gC13 * _J1_D1D2_t11)))) - (_J1_D1D2_t36 * (_J1_D1D2_t107 - (gC12 * (_J1_D1D2_t38 * _J1_D1D2_t11))))) * _J1_D1D2_t39) - ((_J1_D1D2_t108 - (_J1_D1D2_t36 * ((gC12 * (_J1_D1D2_t54 * _J1_D1D2_t44)) - (_J1_D1D2_t48 * (_J1_D1D2_t54 * _J1_D1D2_t2))))) * _J1_D1D2_t39));
+                const double _J1_D1D2_t75 = (vD1D2 - _J1_D1D2_t76);
                 const double res_vGSJ1 = (_J1_D1D2_t0 - vGSJ1);
-                const double delta_vGSJ1 = ((((vGSJ1 - _J1_D1D2_t0) * _J1_D1D2_t58) - ((((gC13 * (gC12 * (gC13 * _J1_D1D2_t70))) - (_J1_D1D2_t36 * (gC12 * (_J1_D1D2_t38 * _J1_D1D2_t70)))) * _J1_D1D2_t39) * _J1_D1D2_t73)) / _J1_D1D2_t98);
-                const double res_vD1D2 = (_J1_D1D2_t74 - vD1D2);
-                const double delta_vD1D2 = ((_J1_D1D2_t99 * _J1_D1D2_t73) / _J1_D1D2_t98);
+                const double delta_vGSJ1 = ((((vGSJ1 - _J1_D1D2_t0) * _J1_D1D2_t60) - ((((gC13 * (gC12 * (gC13 * _J1_D1D2_t72))) - (_J1_D1D2_t36 * (gC12 * (_J1_D1D2_t38 * _J1_D1D2_t72)))) * _J1_D1D2_t39) * _J1_D1D2_t75)) / _J1_D1D2_t100);
+                const double res_vD1D2 = (_J1_D1D2_t76 - vD1D2);
+                const double delta_vD1D2 = ((_J1_D1D2_t101 * _J1_D1D2_t75) / _J1_D1D2_t100);
             
                 double residual_norm_sq = 0.0;
                 residual_norm_sq += res_vGSJ1 * res_vGSJ1;
@@ -313,7 +323,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 
             }
 
-            const double _t17 = (vGSJ1 - _2N5485_vp);
+            const double _t17 = ((vGSJ1 - _2N5485_vp) + _t55);
             const double _t26 = (zC4 + ((gR6C3 * vi) + zR6C3));
             const double _t35 = (zC12 + zC11);
             const double _t38 = exp((vD1D2 / D1N914_vt));
@@ -322,10 +332,10 @@ static void compute (const float* const* input, float** output, int num_channels
             const double _t34 = (_t35 * _t7);
             const double _t37 = (zR9C9 + (D1N914_Is * (_t38 - (1.0 / _t38))));
             const double _t39 = (_t40 * _t41);
-            const double _t46 = ((_t4 * (_t40 * _t12)) - (_t26 * _t55));
-            const double _t47 = ((_t4 * (_t40 * _t6)) - (_t26 * _t56));
-            const double _t49 = ((_t4 * ((gRdC5 * ((_t35 * gRfR10) - (_t13 * _t37))) - (_t40 * _t50))) + (_t26 * _t57));
-            const double _t51 = ((_t4 * ((gRdC5 * (gC12 * _t37)) + (_t40 * _t52))) - (_t26 * _t58));
+            const double _t46 = ((_t4 * (_t40 * _t12)) - (_t26 * _t56));
+            const double _t47 = ((_t4 * (_t40 * _t6)) - (_t26 * _t57));
+            const double _t49 = ((_t4 * ((gRdC5 * ((_t35 * gRfR10) - (_t13 * _t37))) - (_t40 * _t50))) + (_t26 * _t58));
+            const double _t51 = ((_t4 * ((gRdC5 * (gC12 * _t37)) + (_t40 * _t52))) - (_t26 * _t59));
             const double _t25 = (_t26 * _t5);
             const double _t27 = (_t26 * _t11);
             const double _t36 = (gRfR10 * _t37);
@@ -456,14 +466,16 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     double vD1D2 = 0;
 
     // --- Newton-Raphson solve: J1
-    const double _J1_t3 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
+    const double _J1_t4 = (1.0 / 1000.0);
+    const double _J1_t5 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
     for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
     {
-        const double _J1_t2 = (vGSJ1 - _2N5485_vp);
-        const double _J1_t1 = ((_2N5485_Beta * (_J1_t2 * _J1_t2)) * _J1_t3);
+        const double _J1_t3 = (vGSJ1 - _2N5485_vp);
+        const double _J1_t2 = (_J1_t3 + _J1_t4);
+        const double _J1_t1 = ((_2N5485_Beta * (_J1_t2 * _J1_t2)) * _J1_t5);
         const double _J1_t0 = (_J1_t1 + vGSJ1);
         const double res_vGSJ1 = (-_J1_t0);
-        const double delta_vGSJ1 = (-(_J1_t0 / (((_2N5485_Beta * (_J1_t2 + _J1_t2)) * _J1_t3) + 1.0)));
+        const double delta_vGSJ1 = (-(_J1_t0 / (((_2N5485_Beta * (_J1_t2 + _J1_t2)) * _J1_t5) + 1.0)));
     
         double residual_norm_sq = 0.0;
         residual_norm_sq += res_vGSJ1 * res_vGSJ1;
@@ -505,7 +517,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const double zC4 = 0.0;
     const double zC12 = (-((gC12 * ((gRfR10 * D1N914_Is) * (exp((vD1D2 / D1N914_vt)) - (1.0 / exp((vD1D2 / D1N914_vt)))))) / (((gRfR10 + (1.0 / 1000000000.0)) * (gRfR10 + (1.0 / 1000000000.0))) - (gRfR10 * gRfR10))));
     const double zR7C6 = 0.0;
-    const double zC13 = ((gC13 * ((_2N5485_Beta * (vGSJ1 - _2N5485_vp)) * (vGSJ1 - _2N5485_vp))) / (gR13 + (1.0 / 1000000000.0)));
+    const double zC13 = ((gC13 * ((_2N5485_Beta * ((vGSJ1 - _2N5485_vp) + (1.0 / 1000.0))) * ((vGSJ1 - _2N5485_vp) + (1.0 / 1000.0)))) / (gR13 + (1.0 / 1000000000.0)));
     const double zR6C3 = (-(gR6C3 * vi));
     const double zC11 = (-((gC11 * ((gRfR10 * D1N914_Is) * (exp((vD1D2 / D1N914_vt)) - (1.0 / exp((vD1D2 / D1N914_vt)))))) / (((gRfR10 + (1.0 / 1000000000.0)) * (gRfR10 + (1.0 / 1000000000.0))) - (gRfR10 * gRfR10))));
     const double zR8C7 = 0.0;

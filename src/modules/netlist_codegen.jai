@@ -543,7 +543,10 @@ generate_impedance_defs :: (elements: [] Element, type_name: string = "float", l
 
 // Junction-voltage step limiter (like ngspice's DEVpnjlim): caps the
 // per-iteration step once v exceeds vcrit, so exp(v/vt) can't overflow.
-// Emitted once per header.
+// Emitted once per header. Mirrored on the negative side too: a plain DIODE
+// never needs it (reverse current just saturates at -Is), but DIODE_PAIR
+// shares this limiter and its I-V law is a symmetric sinh, blowing up on
+// either side -- an unclamped negative overstep hits the same runaway.
 generate_junction_limiter_helper :: (type_name: string, lang: string) -> string {
     if lang == "c" {
         template := #string DONE
@@ -555,11 +558,18 @@ static % limit_junction_voltage(% v_new, % v_old, % vt, % vcrit) {
         } else {
             v_new = vt * log(v_new / vt);
         }
+    } else if (v_new < -vcrit && fabs(v_new - v_old) > 2 * vt) {
+        if (v_old < 0) {
+            % arg = 1 + (v_old - v_new) / vt;
+            v_new = arg > 0 ? v_old - vt * log(arg) : -vcrit;
+        } else {
+            v_new = -vt * log(-v_new / vt);
+        }
     }
     return v_new;
 }
 DONE
-        return tprint(template, type_name, type_name, type_name, type_name, type_name, type_name);
+        return tprint(template, type_name, type_name, type_name, type_name, type_name, type_name, type_name);
     }
 
     return #string DONE
@@ -575,6 +585,18 @@ DONE
         else
         {
             v_new = vt * std::log(v_new / vt);
+        }
+    }
+    else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
+    {
+        if (v_old < 0)
+        {
+            const auto arg = 1 + (v_old - v_new) / vt;
+            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+        }
+        else
+        {
+            v_new = -vt * std::log(-v_new / vt);
         }
     }
     return v_new;

@@ -109,11 +109,17 @@ bjt_iv_laws :: (vbc_name: string, vbe_name: string, model: Nonlinear_Model, expr
 }
 
 // SPICE Level-1 JFET drain-current I-V law: iD = Beta*(vGS - Vp)^2.
+//
+// d(iD)/d(vGS) hits exactly 0 at pinch-off. Harmless solved alone, but if
+// this device shares a Newton cluster with another one (see clustering
+// above), a zero Jacobian entry there can ill-condition their shared linear
+// solve. 1mV epsilon floor keeps it off exact zero -- same idea as gmin.
 jfet_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, exprs: *[..] Expr) -> Expr_ID {
     vgs  := expr_symbol(junction_voltage_name, exprs);
     vp   := expr_symbol(model.vp_name, exprs);
     beta := expr_symbol(model.beta_name, exprs);
-    diff := expr_sub(vgs, vp, exprs);
+    epsilon := expr_div(expr_const(1, exprs), expr_const(1000, exprs), exprs);
+    diff := expr_add(expr_sub(vgs, vp, exprs), epsilon, exprs);
     return expr_mul(beta, expr_mul(diff, diff, exprs), exprs);
 }
 

@@ -600,9 +600,8 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         }
     }
 
-    // Tracks which rows already hold an exact constraint (fixed voltage, an
-    // op-amp virtual-short pin, or the diode-partner DC fallback below) --
-    // the DC gmin pass further down must not perturb those with leakage.
+    // Rows already holding an exact constraint (fixed voltage, op-amp pin,
+    // diode-partner fallback) -- the gmin pass below must skip these.
     pinned: [..] bool;
     for _ : eqn_nodes  array_add(*pinned, false);
 
@@ -621,20 +620,16 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         }
     }
 
-    // Fill the KCL row for `node` with a direct constraint node = value, but
-    // only if that row is still empty. Eliminating a node from solve_vars (below)
-    // doesn't remove its now-meaningless KCL row. At DC, a node whose only
-    // neighbors are dropped capacitors/RC_SERIES elements is left with an empty
-    // NO_EXPR row, which under-constrains the system.
+    // Fill the KCL row for `node` with node = value, but only if the row is
+    // still empty (eliminating a node from solve_vars doesn't remove its
+    // KCL row; at DC a node whose only neighbors are dropped
+    // capacitors/RC_SERIES is left empty, under-constraining the system).
     pin_node_equation :: (node: string, value: Expr_ID) #expand {
         for n, idx : eqn_nodes {
             if n == node {
                 if equations[idx] == NO_EXPR {
-                    // At DC, a node with no real content of its own can have
-                    // undefined `value` undefined, which leaves the pair jointly
-                    // floating instead of fixed. Ground it instead, mirroring
-                    // the gmin-to-ground regularization a real SPICE solver
-                    // uses to converge otherwise-floating nodes at DC.
+                    // At DC `value` can itself be undefined (e.g. another
+                    // floating node) -- ground instead, like gmin below.
                     pin_value := ifx dc_mode then expr_const(0, *exprs) else value;
                     equations[idx] = expr_sub(expr_symbol(node, *exprs), pin_value, *exprs);
                     pinned[idx] = true;
@@ -706,16 +701,13 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         }
     }
 
-    // gmin: a real DC path can still leave a *group* of nodes jointly
-    // floating even though none of them is individually empty -- e.g. a
-    // resistor chain hanging off a diode-pinned node, where every row in the
-    // group is real but the group's coefficient submatrix is rank-deficient
-    // (each node only relates to its neighbor, nothing anchors the group to
-    // ground). A tiny leakage conductance to ground on every non-pinned node
-    // breaks that degeneracy without visibly perturbing the DC solution --
-    // the same gmin-to-ground regularization every SPICE solver relies on.
+    // gmin: a group of nodes can be jointly floating at DC even if no single
+    // row is empty (e.g. a resistor chain hanging off a diode-pinned node --
+    // every row is real, but the group has no path to ground). A tiny
+    // leakage conductance on every non-pinned node breaks that degeneracy,
+    // same as real SPICE's gmin-to-ground regularization.
     if dc_mode {
-        // expr_const only takes integer literals -- build 1e-9 as 1/1e9 instead.
+        // expr_const is integer-only -- build 1e-9 as 1/1e9.
         gmin := expr_div(expr_const(1, *exprs), expr_const(1_000_000_000, *exprs), *exprs);
         for node, idx : eqn_nodes {
             if equations[idx] == NO_EXPR continue;
@@ -960,9 +952,8 @@ solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] st
 
     solutions := solve(equations, solve_vars, *exprs);
 
-    // kcl_elements (not elements.*) below: an op-amp input node eliminated by
-    // the ideal-op-amp virtual-short (e.g. vpos -> vneg) only has its aliased
-    // terminal in kcl_elements.
+    // kcl_elements (not elements.*): op-amp-merged nodes (e.g. vpos -> vneg)
+    // only have their aliased terminal there.
     gen_vars := generate_expressions(kcl_elements, outputs, solve_vars, solutions, *exprs);
 
     // Collect gen_var expression IDs for CSE.
