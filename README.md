@@ -1,25 +1,20 @@
 # nodal_model_codegen
 
-TODO:
-- nonlinear stuff
-- non-ideal op-amp model?
-- support Rust and/or Jai codegen?
-
-`nodal_model_codegen` is a tool for generating optimized C++ or C audio DSP code
+`nodal_model_codegen` is a tool for generating optimized C or C++ audio DSP code
 from [LTspice](https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html)
-netlists, using [Modified Nodal Analysis (MNA)](https://en.wikipedia.org/wiki/Modified_nodal_analysis) and equivalent currents.
+netlists, using [Modified Nodal Analysis (MNA)](https://en.wikipedia.org/wiki/Modified_nodal_analysis) and "equivalent currents".
 
 ## What it does
 
-Given an LTspice netlist (`.net` file) describing a passive or op-amp circuit,
-`netlist_codegen` will:
+Given an LTspice netlist (`.net` file) describing a circuit, `netlist_codegen` will:
 
 1. Parse the netlist and identify all circuit elements
 2. Apply circuit-level reductions (series and parallel element combinations)
 3. Build and symbolically solve the MNA system of equations
 4. Discretize reactive elements (capacitors, inductors) using trapezoidal integration
-5. Apply code-level optimizations (common subexpression elimination, loop-invariant code motion)
-6. Emit a self-contained C++ or C header file
+5. Derive iterative solutions for resolving nonlinear current/voltage relationships
+6. Apply code-level optimizations (common subexpression elimination, loop-invariant code motion)
+7. Emit a self-contained C++ or C header file
 
 ## Usage
 
@@ -55,7 +50,7 @@ R1 vo vi 1k
 C1 vo 0 1u IC=0
 ```
 
-`netlist_codegen` will produce the following C++ header:
+`netlist_codegen` will produce (approximately) the following C++ header:
 
 ```cpp
 #pragma once
@@ -115,6 +110,10 @@ output, or ground). The following reductions are supported:
 These reductions shrink the MNA matrix that needs to be solved, and can
 meaningfully reduce the number of arithmetic operations in the generated code.
 
+### Nonlinear Circuit Elements
+
+@TODO...
+
 ### Code-generation optimizations
 
 After solving the MNA equations symbolically, three passes are run over the
@@ -156,17 +155,13 @@ cd tests
 bash run_tests.sh
 ```
 
-Currently tested circuits:
-
-- `rc_lowpass` — 1st-order RC low-pass filter
-- `res_highpass` — Resonant RC high-pass filter
-- `sk_lpf` — 2nd-order Sallen-Key low-pass filter with ideal op-amp
-- `reductions` — exercises all series/parallel element-reduction paths
-- `eq_filter` — multi-op-amp EQ filter
-
-Each test runs LTspice on the original netlist to produce a reference output,
-then generates and compiles the C++ model, runs it on the same input, and
-asserts that the maximum absolute error is below a small threshold.
+The tests currently contain a number of "real-world" audio circuits,
+as well as more specific "test cases" to make that certain parts of the
+syste are behaving as expected. Each test runs LTspice on the original
+netlist to produce a reference output, then generates and compiles the
+C++ model, runs it on the same input, and asserts that the maximum absolute
+error is below a small threshold. The tests will optionally generate
+plots of the signals and error.
 
 ## License
 
