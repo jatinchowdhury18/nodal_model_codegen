@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 5c2e3ae.
+// Auto-generated with netlist_codegen version 50a08af.
 // Command: netlist_codegen multi_svf.net multi_svf.h
 
 #pragma once

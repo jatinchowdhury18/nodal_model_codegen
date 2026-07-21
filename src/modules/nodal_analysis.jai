@@ -66,6 +66,7 @@ Limiter_Kind :: enum {
     NONE;           // plain Newton step
     EXP_JUNCTION;   // diode/BJT-style: clamp near vcrit = vt*log(vt/(sqrt(2)*Is))
     JFET_PINCHOFF;  // JFET-style: clamp at Vp (see generate_jfet_limiter_helper)
+    AMP_CLIP;       // op-amp output clip/slew: hard rail clamp (see generate_opamp_clip_limiter_helper)
 }
 
 // One Newton unknown (junction voltage) a device contributes: named
@@ -168,8 +169,77 @@ circuit_uses_limiter_kind :: (elements: [] Element, kind: Limiter_Kind) -> bool 
     for el : elements {
         spec := nonlinear_device_spec(el.type);
         for u : spec.unknowns  if u.limiter == kind  return true;
+
+        // AMP_CLIP isn't in nonlinear_device_spec(): whether an AMP is
+        // nonlinear depends on instance fields, not just Element_Type.
+        if kind == .AMP_CLIP && el.type == .AMP && opamp_has_clip_stage(el)  return true;
     }
     return false;
+}
+
+// Non-ideal op-amp params, parsed from a `.model <name> OPAMP (...)` card.
+// Each `has_*` flag is the actual opt-in. `*_name` fields name a Params struct
+// field. Zero value == today's ideal op-amp.
+Opamp_Model :: struct {
+    has_aol:    bool; aol_name:    string; // open-loop gain
+    has_gbw:    bool; gbw_name:    string; // gain-bandwidth product (dominant pole)
+    has_rin:    bool; rin_name:    string; // differential input resistance
+    has_rout:   bool; rout_name:   string; // output series resistance
+    has_vsat_p: bool; vsat_p_name: string; // positive output rail
+    has_vsat_n: bool; vsat_n_name: string; // negative output rail
+    has_slew:   bool; slew_name:   string; // max |dVout/dt|, V/s
+    has_vos:    bool; vos_name:    string; // input-referred offset voltage
+    has_ios:    bool; ios_name:    string; // input offset current
+    has_ibias:  bool; ibias_name:  string; // input bias current
+}
+
+// True if none of an AMP's non-ideal characteristics are set -- i.e. it's
+// still today's ideal op-amp (structural node merge, no numeric model).
+opamp_is_ideal :: (el: Element) -> bool {
+    o := el.opamp;
+    return !(o.has_aol || o.has_gbw || o.has_rin || o.has_rout || o.has_vsat_p
+             || o.has_vsat_n || o.has_slew || o.has_vos || o.has_ios || o.has_ibias);
+}
+
+// Forces the numeric finite-gain VCVS path (a real "gain node" + hard
+// constraint equation) instead of the structural pos/neg node merge.
+needs_explicit_vcvs :: (el: Element) -> bool {
+    o := el.opamp;
+    return o.has_aol || o.has_rin || o.has_rout || o.has_vsat_p || o.has_vsat_n || o.has_slew || o.has_gbw;
+}
+
+// True if the op-amp has an output clipping/slew stage -- i.e. a Newton
+// unknown (vclip_<name>) sits between the gain chain and Rout/out_node.
+opamp_has_clip_stage :: (el: Element) -> bool {
+    return el.opamp.has_vsat_p || el.opamp.has_vsat_n || el.opamp.has_slew;
+}
+
+// vgain_<name>: the ideal (infinite-bandwidth) gain-stage node, holding
+// Aol*(pos - neg + Vos). Collapses to the real out_node directly when
+// nothing else (GBW lowpass, clip/slew stage, Rout) follows it in the
+// chain -- e.g. an Aol-only op-amp needs no synthetic nodes at all.
+opamp_gain_node :: (el: Element) -> string {
+    if el.opamp.has_gbw || opamp_has_clip_stage(el) || el.opamp.has_rout  return tprint("vgain_%", el.name);
+    return el.terminals[0];
+}
+
+// One-pole-lowpassed version of vgain_<name> (meaningful only when
+// has_gbw -- an internal Rcomp/Ccomp synthesized upstream). Collapses to
+// vgain_<name> directly if there's no lowpass, or to out_node directly if
+// there's a lowpass but nothing (clip/slew, Rout) follows it.
+opamp_bandwidth_node :: (el: Element) -> string {
+    if !el.opamp.has_gbw  return opamp_gain_node(el);
+    if opamp_has_clip_stage(el) || el.opamp.has_rout  return tprint("vbw_%", el.name);
+    return el.terminals[0];
+}
+
+// Clipped/slew-limited output (a Newton unknown, solved in
+// nonlinear_solve.jai). Unlike gain/bandwidth above, never collapses to
+// out_node: it's a free symbol with no KCL row of its own, so out_node gets
+// an explicit equality constraint against it instead when Rout is absent.
+opamp_clip_node :: (el: Element) -> string {
+    if !opamp_has_clip_stage(el)  return opamp_bandwidth_node(el);
+    return tprint("vclip_%", el.name);
 }
 
 Element :: struct {
@@ -188,6 +258,9 @@ Element :: struct {
 
     // For DIODE / DIODE_PAIR / BJT / JFET elements.
     nonlinear: Nonlinear_Model;
+
+    // For AMP elements only. Zero value == today's ideal op-amp.
+    opamp: Opamp_Model;
 
     // Set from a "; no_combine" inline netlist comment (R/C/D only) -- opts
     // this element out of series/parallel/antiparallel-pair reduction.
@@ -502,13 +575,33 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
 
     eqn_nodes: [..] string;
 
+    // vclip_<name> is a free Newton symbol, like a diode's branch current --
+    // but unlike a branch current, Rout's synthesized resistor uses it as a
+    // literal terminal string, so it'd otherwise get pulled into
+    // eqn_nodes/solve_vars and solved as an ordinary linear unknown.
+    clip_node_names: [..] string;
+    for el : elements {
+        if el.type == .AMP && opamp_has_clip_stage(el)  array_add(*clip_node_names, opamp_clip_node(el));
+    }
+
     for el : elements {
         for terminal : el.terminals {
             if terminal == "0" continue;
             if array_find(inputs, terminal) continue;
+            if array_find(clip_node_names, terminal) continue;
             if el.type == .FIXED_VOLTAGE    continue;
             array_add_if_unique(*eqn_nodes, terminal);
         }
+    }
+
+    // vgain_<name>/vbw_<name> need their own KCL row for the hard constraint
+    // below -- usually guaranteed by being a synthesized Rcomp/Ccomp/Rout
+    // terminal, but a clip/slew stage reroutes Rout to vclip_<name> instead,
+    // orphaning them when GBW isn't also set. Add them explicitly.
+    for el : elements {
+        if el.type != .AMP || !needs_explicit_vcvs(el)  continue;
+        array_add_if_unique(*eqn_nodes, opamp_gain_node(el));
+        array_add_if_unique(*eqn_nodes, opamp_bandwidth_node(el));
     }
 
     exprs : [..] Expr;
@@ -642,13 +735,66 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         }
     }
 
-    // just op-amps
+    // op-amps
     for el : elements {
         if el.type != .AMP continue;
         out_node := el.terminals[0];
         neg_node := el.terminals[1];
         pos_node := el.terminals[2];
+        o := el.opamp;
 
+        // Ibias/Ios: constant currents drawn from each input node. Applies
+        // either way below (ideal merge or explicit VCVS).
+        if o.has_ibias || o.has_ios {
+            bias_symbol := ifx o.has_ibias then expr_symbol(o.ibias_name, *exprs) else NO_EXPR;
+            half_ios     := ifx o.has_ios   then expr_div(expr_symbol(o.ios_name, *exprs), expr_const(2, *exprs), *exprs) else NO_EXPR;
+            ibias_pos := combine(bias_symbol, half_ios, .ADD, *exprs);
+            ibias_neg := combine(bias_symbol, half_ios, .SUB, *exprs);
+            for node, idx : eqn_nodes {
+                if node == pos_node  equations[idx] = combine(equations[idx], ibias_pos, .SUB, *exprs);
+                if node == neg_node  equations[idx] = combine(equations[idx], ibias_neg, .SUB, *exprs);
+            }
+        }
+
+        vos_symbol := ifx o.has_vos then expr_symbol(o.vos_name, *exprs) else NO_EXPR;
+
+        if needs_explicit_vcvs(el) {
+            // Explicit finite-gain VCVS: overwrite the gain node's row with
+            // a hard constraint (same idea as FIXED_VOLTAGE below), instead
+            // of merging pos/neg symbols. Rin/Rout/GBW are synthesized as
+            // ordinary R/C elements upstream.
+            pos_symbol := ifx pos_node == "0" then expr_const(0, *exprs) else expr_symbol(pos_node, *exprs);
+            neg_symbol := ifx neg_node == "0" then expr_const(0, *exprs) else expr_symbol(neg_node, *exprs);
+            diff_expr := expr_sub(pos_symbol, neg_symbol, *exprs);
+            if vos_symbol != NO_EXPR  diff_expr = expr_add(diff_expr, vos_symbol, *exprs);
+            rhs := expr_mul(expr_symbol(o.aol_name, *exprs), diff_expr, *exprs);
+
+            gain_node := opamp_gain_node(el);
+            for node, idx : eqn_nodes {
+                if node == gain_node {
+                    equations[idx] = expr_sub(expr_symbol(gain_node, *exprs), rhs, *exprs);
+                    pinned[idx] = true;
+                    break;
+                }
+            }
+
+            // vclip_<name> has no KCL row of its own, so without Rout to
+            // wire it to out_node, out_node needs an explicit constraint.
+            if opamp_has_clip_stage(el) && !o.has_rout {
+                clip_node := opamp_clip_node(el);
+                for node, idx : eqn_nodes {
+                    if node == out_node {
+                        equations[idx] = expr_sub(expr_symbol(out_node, *exprs), expr_symbol(clip_node, *exprs), *exprs);
+                        pinned[idx] = true;
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Ideal (infinite-gain) op-amp: merge pos/neg node symbols, same as
+        // before, optionally offset by Vos (constraint: pos - neg + Vos = 0).
         current_symbol := expr_symbol(tprint("i%", el.name), *exprs);
         for node, idx : eqn_nodes {
             if node == out_node  equations[idx] = combine(equations[idx], current_symbol, .ADD, *exprs); // current entering this node
@@ -656,23 +802,26 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         array_add(*solve_vars, current_symbol);
 
         if pos_node == "0" {
+            target := ifx vos_symbol != NO_EXPR then vos_symbol else expr_const(0, *exprs); // neg = Vos
             print("Setting % → 0\n", neg_node);
-            array_add(*voltages, .{ expr_symbol(neg_node, *exprs), expr_const(0, *exprs) });
+            array_add(*voltages, .{ expr_symbol(neg_node, *exprs), target });
             array_unordered_remove_by_value(*solve_vars, expr_symbol(neg_node, *exprs));
-            pin_node_equation(neg_node, expr_const(0, *exprs));
-            substitute_node(neg_node, "0");
+            pin_node_equation(neg_node, target);
+            if vos_symbol == NO_EXPR  substitute_node(neg_node, "0");
         } else if neg_node == "0" {
+            target := ifx vos_symbol != NO_EXPR then expr_neg(vos_symbol, *exprs) else expr_const(0, *exprs); // pos = -Vos
             print("Setting % → 0\n", pos_node);
-            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), expr_const(0, *exprs) });
+            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), target });
             array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
-            pin_node_equation(pos_node, expr_const(0, *exprs));
-            substitute_node(pos_node, "0");
+            pin_node_equation(pos_node, target);
+            if vos_symbol == NO_EXPR  substitute_node(pos_node, "0");
         } else {
+            target := ifx vos_symbol != NO_EXPR then expr_sub(expr_symbol(neg_node, *exprs), vos_symbol, *exprs) else expr_symbol(neg_node, *exprs); // pos = neg - Vos
             print("Setting % → %\n", pos_node, neg_node);
-            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), expr_symbol(neg_node, *exprs) });
+            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), target });
             array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
-            pin_node_equation(pos_node, expr_symbol(neg_node, *exprs));
-            substitute_node(pos_node, neg_node);
+            pin_node_equation(pos_node, target);
+            if vos_symbol == NO_EXPR  substitute_node(pos_node, neg_node);
         }
     }
 
@@ -942,6 +1091,12 @@ codegen :: (elements: [] Element, inputs: [] string,
             case .RC_PARALLEL;
                 print_to_builder(*inner_builder, "z%1 = gz%1 * v%1 - z%1; // RC parallel\n", el.name);
                 inner_flops.muls += 1;  inner_flops.adds += 1;  // gz*v, minus
+            case .AMP;
+                // Captures this sample's converged output for next
+                // sample's slew comparison.
+                if el.opamp.has_slew {
+                    print_to_builder(*inner_builder, "zslew_%1 = vclip_%1;\n", el.name);
+                }
         }
     }
 

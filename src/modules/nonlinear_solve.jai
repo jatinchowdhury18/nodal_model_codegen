@@ -35,6 +35,11 @@ Cluster_Unknown :: struct {
     vt_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for thermal voltage
     is_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for saturation current
     vp_name:       string;       // valid when limiter_kind == .JFET_PINCHOFF; Params field for pinch-off voltage
+    vsat_p_name:   string;       // valid when limiter_kind == .AMP_CLIP; Params field for positive output rail
+    vsat_n_name:   string;       // valid when limiter_kind == .AMP_CLIP; Params field for negative output rail
+    has_slew:      bool;         // valid when limiter_kind == .AMP_CLIP; true if this op-amp also has slew set
+    slew_name:     string;       // valid when has_slew; Params field for max |dVout/dt|, V/s
+    zslew_name:    string;       // valid when has_slew; State field for the previous sample's output
     residual_name: string;       // Gen_Var name holding this unknown's residual f_j
     delta_name:    string;       // Gen_Var name holding this unknown's Newton delta
 }
@@ -160,11 +165,16 @@ device_iv_law :: (el: Element, unknown_names: [] string, exprs: *[..] Expr) -> [
 }
 
 // Branch-current symbol name(s) this device contributes as free symbols in
-// the linear KCL system (see nodal_analysis.generate_kcl_equations).
+// the linear KCL system (see nodal_analysis.generate_kcl_equations). An
+// AMP's clip/slew unknown isn't a branch current (it's the driving voltage
+// itself, used directly by Rout/out_node's stamp -- see opamp_clip_node),
+// but it plays the same "free symbol used elsewhere in the linear system"
+// role for clustering purposes, so it's included here too.
 branch_current_names :: (el: Element) -> [..] string {
     names: [..] string;
     spec := nonlinear_device_spec(el.type);
     for term : spec.kcl_terms  array_add_if_unique(*names, tprint("i%1%2", term.branch_suffix, el.name));
+    if el.type == .AMP && opamp_has_clip_stage(el)  array_add_if_unique(*names, tprint("vclip_%", el.name));
     return names;
 }
 
@@ -209,6 +219,11 @@ Raw_Unknown :: struct {
     vt_name:      string;
     is_name:      string;
     vp_name:      string;
+    vsat_p_name:  string;
+    vsat_n_name:  string;
+    has_slew:     bool;
+    slew_name:    string;
+    zslew_name:   string;
     linear_form:  Expr_ID; // closed-form node-voltage-difference; still references raw branch-current symbols
     device_idx:   int;     // index into `devices`
 }
@@ -247,6 +262,30 @@ build_nonlinear_clusters :: (elements: [] Element,
                                          vt_name = vt_name, is_name = is_name, vp_name = vp_name,
                                          linear_form = v, device_idx = device_idx });
         }
+    }
+
+    // Op-amp output clip/slew stage. Not in nonlinear_device_spec() -- unlike
+    // DIODE/DIODE_PAIR/BJT/JFET, whether an AMP is nonlinear depends on its
+    // instance-level opamp fields, not just its Element_Type (see
+    // opamp_has_clip_stage). Its unknown is a single node's closed-form
+    // voltage (opamp_bandwidth_node's solved value, i.e. the ideal/band-
+    // limited gain-stage output before clipping), not a terminal-pair
+    // difference, and it needs no I-V law substitution -- its free symbol
+    // (vclip_<name>, see branch_current_names) *is* the Newton unknown, so
+    // there's nothing to substitute the way a diode's current->voltage
+    // hand-off needs.
+    for el : elements {
+        if el.type != .AMP || !opamp_has_clip_stage(el)  continue;
+
+        device_idx := devices.count;
+        array_add(*devices, el);
+        v := copy_expr(lookup_node_voltage(opamp_bandwidth_node(el), solve_vars, solutions, exprs), exprs);
+        simplify(v, exprs);
+        array_add(*raw_unknowns, .{ name = tprint("vclip_%", el.name), limiter_kind = .AMP_CLIP,
+                                     vsat_p_name = el.opamp.vsat_p_name, vsat_n_name = el.opamp.vsat_n_name,
+                                     has_slew = el.opamp.has_slew, slew_name = el.opamp.slew_name,
+                                     zslew_name = tprint("zslew_%", el.name),
+                                     linear_form = v, device_idx = device_idx });
     }
 
     if devices.count == 0 {
@@ -381,16 +420,24 @@ build_nonlinear_clusters :: (elements: [] Element,
             array_add(*gen_vars, Gen_Var.{ name = residual_name, expr_id = f_ids[j] });
             array_add(*gen_vars, Gen_Var.{ name = delta_name,    expr_id = delta_solutions[j] });
 
-            limiter_kind: Limiter_Kind; vt_name := ""; is_name := ""; vp_name := "";
+            limiter_kind: Limiter_Kind; vt_name := ""; is_name := ""; vp_name := ""; vsat_p_name := ""; vsat_n_name := "";
+            has_slew := false; slew_name := ""; zslew_name := "";
             for ru : raw_unknowns {
                 if ru.name != name  continue;
                 limiter_kind = ru.limiter_kind;
                 vt_name = ru.vt_name;
                 is_name = ru.is_name;
                 vp_name = ru.vp_name;
+                vsat_p_name = ru.vsat_p_name;
+                vsat_n_name = ru.vsat_n_name;
+                has_slew = ru.has_slew;
+                slew_name = ru.slew_name;
+                zslew_name = ru.zslew_name;
             }
             array_add(*cluster.unknowns, Cluster_Unknown.{
                 name = name, limiter_kind = limiter_kind, vt_name = vt_name, is_name = is_name, vp_name = vp_name,
+                vsat_p_name = vsat_p_name, vsat_n_name = vsat_n_name,
+                has_slew = has_slew, slew_name = slew_name, zslew_name = zslew_name,
                 residual_name = residual_name, delta_name = delta_name });
         }
 

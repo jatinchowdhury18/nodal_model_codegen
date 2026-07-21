@@ -1,15 +1,15 @@
 // Auto-generated with netlist_codegen version 50a08af.
-// Command: netlist_codegen rc_lowpass.net rc_lowpass.h
+// Command: netlist_codegen opamp_finite_gain.net opamp_finite_gain.h
 
 #pragma once
 
 struct Params {
     float R1 = 1.0e+03f;
-    float C1 = 1.0e-06f;
+    float RF = 1.0e+04f;
+    float Eop_Aol = 2.0e+02f;
 };
 
 struct State {
-    float zC1 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -17,25 +17,23 @@ static void compute (const float* const* input, float** output, int num_channels
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
     
+    const auto Eop_Aol = params.Eop_Aol;
+    
     const auto gR1 = 1.0f / params.R1;
     
-    const auto gC1 = 2.0f * sample_rate * params.C1;
+    const auto gRF = 1.0f / params.RF;
     
-    const auto _t0 = (1.0 / (gR1 + gC1));
+    const auto _t0 = (1.0 / ((gR1 + gRF) + (gRF * Eop_Aol)));
     for (int ch = 0; ch < num_channels; ++ch)
     {
-        auto zC1 = state[ch].zC1;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
 
-            const auto vo = (((gR1 * vi) + zC1) * _t0);
-            const auto tC1 = (gC1 * (vo - 0));
+            const auto vo = (-(((gR1 * vi) * Eop_Aol) * _t0));
             
-            zC1 = 2 * tC1 - zC1;
 
             output[ch][n] = vo;
         }
-        state[ch].zC1 = zC1;
     }
 }

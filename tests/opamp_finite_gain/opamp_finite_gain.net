@@ -1,0 +1,19 @@
+* Inverting amp with a real finite-gain op-amp.
+Vin vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+
+R1 vi n1 1k
+RF n1 vo 10k
+
+* Finite open-loop gain (noise gain here is 11, so Aol=200 gives a clearly
+* visible ~5% closed-loop gain error vs the ideal case).
+* nodal_model: FINITEGAIN OPAMP (Aol=200)
+Eop vo 0 0 n1 200 ; nodal_model: FINITEGAIN
+
+
+Escaled vo_scaled 0 value = {V(vo)*0.1} ; netlist_skip
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end

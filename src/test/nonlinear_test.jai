@@ -18,6 +18,16 @@ check :: (label: string, e: Expr_ID, expected: string, exprs: [] Expr) {
     }
 }
 
+check_bool :: (label: string, got: bool, expected: bool) {
+    if got == expected  print("PASS  [%]\n", label);
+    else                print("FAIL  [%]: got %, expected %\n", label, got, expected);
+}
+
+check_str :: (label: string, got: string, expected: string) {
+    if got == expected  print("PASS  [%]: %\n", label, got);
+    else                print("FAIL  [%]: got '%', expected '%'\n", label, got, expected);
+}
+
 print_cluster :: (c: Nonlinear_Cluster, exprs: [] Expr) {
     print("cluster '%': % unknown(s)\n", c.name, c.unknowns.count);
     for u : c.unknowns  print("  unknown %: vt=%, residual=%, delta=%\n", u.name, u.vt_name, u.residual_name, u.delta_name);
@@ -170,5 +180,119 @@ main :: () {
         // rather than asserting.
         vi_v := lookup_node_voltage("vi", dc_solve_vars, dc_solutions, *dc_exprs, .["vi"]);
         check("dc_input_node_lookup", vi_v, "vi", dc_exprs);
+    }
+
+    // 5. Op-amp output clip (AMP_CLIP): inverting amp (R1 from vi to n1, RF
+    //    from n1 to vo, pos tied to 0) with a finite Aol and Vsat+/Vsat- set,
+    //    no Rout. Exercises the AMP-specific device-collection loop in
+    //    build_nonlinear_clusters() (distinct from the generic
+    //    nonlinear_device_spec()-driven diode/BJT/JFET path -- see its
+    //    comment) and generate_kcl_equations()'s vclip_<name> exclusion from
+    //    eqn_nodes/solve_vars.
+    //
+    //    Two real bugs were found and fixed getting this circuit's math to
+    //    check out (a naive smoke test alone didn't catch either -- both
+    //    needed comparing generated closed forms/output against a hand
+    //    derivation to notice something was numerically wrong):
+    //      (a) Rout's synthesized resistor (netlist_codegen.jai) is wired
+    //          using "vclip_<name>" as a literal terminal string, so the
+    //          generic eqn_nodes population loop (which treats any element's
+    //          terminal as a real KCL-governed node) wrongly pulled it into
+    //          solve_vars -- turning what should be a free Newton symbol
+    //          (same role as a diode's branch current) into an ordinary
+    //          linear unknown, silently discarding the whole clip nonlinearity.
+    //          Fixed by excluding clip-stage node names from eqn_nodes,
+    //          exactly like input nodes already are.
+    //      (b) differentiate()'s SYMBOL case compared by raw Expr_ID, not by
+    //          name -- the same "second node, same name, different ID"
+    //          hazard already documented for substitution (fold()'s
+    //          `-(-x) -> x` rule can produce one). Since a clip's residual
+    //          is plain linear (unlike diode/BJT/JFET's transcendental I-V
+    //          laws), its Jacobian entry is exactly the kind of small,
+    //          heavily-folded expression likely to trigger this -- an
+    //          occurrence of vclip_<name> from a duplicate node
+    //          differentiated to 0 instead of 1, undercounting the
+    //          feedback term entirely. Fixed by comparing symbol names.
+    {
+        print("--- op-amp output clip ---\n");
+        circuit: [..] Element;
+        array_add(*circuit, Element.{ name = "R1", type = .RESISTOR, terminals = make_arr(string.["vi", "n1"]) });
+        array_add(*circuit, Element.{ name = "RF", type = .RESISTOR, terminals = make_arr(string.["n1", "vo"]) });
+        amp := Element.{ name = "Eop", type = .AMP,
+            opamp = .{ has_aol = true, aol_name = "Eop_Aol",
+                       has_vsat_p = true, has_vsat_n = true, vsat_p_name = "Eop_VsatP", vsat_n_name = "Eop_VsatN" } };
+        array_add(*amp.terminals, "vo");
+        array_add(*amp.terminals, "n1");
+        array_add(*amp.terminals, "0");
+        array_add(*circuit, amp);
+
+        solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
+        check_bool("vclip_Eop excluded from solve_vars", solve_vars.count == 3, true); // n1, vo, vgain_Eop
+
+        solutions := solve(equations, solve_vars, *exprs);
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *exprs);
+        check_bool("one AMP_CLIP cluster", clusters.count == 1, true);
+        check_bool("one unknown in the cluster", clusters[0].unknowns.count == 1, true);
+        u := clusters[0].unknowns[0];
+        check_str("unknown name", u.name, "vclip_Eop");
+        check_bool("limiter kind is AMP_CLIP", u.limiter_kind == .AMP_CLIP, true);
+        check_str("vsat_p_name threaded through", u.vsat_p_name, "Eop_VsatP");
+        check_str("vsat_n_name threaded through", u.vsat_n_name, "Eop_VsatN");
+
+        // "vo"'s closed form must reference vclip_Eop -- if it doesn't
+        // (bug (a) above), the whole clip nonlinearity silently vanishes
+        // from the circuit's actual output.
+        vo_idx := -1;
+        for sv, i : solve_vars  if print_expr(sv, exprs) == "vo"  vo_idx = i;
+        vo_refs: [..] string;
+        collect_symbol_names(solutions[vo_idx], exprs, *vo_refs);
+        check_bool("vo depends on vclip_Eop", array_find(vo_refs, "vclip_Eop"), true);
+
+        // The Jacobian (d(residual)/d(vclip_Eop)) must pick up the feedback
+        // term through RF, not just the trivial "-1" from `f = closed_form -
+        // vclip_Eop`'s own subtraction (bug (b) above) -- i.e. some
+        // invariant/iteration item must actually reference Aol, not just the
+        // residual's own affine "+vclip_Eop" term.
+        references_aol := false;
+        for gv : clusters[0].invariant_items  if String.contains(print_expr(gv.expr_id, exprs), "Eop_Aol")  references_aol = true;
+        for gv : clusters[0].iteration_items  if String.contains(print_expr(gv.expr_id, exprs), "Eop_Aol")  references_aol = true;
+        check_bool("Jacobian/delta construction references Aol (not a trivial constant)", references_aol, true);
+    }
+
+    // 6. Op-amp slew-rate limiting, no Vsat at all (regression guard for a
+    //    bug found while testing this: clamp_opamp_output's generated call
+    //    always passes both Vsat rail args, so a slew-only op-amp needs
+    //    vsat_p_name/vsat_n_name populated with permissive defaults too --
+    //    the gate for that was originally `has_vsat_p || has_vsat_n`, which
+    //    stayed false for a slew-only model and left the rail args as empty
+    //    strings in the generated code).
+    {
+        print("--- op-amp slew, no Vsat ---\n");
+        circuit: [..] Element;
+        array_add(*circuit, Element.{ name = "R1", type = .RESISTOR, terminals = make_arr(string.["vi", "n1"]) });
+        array_add(*circuit, Element.{ name = "RF", type = .RESISTOR, terminals = make_arr(string.["n1", "vo"]) });
+        amp := Element.{ name = "Eop", type = .AMP,
+            opamp = .{ has_aol = true, aol_name = "Eop_Aol",
+                       has_vsat_p = false, has_vsat_n = false, vsat_p_name = "Eop_VsatP", vsat_n_name = "Eop_VsatN",
+                       has_slew = true, slew_name = "Eop_Slew" } };
+        array_add(*amp.terminals, "vo");
+        array_add(*amp.terminals, "n1");
+        array_add(*amp.terminals, "0");
+        array_add(*circuit, amp);
+
+        solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
+        check_bool("slew alone still routes through the free vclip symbol", solve_vars.count == 3, true);
+
+        solutions := solve(equations, solve_vars, *exprs);
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *exprs);
+        check_bool("one cluster", clusters.count == 1, true);
+        u := clusters[0].unknowns[0];
+        check_bool("has_slew threaded through", u.has_slew, true);
+        check_str("slew_name threaded through", u.slew_name, "Eop_Slew");
+        check_str("zslew_name derived from element name", u.zslew_name, "zslew_Eop");
+        // vsat_p_name/vsat_n_name must still be non-empty even though Vsat
+        // itself is unset -- clamp_opamp_output's call always needs both.
+        check_bool("vsat_p_name non-empty despite no Vsat", u.vsat_p_name.count > 0, true);
+        check_bool("vsat_n_name non-empty despite no Vsat", u.vsat_n_name.count > 0, true);
     }
 }

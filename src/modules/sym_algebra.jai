@@ -369,8 +369,11 @@ differentiate :: (e: Expr_ID, var: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
             return expr_const(0, exprs);
 
         case .SYMBOL;
-            if e == var  return expr_const(1, exprs);   // d/dvar(var) = 1
-            return expr_const(0, exprs);                // d/dvar(other symbol) = 0
+            // Compare by name, not by raw ID: fold()'s `-(-x) -> x` rule (and
+            // others) can leave a second node with the same name but a
+            // different ID floating around.
+            if expr.name == exprs.*[var].name  return expr_const(1, exprs);   // d/dvar(var) = 1
+            return expr_const(0, exprs);                                      // d/dvar(other symbol) = 0
 
         case .NEG;
             return expr_neg(differentiate(expr.left, var, exprs), exprs);

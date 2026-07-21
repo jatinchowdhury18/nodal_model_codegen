@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 5c2e3ae.
+// Auto-generated with netlist_codegen version 50a08af.
 // Command: netlist_codegen diode_circuit.net diode_circuit.h
 
 #pragma once
@@ -63,7 +63,8 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto vcrit_D1N914_vt = D1N914_vt * std::log(D1N914_vt / (std::sqrt(2.0) * D1N914_Is));
     
-    const auto _t0 = (1.0 / (gR1 + gC1));
+    const auto _t0 = (gR1 + gC1);
+    const auto _t1 = (1.0 / (gR1 + gC1));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC1 = state[ch].zC1;
@@ -96,7 +97,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 
             }
 
-            const auto vo = (-(((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) - ((gR1 * vi) + zC1)) * _t0));
+            const auto vo = (-(((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) - ((gR1 * vi) + zC1)) * _t1));
             const auto tC1 = (gC1 * (vo - 0));
             
             zC1 = 2 * tC1 - zC1;

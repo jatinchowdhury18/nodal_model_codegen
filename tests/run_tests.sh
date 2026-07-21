@@ -37,3 +37,7 @@ test common_drain
 test pedal_tone
 test pedal_drive
 test pedal_model
+
+# op-amp non-idealities
+test opamp_finite_gain
+test opamp_clipping

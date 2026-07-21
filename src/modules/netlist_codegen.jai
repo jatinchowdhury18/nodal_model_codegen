@@ -160,6 +160,79 @@ find_model :: (model_defs: [] Model_Def, name: string) -> Model_Def {
     return model;
 }
 
+// A parsed SPICE-style `.model <name> OPAMP (Aol=.. GBW=.. Ccomp=.. Rin=..
+// Rout=.. Vsat+=.. Vsat-=.. slew=.. Vos=.. Ios=.. Ibias=..)` card. Every
+// param is independently optional -- unlike D/Q models there's no SPICE
+// default to fall back to, since "unset" means "ideal for that
+// characteristic", so we track presence with `has_*` flags instead.
+Opamp_Model_Def :: struct {
+    name:       string;
+    has_aol:    bool; aol_val:    float32;
+    has_gbw:    bool; gbw_val:    float32;
+    has_ccomp:  bool; ccomp_val:  float32; // explicit compensation cap (F); takes precedence over GBW if both are set
+    has_rin:    bool; rin_val:    float32;
+    has_rout:   bool; rout_val:   float32;
+    has_vsat_p: bool; vsat_p_val: float32;
+    has_vsat_n: bool; vsat_n_val: float32;
+    has_slew:   bool; slew_val:   float32;
+    has_vos:    bool; vos_val:    float32;
+    has_ios:    bool; ios_val:    float32;
+    has_ibias:  bool; ibias_val:  float32;
+}
+
+// Parse a `.model <name> OPAMP (...)` line (leading "." already stripped/
+// trimmed by the caller). Mirrors parse_model_line's key=value scanning.
+parse_opamp_model_line :: (line: string) -> Opamp_Model_Def {
+    tokens_raw := String.split(line, #char " ");
+    tokens: [..] string;
+    for t : tokens_raw  if t.count > 0  array_add(*tokens, t);
+
+    model: Opamp_Model_Def;
+    if tokens.count < 3  return model; // malformed .model line
+
+    model.name = tokens[1];
+
+    if tokens.count > 3 {
+        joined := String.join(..array_view(tokens, 3, tokens.count - 3), separator = " ");
+        joined, _ = String.replace(joined, "(", " ");
+        joined, _ = String.replace(joined, ")", " ");
+        joined, _ = String.replace(joined, ",", " ");
+        kv_tokens_raw := String.split(joined, #char " ");
+        for kv : kv_tokens_raw {
+            if kv.count == 0  continue;
+            parts := String.split(kv, #char "=");
+            if parts.count != 2  continue;
+            key := String.to_upper_copy(String.trim(parts[0]));
+            val := parse_spice_value(String.trim(parts[1])); // suffix-aware (1Meg, 10k, 1u, ...)
+            if Math.is_nan_is_inf(val)  continue;
+            if key == {
+                case "AOL";   model.has_aol = true;    model.aol_val = val;
+                case "GBW";   model.has_gbw = true;    model.gbw_val = val;
+                case "CCOMP"; model.has_ccomp = true;  model.ccomp_val = val;
+                case "RIN";   model.has_rin = true;    model.rin_val = val;
+                case "ROUT";  model.has_rout = true;   model.rout_val = val;
+                case "VSAT+"; model.has_vsat_p = true; model.vsat_p_val = val;
+                case "VSAT-"; model.has_vsat_n = true; model.vsat_n_val = val;
+                case "SLEW";  model.has_slew = true;   model.slew_val = val;
+                case "VOS";   model.has_vos = true;    model.vos_val = val;
+                case "IOS";   model.has_ios = true;    model.ios_val = val;
+                case "IBIAS"; model.has_ibias = true;  model.ibias_val = val;
+            }
+        }
+    }
+
+    return model;
+}
+
+// Look up a parsed .model OPAMP card by name. A not-found name (or no card
+// at all) falls back to an all-"has_*=false" model, i.e. ideal.
+find_opamp_model :: (model_defs: [] Opamp_Model_Def, name: string) -> Opamp_Model_Def {
+    for m : model_defs  if m.name == name  return m;
+    model: Opamp_Model_Def;
+    model.name = name;
+    return model;
+}
+
 // Register a (name, value) pair in `values` at most once -- multiple
 // elements referencing the same .model card must not produce duplicate
 // Params struct fields.
@@ -181,10 +254,6 @@ Netlist_Info :: struct {
 }
 
 parse_netlist :: (netlist_str: string) -> Netlist_Info {
-    parse_value :: (val_str: string) -> float32 {
-        return parse_spice_value(val_str);
-    }
-
     using netlist_info : Netlist_Info;
 
     add_element :: (name: string, type: Element_Type, terminals: [] string, no_combine := false) #expand {
@@ -201,16 +270,59 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
         return ifx parts.count > 0 then String.trim(parts[0]) else line;
     }
 
-    // First pass: collect .model cards.
+    // A trailing "; nodal_model: <name> [out=..] [pos=..] [neg=..]" reference
+    // on an element line -- names an op-amp model defined by a
+    // `* nodal_model: <name> OPAMP (...)` comment elsewhere in the file.
+    // Only needs overriding when the real SPICE part's pin order doesn't match.
+    Nodal_Model_Ref :: struct {
+        name: string;
+        out_override: string;
+        pos_override: string;
+        neg_override: string;
+    }
+    find_nodal_model_ref :: (line: string) -> Nodal_Model_Ref {
+        result: Nodal_Model_Ref;
+        parts := String.split(line, "nodal_model:");
+        if parts.count < 2  return result;
+
+        tokens_raw := String.split(String.trim(parts[1]), #char " ");
+        tokens: [..] string;
+        for t : tokens_raw  if t.count > 0  array_add(*tokens, t);
+        if tokens.count == 0  return result;
+
+        result.name = tokens[0];
+        for i : 1..tokens.count-1 {
+            kv := String.split(tokens[i], #char "=");
+            if kv.count != 2  continue;
+            key := String.to_upper_copy(kv[0]);
+            if key == {
+                case "OUT"; result.out_override = kv[1];
+                case "POS"; result.pos_override = kv[1];
+                case "NEG"; result.neg_override = kv[1];
+            }
+        }
+        return result;
+    }
+
+    // First pass: collect .model cards (D/NPN/PNP/JFET) and comment-embedded
+    // `nodal_model: <name> OPAMP (...)` op-amp model definitions. OPAMP
+    // models live in a comment, not a real `.model` line.
     model_defs: [..] Model_Def;
+    opamp_model_defs: [..] Opamp_Model_Def;
     for line_raw : lines {
         line := String.trim(line_raw);
         if line.count == 0  continue;
+
+        if line[0] == #char "*" {
+            rest := String.trim(String.slice(line, 1, line.count - 1));
+            if String.begins_with(rest, "nodal_model:")  array_add(*opamp_model_defs, parse_opamp_model_line(strip_comment(rest)));
+            continue;
+        }
+
         if line[0] != #char "."  continue;
         line = String.trim(String.slice(line, 1, line.count - 1));
-        if String.begins_with(line, "model") {
-            array_add(*model_defs, parse_model_line(strip_comment(line)));
-        }
+        if !String.begins_with(line, "model")  continue;
+        array_add(*model_defs, parse_model_line(strip_comment(line)));
     }
 
     for line_raw : lines {
@@ -252,6 +364,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
         if String.contains(line, "netlist_skip")  continue;
 
         has_no_combine := String.contains(line, "no_combine");
+        nodal_model_ref := find_nodal_model_ref(line);
         line = strip_comment(line);
 
         tokens_raw := String.split(line, #char " ");
@@ -261,13 +374,107 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
 
         name := tokens[0];
         n1, n2 := tokens[1], tokens[2];
-        value := parse_value(tokens[3]);
+        value := parse_spice_value(tokens[3]);
         if ! Math.is_nan_is_inf(value) {
             array_add(*values, Element_Value.{ name, value });
         } else {
             // @TODO: this warning always throws on the input voltage source...
             // log("Warning: couldn't parse value '%' for element '%'; it will default to 0.\n", tokens[3], name);
         }
+
+        // `; nodal_model: <name>` opts ANY element line (a real SPICE `E`,
+        // an `X` instantiating a library part, ...) into our non-ideal
+        // op-amp model, and completely ignores whatever else the line says.
+        // out/pos/neg default to that line's tokens[1]/[3]/[4] unless
+        // overridden in the reference.
+        if nodal_model_ref.name.count > 0 {
+            model := find_opamp_model(opamp_model_defs, nodal_model_ref.name);
+            out_node := ifx nodal_model_ref.out_override.count > 0 then nodal_model_ref.out_override else tokens[1];
+            pos_node := ifx nodal_model_ref.pos_override.count > 0 then nodal_model_ref.pos_override else tokens[3];
+            neg_node := ifx nodal_model_ref.neg_override.count > 0 then nodal_model_ref.neg_override else tokens[4];
+
+            // Rin/Rout/GBW/Ccomp/Vsat/slew only make sense on a
+            // distinguishable finite-gain output node, so they all require
+            // Aol too.
+            needs_aol := model.has_rin || model.has_rout || model.has_vsat_p || model.has_vsat_n || model.has_slew || model.has_gbw || model.has_ccomp;
+            if needs_aol && !model.has_aol {
+                log("Warning: nodal_model '%' sets Rin/Rout/Vsat/slew/GBW/Ccomp without Aol; treating '%' as ideal.\n", nodal_model_ref.name, name);
+                add_element(name, .AMP, .[out_node, neg_node, pos_node]);
+                continue;
+            }
+
+            opamp: Opamp_Model;
+            if model.has_aol    { opamp.has_aol = true;    opamp.aol_name    = tprint("%_Aol", name);   add_value_once(*values, opamp.aol_name, model.aol_val); }
+            if model.has_gbw || model.has_ccomp  opamp.has_gbw = true; // no Params field of its own -- only used below to derive the synthesized Ccomp/Rcomp defaults
+            if model.has_rin    { opamp.has_rin = true;    opamp.rin_name    = tprint("%_Rin", name);   add_value_once(*values, opamp.rin_name, model.rin_val); }
+            if model.has_rout   { opamp.has_rout = true;   opamp.rout_name   = tprint("%_Rout", name);  add_value_once(*values, opamp.rout_name, model.rout_val); }
+            // clamp_opamp_output always takes both rails, so both fields
+            // get populated whenever any clip characteristic is set.
+            if model.has_vsat_p || model.has_vsat_n || model.has_slew {
+                opamp.has_vsat_p = model.has_vsat_p;
+                opamp.has_vsat_n = model.has_vsat_n;
+                opamp.vsat_p_name = tprint("%_VsatP", name);
+                opamp.vsat_n_name = tprint("%_VsatN", name);
+                p_val := ifx model.has_vsat_p then model.vsat_p_val else 1.0e30;
+                n_val := ifx model.has_vsat_n then model.vsat_n_val else -1.0e30;
+                add_value_once(*values, opamp.vsat_p_name, cast(float32) p_val);
+                add_value_once(*values, opamp.vsat_n_name, cast(float32) n_val);
+            }
+            if model.has_slew   { opamp.has_slew = true;   opamp.slew_name   = tprint("%_Slew", name);  add_value_once(*values, opamp.slew_name, model.slew_val); }
+            if model.has_vos    { opamp.has_vos = true;    opamp.vos_name    = tprint("%_Vos", name);   add_value_once(*values, opamp.vos_name, model.vos_val); }
+            if model.has_ios    { opamp.has_ios = true;    opamp.ios_name    = tprint("%_Ios", name);   add_value_once(*values, opamp.ios_name, model.ios_val); }
+            if model.has_ibias  { opamp.has_ibias = true;  opamp.ibias_name  = tprint("%_Ibias", name); add_value_once(*values, opamp.ibias_name, model.ibias_val); }
+
+            element := Element.{ name = name, type = .AMP, opamp = opamp };
+            array_add(*element.terminals, out_node);
+            array_add(*element.terminals, neg_node);
+            array_add(*element.terminals, pos_node);
+            array_add(*elements, element);
+
+            // Rin/Rout/GBW are synthesized as ordinary RESISTOR/CAPACITOR
+            // elements wired into the gain-node chain.
+            if opamp.has_rin {
+                rin_el := Element.{ name = opamp.rin_name, type = .RESISTOR, no_combine = true };
+                array_add(*rin_el.terminals, pos_node);
+                array_add(*rin_el.terminals, neg_node);
+                array_add(*elements, rin_el);
+            }
+            if opamp.has_gbw {
+                // Ccomp, if given, is used directly (the real compensation cap value);
+                // otherwise GBW only fixes the Aol/GBW *ratio* (the dominant pole), so the
+                // cap's default is derived once here from the literal model values.
+                r_comp := 1.0; // internal normalization resistor; only the R*C product matters
+                c_comp: float64;
+                if model.has_ccomp {
+                    c_comp = model.ccomp_val;
+                } else {
+                    pole_hz := model.gbw_val / model.aol_val;
+                    c_comp = 1.0 / (2.0 * Math.PI * r_comp * pole_hz);
+                }
+
+                rcomp_name := tprint("%_Rcomp", name);
+                rcomp_el := Element.{ name = rcomp_name, type = .RESISTOR, no_combine = true };
+                array_add(*rcomp_el.terminals, opamp_gain_node(element));
+                array_add(*rcomp_el.terminals, opamp_bandwidth_node(element));
+                add_value_once(*values, rcomp_name, cast(float32) r_comp);
+                array_add(*elements, rcomp_el);
+
+                ccomp_name := tprint("%_Ccomp", name);
+                ccomp_el := Element.{ name = ccomp_name, type = .CAPACITOR, no_combine = true };
+                array_add(*ccomp_el.terminals, opamp_bandwidth_node(element));
+                array_add(*ccomp_el.terminals, "0");
+                add_value_once(*values, ccomp_name, cast(float32) c_comp);
+                array_add(*elements, ccomp_el);
+            }
+            if opamp.has_rout {
+                rout_el := Element.{ name = opamp.rout_name, type = .RESISTOR, no_combine = true };
+                array_add(*rout_el.terminals, opamp_clip_node(element));
+                array_add(*rout_el.terminals, out_node);
+                array_add(*elements, rout_el);
+            }
+            continue;
+        }
+
         prefix := String.to_upper(name[0]);
 
         etype: Element_Type;
@@ -279,6 +486,10 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
             case "L";
                 etype = .INDUCTOR;
             case "E";
+                // Ideal op-amp: `E<name> out ref pos neg <gain>` (gain
+                // discarded -- infinite gain). Non-ideal behavior is opted
+                // into with a `; nodal_model: <name>` comment instead (see
+                // above), which works on this or any other element line.
                 add_element(name, .AMP, .[tokens[1], tokens[4], tokens[3]]);
                 continue;
             case "V";
@@ -290,7 +501,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 // needs its Params default recorded here.
                 if tokens.count > 4 && String.to_upper_copy(tokens[3]) == "DC" {
                     is_fixed = true;
-                    dc_value := parse_value(tokens[4]);
+                    dc_value := parse_spice_value(tokens[4]);
                     if !Math.is_nan_is_inf(dc_value)  add_value_once(*values, name, dc_value);
                 }
 
@@ -423,6 +634,18 @@ generate_params_struct :: (elements: [] Element,
             case .BJT; #through;
             case .JFET;
                 for pname : device_model_param_names(el.type, el.nonlinear)  emit_nonlinear_param(pname);
+            case .AMP;
+                // Rin/Rout/GBW have no fields of their own here -- they're
+                // synthesized RESISTOR/CAPACITOR elements.
+                if el.opamp.has_aol    append(*builder, write_value(el.opamp.aol_name));
+                if opamp_has_clip_stage(el) {
+                    append(*builder, write_value(el.opamp.vsat_p_name));
+                    append(*builder, write_value(el.opamp.vsat_n_name));
+                }
+                if el.opamp.has_slew   append(*builder, write_value(el.opamp.slew_name));
+                if el.opamp.has_vos    append(*builder, write_value(el.opamp.vos_name));
+                if el.opamp.has_ios    append(*builder, write_value(el.opamp.ios_name));
+                if el.opamp.has_ibias  append(*builder, write_value(el.opamp.ibias_name));
         }
     }
 
@@ -450,6 +673,15 @@ generate_state_struct :: (elements: [] Element, extra_state_names: [] string, ty
                 array_add(*states, tprint("z%", el.name));
                 if lang == "c"  append(*builder, tprint("    % %;\n",      type_name, states[states.count-1]));
                 else            append(*builder, tprint("    % % {};\n",   type_name, states[states.count-1]));
+            case .AMP;
+                // zslew_<name>: previous sample's converged output, distinct
+                // from vclip_<name>'s own warm-start (unlike a diode, slew
+                // needs *last sample's* value as a fixed reference).
+                if el.opamp.has_slew {
+                    array_add(*states, tprint("zslew_%", el.name));
+                    if lang == "c"  append(*builder, tprint("    % %;\n",      type_name, states[states.count-1]));
+                    else            append(*builder, tprint("    % % {};\n",   type_name, states[states.count-1]));
+                }
         }
     }
 
@@ -478,20 +710,33 @@ generate_impedance_defs :: (elements: [] Element, type_name: string = "float", l
     auto_or_type := ifx lang == "c" then type_name else "auto";
     suffix       := ifx type_name == "float" then "f" else ""; // only "float" gets literal f-suffixes; "double" etc. get bare literals
 
-    // Nonlinear I-V-law expressions (built in nonlinear_solve.jai) reference
-    // their Params fields as bare symbol names (e.g. "D1_Is").
-    emitted_nonlinear_aliases: [..] string;
-    emit_nonlinear_alias :: (pname: string) #expand {
-        if pname.count == 0  return;
-        if array_find(emitted_nonlinear_aliases, pname)  return;
-        array_add(*emitted_nonlinear_aliases, pname);
+    // DIODE/DIODE_PAIR/BJT/JFET I-V-law expressions (built in
+    // nonlinear_solve.jai) and the AMP KCL branch (nodal_analysis.jai)
+    // reference their Params fields as bare symbol names (e.g. "D1_Is",
+    // "Eop_Aol"), so alias each one to a local const here.
+    emitted_bare_aliases: [..] string;
+    emit_bare_alias :: (pname: string) #expand {
+        if pname.count == 0  return; // e.g. BJT-only fields left blank on DIODE/DIODE_PAIR elements
+        if array_find(emitted_bare_aliases, pname)  return;
+        array_add(*emitted_bare_aliases, pname);
         append(*builder, tprint("const %1 %2 = params.%2;\n", auto_or_type, pname));
     }
 
     for el : elements {
-        for pname : device_model_param_names(el.type, el.nonlinear)  emit_nonlinear_alias(pname);
+        for pname : device_model_param_names(el.type, el.nonlinear)  emit_bare_alias(pname);
+        if el.type == .AMP {
+            if el.opamp.has_aol    emit_bare_alias(el.opamp.aol_name);
+            if opamp_has_clip_stage(el) {
+                emit_bare_alias(el.opamp.vsat_p_name);
+                emit_bare_alias(el.opamp.vsat_n_name);
+            }
+            if el.opamp.has_slew   emit_bare_alias(el.opamp.slew_name);
+            if el.opamp.has_vos    emit_bare_alias(el.opamp.vos_name);
+            if el.opamp.has_ios    emit_bare_alias(el.opamp.ios_name);
+            if el.opamp.has_ibias  emit_bare_alias(el.opamp.ibias_name);
+        }
     }
-    if emitted_nonlinear_aliases.count > 0  append(*builder, "\n");
+    if emitted_bare_aliases.count > 0  append(*builder, "\n");
 
     for el : elements {
         // For same-type combined elements (R+R, C+C, R||R, C||C), emit:
@@ -627,6 +872,36 @@ DONE
 DONE;
 }
 
+// Hard rail clamp applied as a post-step limiter - the Newton
+// residual itself is just the plain linear VCVS equation. Slew (v_prev/
+// slew_max_step) clamps first, then the rails; unknowns with no slew set
+// pass a permissive slew_max_step so that branch is a no-op.
+generate_opamp_clip_limiter_helper :: (type_name: string, lang: string) -> string {
+    if lang == "c" {
+        template := #string DONE
+static % clamp_opamp_output(% v_new, % v_prev, % slew_max_step, % vsat_n, % vsat_p) {
+    if (v_new - v_prev > slew_max_step)  v_new = v_prev + slew_max_step;
+    if (v_new - v_prev < -slew_max_step) v_new = v_prev - slew_max_step;
+    if (v_new > vsat_p) return vsat_p;
+    if (v_new < vsat_n) return vsat_n;
+    return v_new;
+}
+DONE
+        return tprint(template, type_name, type_name, type_name, type_name, type_name, type_name);
+    }
+
+    return #string DONE
+[[maybe_unused]] static auto clamp_opamp_output = [](auto v_new, auto v_prev, auto slew_max_step, auto vsat_n, auto vsat_p)
+{
+    if (v_new - v_prev > slew_max_step)  v_new = v_prev + slew_max_step;
+    if (v_new - v_prev < -slew_max_step) v_new = v_prev - slew_max_step;
+    if (v_new > vsat_p) return vsat_p;
+    if (v_new < vsat_n) return vsat_n;
+    return v_new;
+};
+DONE;
+}
+
 // vcrit = vt * log(vt / (sqrt(2) * Is)) per junction-voltage unknown, derived
 // once from Params fields.
 generate_vcrit_defs :: (clusters: [] Nonlinear_Cluster, type_name: string, lang: string) -> string {
@@ -663,7 +938,9 @@ generate_newton_constants :: (newton_tol_sq: float, newton_max_iter: int, type_n
 // Newton-Raphson solve for one cluster, to be inserted inside the per-sample
 // loop. Iteration count/tolerance come from the shared `newton_max_iter` /
 // `newton_tol_sq` constants (see generate_newton_constants), not literals.
-generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, options: Codegen_Options) -> string {
+// `apply_slew`: false for reset()'s DC solve -- Newton iterations aren't
+// real time steps, so slew-limiting them would corrupt convergence.
+generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, options: Codegen_Options, apply_slew := true) -> string {
     builder: String_Builder;
     print_to_builder(*builder, "// --- Newton-Raphson solve: %\n", cluster.name);
 
@@ -687,6 +964,16 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, opt
             case .JFET_PINCHOFF;
                 print_to_builder(*inner_builder, "%1 = limit_jfet_vgs(%1 + %2, %3);\n",
                                  u.name, u.delta_name, u.vp_name);
+            case .AMP_CLIP;
+                // This residual is plain linear (f = closed_form - vclip),
+                // so its Jacobian can simplify to the bare constant -1.
+                //
+                // No slew set: pass a permissive slew_max_step (never trips)
+                // and reuse `v_new` as `v_prev`.
+                v_prev := ifx u.has_slew && apply_slew then u.zslew_name else "_v";
+                slew_max_step := ifx u.has_slew && apply_slew then tprint("(%/sample_rate)", u.slew_name) else "1.0e30";
+                print_to_builder(*inner_builder, "const auto _v = (%5)(%1 + %2);\n%1 = clamp_opamp_output(_v, %6, %7, %3, %4);\n",
+                                 u.name, u.delta_name, u.vsat_n_name, u.vsat_p_name, options.type_name, v_prev, slew_max_step);
             case .NONE;
                 print_to_builder(*inner_builder, "%1 = %1 + %2;\n", u.name, u.delta_name);
         }
@@ -767,12 +1054,13 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, lang: strin
     for input : inputs  print_to_builder(*builder, "    const %1 %2 = %2_dc;\n", decl_type, input);
     if inputs.count > 0  append(*builder, "\n");
 
-    // Newton unknowns start at 0 (cold-start guess).
+    // Newton unknowns start at 0 (cold-start guess). No zslew_<name> local
+    // needed here since the DC solve runs with apply_slew=false.
     for c : dc_clusters  for u : c.unknowns  print_to_builder(*builder, "    %1 %2 = 0;\n", type_name, u.name);
     if dc_clusters.count > 0  append(*builder, "\n");
 
     for c : dc_clusters {
-        newton_code := generate_cluster_newton_code(c, dc_exprs, .{ lang = lang, type_name = type_name });
+        newton_code := generate_cluster_newton_code(c, dc_exprs, .{ lang = lang, type_name = type_name }, apply_slew = false);
         append(*builder, indent(newton_code));
     }
 
@@ -782,7 +1070,13 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, lang: strin
     if z_init_vars.count > 0  append(*builder, "\n");
 
     append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
-    for c : dc_clusters  for u : c.unknowns  print_to_builder(*builder, "        state[ch].%1 = %1;\n", u.name);
+    for c : dc_clusters {
+        for u : c.unknowns {
+            print_to_builder(*builder, "        state[ch].%1 = %1;\n", u.name);
+            // zslew_<name> starts at the same DC-settled value.
+            if u.has_slew  print_to_builder(*builder, "        state[ch].%1 = %2;\n", u.zslew_name, u.name);
+        }
+    }
     for zv : z_init_vars  print_to_builder(*builder, "        state[ch].%1 = %1;\n", zv.name);
     append(*builder, "    }\n");
 
@@ -811,7 +1105,11 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     }
 
     has_nonlinear := false;
-    for el : net.elements  if nonlinear_device_spec(el.type).unknowns.count > 0 { has_nonlinear = true; break; }
+    for el : net.elements {
+        if nonlinear_device_spec(el.type).unknowns.count > 0 { has_nonlinear = true; break; }
+        // AMP_CLIP isn't in nonlinear_device_spec() -- see circuit_uses_limiter_kind.
+        if el.type == .AMP && opamp_has_clip_stage(el) { has_nonlinear = true; break; }
+    }
 
     outer_code: string;
     loop_code:  string;
@@ -900,6 +1198,10 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         }
         if circuit_uses_limiter_kind(net.elements, .JFET_PINCHOFF) {
             append(*builder, generate_jfet_limiter_helper(type_name, lang));
+            append(*builder, "\n");
+        }
+        if circuit_uses_limiter_kind(net.elements, .AMP_CLIP) {
+            append(*builder, generate_opamp_clip_limiter_helper(type_name, lang));
             append(*builder, "\n");
         }
         append(*builder, generate_newton_constants(net.newton_tol_sq, net.newton_max_iter, type_name, lang));
