@@ -41,3 +41,4 @@ test pedal_model
 # op-amp non-idealities
 test opamp_finite_gain
 test opamp_clipping
+test opamp_lm741

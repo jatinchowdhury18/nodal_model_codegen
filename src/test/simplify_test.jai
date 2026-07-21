@@ -28,7 +28,7 @@ main :: () {
         R := expr_symbol("R", *exprs);
         e := expr_div(R, R, *exprs);
         simplify(e, *exprs);
-        check("self_cancel", e, "1", exprs);
+        check("self_cancel", e, "1.0", exprs);
     }
 
     // 3. (R1*C1*v + R2*C1*v2) / (R1*R2*C1)  →  (v + ... )/ (R1*R2)
@@ -57,7 +57,7 @@ main :: () {
         R := expr_symbol("R", *exprs);
         e := expr_div(expr_const(6, *exprs), expr_mul(expr_const(4, *exprs), R, *exprs), *exprs);
         simplify(e, *exprs);
-        check("int_gcd", e, "(3 / (2 * R))", exprs);
+        check("int_gcd", e, "(3.0 / (2.0 * R))", exprs);
     }
 
     // 5. Exact integer cancel: (6*R) / 3  →  (2*R)
@@ -66,7 +66,7 @@ main :: () {
         R := expr_symbol("R", *exprs);
         e := expr_div(expr_mul(expr_const(6, *exprs), R, *exprs), expr_const(3, *exprs), *exprs);
         simplify(e, *exprs);
-        check("int_exact", e, "(2 * R)", exprs);
+        check("int_exact", e, "(2.0 * R)", exprs);
     }
 
     // 6. MUL lift: a * (b/c)  →  (a*b)/c  then cancel if possible

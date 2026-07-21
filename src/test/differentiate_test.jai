@@ -17,7 +17,7 @@ main :: () {
         x := expr_symbol("x", *exprs);
         d := differentiate(x, x, *exprs);
         simplify(d, *exprs);
-        check("d_self", d, "1", exprs);
+        check("d_self", d, "1.0", exprs);
     }
 
     // 2. d/dx(y) = 0  (differentiating w.r.t. an unrelated symbol)
@@ -27,7 +27,7 @@ main :: () {
         y := expr_symbol("y", *exprs);
         d := differentiate(y, x, *exprs);
         simplify(d, *exprs);
-        check("d_unrelated", d, "0", exprs);
+        check("d_unrelated", d, "0.0", exprs);
     }
 
     // 3. d/dx(3*x) = 3   (MUL by a constant)
@@ -37,7 +37,7 @@ main :: () {
         e := expr_mul(expr_const(3, *exprs), x, *exprs);
         d := differentiate(e, x, *exprs);
         simplify(d, *exprs);
-        check("d_const_mul", d, "3", exprs);
+        check("d_const_mul", d, "3.0", exprs);
     }
 
     // 4. Product rule: d/dx(x*x) = x + x
@@ -58,7 +58,7 @@ main :: () {
         e := expr_div(x, c, *exprs);
         d := differentiate(e, x, *exprs);
         simplify(d, *exprs);
-        check("d_quotient", d, "(1 / c)", exprs);
+        check("d_quotient", d, "(1.0 / c)", exprs);
     }
 
     // 6. Chain rule: d/dv(exp(v/vt)) simplifies to exp(v/vt) / vt

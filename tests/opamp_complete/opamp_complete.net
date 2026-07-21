@@ -1,0 +1,25 @@
+* Inverting amp with a "complete" non-ideal op-amp model: Aol, GBW, Rin,
+* Rout, Vsat, Vos, Ios, and Ibias all set together (LM741-ish values).
+Vin vi 0 PULSE(0.02 -0.3 0 1u 1u 10m 40m)
+
+R1 vi vneg 1k
+RF vneg vo 100k
+
+Rin_lm vneg 0 2Meg ; netlist_skip
+Iibias_n vneg 0 70n ; netlist_skip
+Eraw vraw 0 value={200000*(0-V(vneg)+0.002)} ; nodal_model: COMPLETE pos=0 neg=vneg out=vo
+Rcomp_lm vraw vbw 1 ; netlist_skip
+Ccomp_lm vbw 0 0.031830989 ; netlist_skip
+Eclip vclip 0 value={max(min(V(vbw),13.5),-13.5)} ; netlist_skip
+Rout_lm vclip vo 75 ; netlist_skip
+
+* nodal_model: COMPLETE OPAMP (Aol=200k GBW=1Meg Rin=2Meg Rout=75 Vsat+=13.5 Vsat-=-13.5 Vos=2m Ios=20n Ibias=80n)
+
+Escaled vo_scaled 0 value = {V(vo)*0.05} ; netlist_skip
+
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end
