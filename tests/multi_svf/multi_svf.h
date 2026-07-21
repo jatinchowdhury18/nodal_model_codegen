@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen multi_svf.net multi_svf.h
 
 #pragma once
@@ -48,7 +48,7 @@ static void compute (const float* const* input, float** output_vh, float** outpu
     const auto _t6 = (gCf1 * gCf2);
     const auto _t8 = (gRf1 * gRf2);
     const auto _t9 = (_t0 * (gRf1 * gCf2));
-    const auto _t7 = (1 / ((_t2 * ((gR1 * _t6) + (gRfb2 * _t8))) + (gRfb1 * _t9)));
+    const auto _t7 = (1.0 / ((_t2 * ((gR1 * _t6) + (gRfb2 * _t8))) + (gRfb1 * _t9)));
     const auto _t11 = (_t0 * _t6);
     const auto _t12 = (_t0 * _t8);
     for (int ch = 0; ch < num_channels; ++ch)

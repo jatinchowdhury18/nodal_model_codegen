@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen pedal_tone.net pedal_tone.h
 
 #pragma once
@@ -39,7 +39,7 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t8 = (gRtp + gRtm);
     const auto _t4 = (_t5 * gRtm);
     const auto _t7 = ((_t5 * _t8) - (gRtp * gRtp));
-    const auto _t6 = (1 / ((gRtm * _t4) - (_t0 * _t7)));
+    const auto _t6 = (1.0 / ((gRtm * _t4) - (_t0 * _t7)));
     const auto _t9 = (gRtp * gRtm);
     for (int ch = 0; ch < num_channels; ++ch)
     {

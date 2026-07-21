@@ -589,9 +589,12 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         }
     }
 
-    // @TODO: I am not sure this is doing anything?
+    // Repoints other elements' terminals from an eliminated node to its
+    // replacement. Skips FIXED_VOLTAGE elements: their terminal is already
+    // handled by the constraint pass above.
     substitute_node :: (node_to_sub: string, replacement_node: string) #expand {
         for *el : elements {
+            if el.type == .FIXED_VOLTAGE  continue;
             for node, node_idx : el.terminals {
                 if node == node_to_sub {
                     el.terminals[node_idx] = replacement_node;

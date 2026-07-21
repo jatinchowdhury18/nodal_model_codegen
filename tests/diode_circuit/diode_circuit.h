@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen diode_circuit.net diode_circuit.h
 
 #pragma once
@@ -31,6 +31,18 @@ struct State {
             v_new = vt * std::log(v_new / vt);
         }
     }
+    else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
+    {
+        if (v_old < 0)
+        {
+            const auto arg = 1 + (v_old - v_new) / vt;
+            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+        }
+        else
+        {
+            v_new = -vt * std::log(-v_new / vt);
+        }
+    }
     return v_new;
 };
 
@@ -51,7 +63,7 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto vcrit_D1N914_vt = D1N914_vt * std::log(D1N914_vt / (std::sqrt(2.0) * D1N914_Is));
     
-    const auto _t0 = (1 / (gR1 + gC1));
+    const auto _t0 = (1.0 / (gR1 + gC1));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC1 = state[ch].zC1;
@@ -61,20 +73,20 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto vi = input[ch][n];
 
             // --- Newton-Raphson solve: D1
-            const auto _D1_t4 = (1 / (gR1 + gC1));
+            const auto _D1_t4 = (1.0 / (gR1 + gC1));
             const auto _D1_t5 = ((gR1 * vi) + zC1);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const auto _D1_t3 = (vD1 / D1N914_vt);
                 const auto _D1_t2 = exp(_D1_t3);
-                const auto _D1_t1 = (((D1N914_Is * (_D1_t2 - 1)) - _D1_t5) * _D1_t4);
+                const auto _D1_t1 = (((D1N914_Is * (_D1_t2 - 1.0)) - _D1_t5) * _D1_t4);
                 const auto _D1_t0 = (_D1_t1 + vD1);
                 const auto res_vD1 = (-_D1_t0);
-                const auto delta_vD1 = (-(_D1_t0 / ((((D1N914_Is * _D1_t2) / D1N914_vt) * _D1_t4) + 1)));
+                const auto delta_vD1 = (-(_D1_t0 / ((((D1N914_Is * _D1_t2) / D1N914_vt) * _D1_t4) + 1.0)));
             
-                auto residual_norm_sq = 0;
+                auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD1 * res_vD1;
-                auto step_norm_sq = 0;
+                auto step_norm_sq = 0.0;
                 step_norm_sq += delta_vD1 * delta_vD1;
             
                 vD1 = limit_junction_voltage(vD1 + delta_vD1, vD1, D1N914_vt, vcrit_D1N914_vt);
@@ -84,7 +96,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 
             }
 
-            const auto vo = (-(((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1)) - ((gR1 * vi) + zC1)) * _t0));
+            const auto vo = (-(((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) - ((gR1 * vi) + zC1)) * _t0));
             const auto tC1 = (gC1 * (vo - 0));
             
             zC1 = 2 * tC1 - zC1;
@@ -115,19 +127,20 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     float vD1 = 0;
 
     // --- Newton-Raphson solve: D1
-    const auto _D1_t4 = (gR1 * vi);
+    const auto _D1_t4 = (1.0 / (gR1 + (1.0 / 1000000000.0)));
+    const auto _D1_t5 = (gR1 * vi);
     for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
     {
         const auto _D1_t3 = (vD1 / D1N914_vt);
         const auto _D1_t2 = exp(_D1_t3);
-        const auto _D1_t1 = (((D1N914_Is * (_D1_t2 - 1)) - _D1_t4) / gR1);
+        const auto _D1_t1 = (((D1N914_Is * (_D1_t2 - 1.0)) - _D1_t5) * _D1_t4);
         const auto _D1_t0 = (_D1_t1 + vD1);
         const auto res_vD1 = (-_D1_t0);
-        const auto delta_vD1 = (-(_D1_t0 / ((((D1N914_Is * _D1_t2) / D1N914_vt) / gR1) + 1)));
+        const auto delta_vD1 = (-(_D1_t0 / ((((D1N914_Is * _D1_t2) / D1N914_vt) * _D1_t4) + 1.0)));
     
-        auto residual_norm_sq = 0;
+        auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1 * res_vD1;
-        auto step_norm_sq = 0;
+        auto step_norm_sq = 0.0;
         step_norm_sq += delta_vD1 * delta_vD1;
     
         vD1 = limit_junction_voltage(vD1 + delta_vD1, vD1, D1N914_vt, vcrit_D1N914_vt);
@@ -136,7 +149,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
             break;
         
     }
-    const auto zC1 = (-((gC1 * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1)) - (gR1 * vi))) / gR1));
+    const auto zC1 = (-((gC1 * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) - (gR1 * vi))) / (gR1 + (1.0 / 1000000000.0))));
 
     for (int ch = 0; ch < num_channels; ++ch)
     {

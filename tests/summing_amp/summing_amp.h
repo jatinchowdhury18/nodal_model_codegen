@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen summing_amp.net summing_amp.h
 
 #pragma once
@@ -38,7 +38,7 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
     
     const auto Vbias = params.Vbias;
     
-    const auto NINV = Vbias;
+    const auto NNON = Vbias;
     
     const auto gRL = 1.0f / params.RL;
     
@@ -58,6 +58,7 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
             const auto vi3 = input_vi3[ch][n];
 
             const auto vo = ((_t0 + (zRFCf - (((gR1 * vi1) + (gR2 * vi2)) + (gR3 * vi3)))) / gRFCf);
+            const auto NINV = Vbias;
             const auto vRFCf = (vo - NINV);
             
             zRFCf = gzRFCf * vRFCf - zRFCf; // RC parallel

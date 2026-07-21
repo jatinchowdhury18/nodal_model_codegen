@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen eq_filter.net eq_filter.h -namespace nodal::eq_filter
 
 #pragma once
@@ -88,7 +88,7 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t15 = ((_t3 * _t16) - (gR45C20 * _t17));
     const auto _t18 = (gR45C20 * _t19);
     const auto _t14 = (((_t0 * _t15) - (gR66 * _t10)) + (gR42C17C16 * _t18));
-    const auto _t20 = (1 / ((gR37 * (gR40 * _t10)) + (gR35 * _t14)));
+    const auto _t20 = (1.0 / ((gR37 * (gR40 * _t10)) + (gR35 * _t14)));
     const auto _t27 = (gR40 * _t18);
     const auto _t28 = (gR40 * _t25);
     const auto _t29 = (gR40 * _t15);

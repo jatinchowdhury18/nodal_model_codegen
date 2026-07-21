@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen res_highpass.net res_highpass.h
 
 #pragma once
@@ -31,7 +31,7 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto _t0 = ((gC21 + gC22) + gL1);
     const auto _t3 = (gC22 + gR9);
-    const auto _t2 = (1 / ((_t0 * _t3) - (gC22 * gC22)));
+    const auto _t2 = (1.0 / ((_t0 * _t3) - (gC22 * gC22)));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC21 = state[ch].zC21;

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen reductions.net reductions.h
 
 #pragma once
@@ -41,7 +41,7 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto _t0 = (gR0C0 + gR2R3R1pR1C1C1pC2C3);
     const auto _t3 = (gRl + gR2R3R1pR1C1C1pC2C3);
-    const auto _t2 = (1 / ((_t0 * _t3) - (gR2R3R1pR1C1C1pC2C3 * gR2R3R1pR1C1C1pC2C3)));
+    const auto _t2 = (1.0 / ((_t0 * _t3) - (gR2R3R1pR1C1C1pC2C3 * gR2R3R1pR1C1C1pC2C3)));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zR0C0 = state[ch].zR0C0;

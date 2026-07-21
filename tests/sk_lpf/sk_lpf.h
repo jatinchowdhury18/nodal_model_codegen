@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen sk_lpf.net sk_lpf.h
 
 #pragma once
@@ -42,7 +42,7 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t4 = (gR2 * _t2);
     const auto _t6 = ((gR2 + gC1) * gRf);
     const auto _t7 = (gR2 * gRf);
-    const auto _t5 = (1 / (((_t0 * _t6) - (gC2 * _t4)) - (gR2 * _t7)));
+    const auto _t5 = (1.0 / (((_t0 * _t6) - (gC2 * _t4)) - (gR2 * _t7)));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC1 = state[ch].zC1;

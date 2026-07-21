@@ -15,17 +15,25 @@ test () {
    ${python_exe} ${SCRIPT_DIR}/${test}/test.py
 }
 
+# simple circuits
 test rc_lowpass
 test res_highpass
 test sk_lpf
+test summing_amp
+
+# linear circuits
 test reductions
 test eq_filter
 test eq_filter2
-test summing_amp
 test multi_svf
+
+# simple nonlinear
 test diode_circuit
 test diode_clipper
 test common_emitter
+test common_drain
+
+# guitar pedal circuits
 test pedal_tone
 test pedal_drive
-test common_drain
+test pedal_model

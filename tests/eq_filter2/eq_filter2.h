@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 7f8889c.
+// Auto-generated with netlist_codegen version 5c2e3ae.
 // Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
 
 #pragma once
@@ -118,7 +118,7 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t16 = ((gR24Rq2 * ((_t1 * _t17) - (gRf1R18C9 * _t20))) + (gR23 * (gR64 * _t13)));
     const auto _t22 = (gR24Rq2 * _t0);
     const auto _t15 = (((gC11 * _t16) - (_t21 * _t22)) - (gR22 * (gR24Rq2 * (_t1 * _t23))));
-    const auto _t25 = (1 / ((gR12C8 * _t15) - (gR13 * (gC11 * _t26))));
+    const auto _t25 = (1.0 / ((gR12C8 * _t15) - (gR13 * (gC11 * _t26))));
     const auto _t33 = (gR23 * _t0);
     const auto _t34 = ((gR23 * (gR64 * _t2)) - (gR24Rq2 * (gRf1R18C9 * _t29)));
     const auto _t35 = (gR23 * _t30);
