@@ -935,6 +935,68 @@ generate_newton_constants :: (newton_tol_sq: float, newton_max_iter: int, type_n
     return builder_to_string(*builder);
 }
 
+// Per-unknown state update given whichever delta applies this iteration.
+// Handles EXP_JUNCTION/JFET_PINCHOFF/NONE only -- used both by the plain
+// per-unknown loop below and by the active-set AMP_CLIP path
+// (generate_amp_clip_active_set_step) for the *other* unknowns jointly
+// solved with the clip unknown.
+emit_unknown_update :: (builder: *String_Builder, u: Cluster_Unknown, delta_expr: string) {
+    if u.limiter_kind == {
+        case .EXP_JUNCTION;
+            print_to_builder(builder, "%1 = limit_junction_voltage(%1 + (%2), %1, %3, vcrit_%3);\n",
+                             u.name, delta_expr, u.vt_name);
+        case .JFET_PINCHOFF;
+            print_to_builder(builder, "%1 = limit_jfet_vgs(%1 + (%2), %3);\n", u.name, delta_expr, u.vp_name);
+        case;
+            print_to_builder(builder, "%1 = %1 + (%2);\n", u.name, delta_expr);
+    }
+}
+
+// Runtime dispatch for a cluster's single active-set AMP_CLIP unknown
+// and the other unknowns jointly solved with it. Every iteration,
+// re-derives from scratch which of three systems is the correct one to use:
+//   - free:  the joint system, used whenever the unconstrained target lands inside the rails.
+//   - hi/lo: the reduced system with the clip unknown fixed at the violated rail.
+generate_amp_clip_active_set_step :: (cluster: Nonlinear_Cluster, builder: *String_Builder, options: Codegen_Options, apply_slew: bool, decl_type: string) {
+    c := cluster.unknowns[cluster.amp_clip_idx];
+    others: [..] Cluster_Unknown;
+    for u : cluster.unknowns  if u.name != c.name  array_add(*others, u);
+
+    // slew-limit the unconstrained target first, then check *that*
+    // against the rails. If no slew is set, use a permissive slew_max_step
+    // that never trips, reusing the target itself as v_prev.
+    v_prev := ifx c.has_slew && apply_slew then c.zslew_name else "_natural";
+    slew_max_step := ifx c.has_slew && apply_slew then tprint("(%/sample_rate)", c.slew_name) else "1.0e30";
+
+    print_to_builder(builder, "const %1 _natural = (%1)(%2 + %3);\n", options.type_name, c.name, c.delta_name);
+    print_to_builder(builder, "%1 _v = _natural;\n", decl_type);
+    print_to_builder(builder, "if (_v - %1 > %2)  _v = %1 + %2;\n", v_prev, slew_max_step);
+    print_to_builder(builder, "if (_v - %1 < -%2) _v = %1 - %2;\n", v_prev, slew_max_step);
+
+    print_to_builder(builder, "%1 res_%2_active = 0.0, delta_%2_active = 0.0;\n", decl_type, c.name);
+    for u : others  print_to_builder(builder, "%1 res_%2_active = 0.0, delta_%2_active = 0.0;\n", decl_type, u.name);
+
+    print_to_builder(builder, "if (_v > %1) {\n", c.vsat_p_name);
+    print_to_builder(builder, "    delta_%1_active = %2 - %1;\n    %1 = %2;\n", c.name, c.vsat_p_name);
+    for u : others  print_to_builder(builder, "    res_%1_active = %2; delta_%1_active = %3;\n", u.name, u.residual_name_hi, u.delta_name_hi);
+    print_to_builder(builder, "} else if (_v < %1) {\n", c.vsat_n_name);
+    print_to_builder(builder, "    delta_%1_active = %2 - %1;\n    %1 = %2;\n", c.name, c.vsat_n_name);
+    for u : others  print_to_builder(builder, "    res_%1_active = %2; delta_%1_active = %3;\n", u.name, u.residual_name_lo, u.delta_name_lo);
+    append(builder, "} else {\n");
+    print_to_builder(builder, "    res_%1_active = %2; delta_%1_active = _v - %1;\n    %1 = _v;\n", c.name, c.residual_name);
+    for u : others  print_to_builder(builder, "    res_%1_active = %2; delta_%1_active = %3;\n", u.name, u.residual_name, u.delta_name);
+    append(builder, "}\n\n");
+
+    print_to_builder(builder, "%1 residual_norm_sq = res_%2_active * res_%2_active", decl_type, c.name);
+    for u : others  print_to_builder(builder, " + res_%1_active * res_%1_active", u.name);
+    append(builder, ";\n");
+    print_to_builder(builder, "%1 step_norm_sq = delta_%2_active * delta_%2_active", decl_type, c.name);
+    for u : others  print_to_builder(builder, " + delta_%1_active * delta_%1_active", u.name);
+    append(builder, ";\n\n");
+
+    for u : others  emit_unknown_update(builder, u, tprint("delta_%_active", u.name));
+}
+
 // Newton-Raphson solve for one cluster, to be inserted inside the per-sample
 // loop. Iteration count/tolerance come from the shared `newton_max_iter` /
 // `newton_tol_sq` constants (see generate_newton_constants), not literals.
@@ -945,37 +1007,42 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, opt
     print_to_builder(*builder, "// --- Newton-Raphson solve: %\n", cluster.name);
 
     emit_topological_order(cluster.invariant_items, exprs, *builder, options);
+    if cluster.amp_clip_idx >= 0 {
+        emit_topological_order(cluster.hi_invariant_items, exprs, *builder, options);
+        emit_topological_order(cluster.lo_invariant_items, exprs, *builder, options);
+    }
 
     append(*builder, "for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)\n{\n");
     inner_builder: String_Builder;
     emit_topological_order(cluster.iteration_items, exprs, *inner_builder, options);
+    if cluster.amp_clip_idx >= 0 {
+        emit_topological_order(cluster.hi_iteration_items, exprs, *inner_builder, options);
+        emit_topological_order(cluster.lo_iteration_items, exprs, *inner_builder, options);
+    }
 
     decl_type := ifx options.lang == "c" then options.type_name else "auto";
-    print_to_builder(*inner_builder, "\n%1 residual_norm_sq = 0.0;\n", decl_type);
-    for u : cluster.unknowns  print_to_builder(*inner_builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
-    print_to_builder(*inner_builder, "%1 step_norm_sq = 0.0;\n", decl_type);
-    for u : cluster.unknowns  print_to_builder(*inner_builder, "step_norm_sq += %1 * %1;\n", u.delta_name);
-    append(*inner_builder, "\n");
-    for u : cluster.unknowns {
-        if u.limiter_kind == {
-            case .EXP_JUNCTION;
-                print_to_builder(*inner_builder, "%1 = limit_junction_voltage(%1 + %2, %1, %3, vcrit_%3);\n",
-                                 u.name, u.delta_name, u.vt_name);
-            case .JFET_PINCHOFF;
-                print_to_builder(*inner_builder, "%1 = limit_jfet_vgs(%1 + %2, %3);\n",
-                                 u.name, u.delta_name, u.vp_name);
-            case .AMP_CLIP;
-                // This residual is plain linear (f = closed_form - vclip),
-                // so its Jacobian can simplify to the bare constant -1.
-                //
-                // No slew set: pass a permissive slew_max_step (never trips)
-                // and reuse `v_new` as `v_prev`.
+
+    if cluster.amp_clip_idx >= 0 {
+        append(*inner_builder, "\n");
+        generate_amp_clip_active_set_step(cluster, *inner_builder, options, apply_slew, decl_type);
+    } else {
+        print_to_builder(*inner_builder, "\n%1 residual_norm_sq = 0.0;\n", decl_type);
+        for u : cluster.unknowns  print_to_builder(*inner_builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
+        print_to_builder(*inner_builder, "%1 step_norm_sq = 0.0;\n", decl_type);
+        for u : cluster.unknowns  print_to_builder(*inner_builder, "step_norm_sq += %1 * %1;\n", u.delta_name);
+        append(*inner_builder, "\n");
+        for u : cluster.unknowns {
+            if u.limiter_kind == .AMP_CLIP {
+                // Plain post-step clamp, only reached for 0 or 2+ AMP_CLIP
+                // unknowns per cluster, which is unsupported by the active-set
+                // path above. Every real circuit here has amp_clip_idx >= 0 instead.
                 v_prev := ifx u.has_slew && apply_slew then u.zslew_name else "_v";
                 slew_max_step := ifx u.has_slew && apply_slew then tprint("(%/sample_rate)", u.slew_name) else "1.0e30";
                 print_to_builder(*inner_builder, "const auto _v = (%5)(%1 + %2);\n%1 = clamp_opamp_output(_v, %6, %7, %3, %4);\n",
                                  u.name, u.delta_name, u.vsat_n_name, u.vsat_p_name, options.type_name, v_prev, slew_max_step);
-            case .NONE;
-                print_to_builder(*inner_builder, "%1 = %1 + %2;\n", u.name, u.delta_name);
+            } else {
+                emit_unknown_update(*inner_builder, u, u.delta_name);
+            }
         }
     }
     append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");

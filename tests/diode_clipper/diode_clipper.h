@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 50a08af.
+// Auto-generated with netlist_codegen version 25c9320.
 // Command: netlist_codegen diode_clipper.net diode_clipper.h
 
 #pragma once
@@ -90,7 +90,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 auto step_norm_sq = 0.0;
                 step_norm_sq += delta_vD1D2 * delta_vD1D2;
             
-                vD1D2 = limit_junction_voltage(vD1D2 + delta_vD1D2, vD1D2, D1N914_vt, vcrit_D1N914_vt);
+                vD1D2 = limit_junction_voltage(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
             
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
@@ -146,7 +146,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         auto step_norm_sq = 0.0;
         step_norm_sq += delta_vD1D2 * delta_vD1D2;
     
-        vD1D2 = limit_junction_voltage(vD1D2 + delta_vD1D2, vD1D2, D1N914_vt, vcrit_D1N914_vt);
+        vD1D2 = limit_junction_voltage(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
     
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;

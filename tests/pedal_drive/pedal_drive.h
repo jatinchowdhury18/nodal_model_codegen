@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 50a08af.
+// Auto-generated with netlist_codegen version 25c9320.
 // Command: netlist_codegen pedal_drive.net pedal_drive.h -type_name double
 
 #pragma once
@@ -351,9 +351,9 @@ static void compute (const float* const* input, float** output, int num_channels
                 step_norm_sq += delta_vBEQ1 * delta_vBEQ1;
                 step_norm_sq += delta_vD3D4 * delta_vD3D4;
             
-                vBCQ1 = limit_junction_voltage(vBCQ1 + delta_vBCQ1, vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
-                vBEQ1 = limit_junction_voltage(vBEQ1 + delta_vBEQ1, vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
-                vD3D4 = limit_junction_voltage(vD3D4 + delta_vD3D4, vD3D4, D1N914_vt, vcrit_D1N914_vt);
+                vBCQ1 = limit_junction_voltage(vBCQ1 + (delta_vBCQ1), vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+                vBEQ1 = limit_junction_voltage(vBEQ1 + (delta_vBEQ1), vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+                vD3D4 = limit_junction_voltage(vD3D4 + (delta_vD3D4), vD3D4, D1N914_vt, vcrit_D1N914_vt);
             
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
@@ -618,9 +618,9 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         step_norm_sq += delta_vBEQ1 * delta_vBEQ1;
         step_norm_sq += delta_vD3D4 * delta_vD3D4;
     
-        vBCQ1 = limit_junction_voltage(vBCQ1 + delta_vBCQ1, vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
-        vBEQ1 = limit_junction_voltage(vBEQ1 + delta_vBEQ1, vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
-        vD3D4 = limit_junction_voltage(vD3D4 + delta_vD3D4, vD3D4, D1N914_vt, vcrit_D1N914_vt);
+        vBCQ1 = limit_junction_voltage(vBCQ1 + (delta_vBCQ1), vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+        vBEQ1 = limit_junction_voltage(vBEQ1 + (delta_vBEQ1), vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+        vD3D4 = limit_junction_voltage(vD3D4 + (delta_vD3D4), vD3D4, D1N914_vt, vcrit_D1N914_vt);
     
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;

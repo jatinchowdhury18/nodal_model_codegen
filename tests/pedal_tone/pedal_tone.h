@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 50a08af.
+// Auto-generated with netlist_codegen version 25c9320.
 // Command: netlist_codegen pedal_tone.net pedal_tone.h
 
 #pragma once

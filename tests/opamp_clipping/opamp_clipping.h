@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 50a08af.
+// Auto-generated with netlist_codegen version 25c9320.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h
 
 #pragma once
@@ -61,14 +61,26 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto res_vclip_Eop = (-_Eop_t0);
                 const auto delta_vclip_Eop = (-(_Eop_t0 * _Eop_t3));
             
-                auto residual_norm_sq = 0.0;
-                residual_norm_sq += res_vclip_Eop * res_vclip_Eop;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vclip_Eop * delta_vclip_Eop;
+                const float _natural = (float)(vclip_Eop + delta_vclip_Eop);
+                auto _v = _natural;
+                if (_v - _natural > 1.0e30)  _v = _natural + 1.0e30;
+                if (_v - _natural < -1.0e30) _v = _natural - 1.0e30;
+                auto res_vclip_Eop_active = 0.0, delta_vclip_Eop_active = 0.0;
+                if (_v > Eop_VsatP) {
+                    delta_vclip_Eop_active = Eop_VsatP - vclip_Eop;
+                    vclip_Eop = Eop_VsatP;
+                } else if (_v < Eop_VsatN) {
+                    delta_vclip_Eop_active = Eop_VsatN - vclip_Eop;
+                    vclip_Eop = Eop_VsatN;
+                } else {
+                    res_vclip_Eop_active = res_vclip_Eop; delta_vclip_Eop_active = _v - vclip_Eop;
+                    vclip_Eop = _v;
+                }
             
-                const auto _v = (float)(vclip_Eop + delta_vclip_Eop);
-                vclip_Eop = clamp_opamp_output(_v, _v, 1.0e30, Eop_VsatN, Eop_VsatP);
+                auto residual_norm_sq = res_vclip_Eop_active * res_vclip_Eop_active;
+                auto step_norm_sq = delta_vclip_Eop_active * delta_vclip_Eop_active;
             
+                
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
                 
@@ -112,14 +124,26 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         const auto res_vclip_Eop = (-_Eop_t0);
         const auto delta_vclip_Eop = (-(_Eop_t0 * _Eop_t3));
     
-        auto residual_norm_sq = 0.0;
-        residual_norm_sq += res_vclip_Eop * res_vclip_Eop;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vclip_Eop * delta_vclip_Eop;
+        const float _natural = (float)(vclip_Eop + delta_vclip_Eop);
+        auto _v = _natural;
+        if (_v - _natural > 1.0e30)  _v = _natural + 1.0e30;
+        if (_v - _natural < -1.0e30) _v = _natural - 1.0e30;
+        auto res_vclip_Eop_active = 0.0, delta_vclip_Eop_active = 0.0;
+        if (_v > Eop_VsatP) {
+            delta_vclip_Eop_active = Eop_VsatP - vclip_Eop;
+            vclip_Eop = Eop_VsatP;
+        } else if (_v < Eop_VsatN) {
+            delta_vclip_Eop_active = Eop_VsatN - vclip_Eop;
+            vclip_Eop = Eop_VsatN;
+        } else {
+            res_vclip_Eop_active = res_vclip_Eop; delta_vclip_Eop_active = _v - vclip_Eop;
+            vclip_Eop = _v;
+        }
     
-        const auto _v = (float)(vclip_Eop + delta_vclip_Eop);
-        vclip_Eop = clamp_opamp_output(_v, _v, 1.0e30, Eop_VsatN, Eop_VsatP);
+        auto residual_norm_sq = res_vclip_Eop_active * res_vclip_Eop_active;
+        auto step_norm_sq = delta_vclip_Eop_active * delta_vclip_Eop_active;
     
+        
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;
         

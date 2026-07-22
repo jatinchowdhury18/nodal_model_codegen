@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 50a08af.
+// Auto-generated with netlist_codegen version 25c9320.
 // Command: netlist_codegen opamp_complete.net opamp_complete.h
 
 #pragma once
@@ -99,14 +99,26 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto res_vclip_Eraw = (_Eraw_t0 - vclip_Eraw);
                 const auto delta_vclip_Eraw = ((vclip_Eraw - _Eraw_t0) * _Eraw_t10);
             
-                auto residual_norm_sq = 0.0;
-                residual_norm_sq += res_vclip_Eraw * res_vclip_Eraw;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vclip_Eraw * delta_vclip_Eraw;
+                const float _natural = (float)(vclip_Eraw + delta_vclip_Eraw);
+                auto _v = _natural;
+                if (_v - _natural > 1.0e30)  _v = _natural + 1.0e30;
+                if (_v - _natural < -1.0e30) _v = _natural - 1.0e30;
+                auto res_vclip_Eraw_active = 0.0, delta_vclip_Eraw_active = 0.0;
+                if (_v > Eraw_VsatP) {
+                    delta_vclip_Eraw_active = Eraw_VsatP - vclip_Eraw;
+                    vclip_Eraw = Eraw_VsatP;
+                } else if (_v < Eraw_VsatN) {
+                    delta_vclip_Eraw_active = Eraw_VsatN - vclip_Eraw;
+                    vclip_Eraw = Eraw_VsatN;
+                } else {
+                    res_vclip_Eraw_active = res_vclip_Eraw; delta_vclip_Eraw_active = _v - vclip_Eraw;
+                    vclip_Eraw = _v;
+                }
             
-                const auto _v = (float)(vclip_Eraw + delta_vclip_Eraw);
-                vclip_Eraw = clamp_opamp_output(_v, _v, 1.0e30, Eraw_VsatN, Eraw_VsatP);
+                auto residual_norm_sq = res_vclip_Eraw_active * res_vclip_Eraw_active;
+                auto step_norm_sq = delta_vclip_Eraw_active * delta_vclip_Eraw_active;
             
+                
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
                 
@@ -179,14 +191,26 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         const auto res_vclip_Eraw = (_Eraw_t0 - vclip_Eraw);
         const auto delta_vclip_Eraw = ((vclip_Eraw - _Eraw_t0) * _Eraw_t12);
     
-        auto residual_norm_sq = 0.0;
-        residual_norm_sq += res_vclip_Eraw * res_vclip_Eraw;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vclip_Eraw * delta_vclip_Eraw;
+        const float _natural = (float)(vclip_Eraw + delta_vclip_Eraw);
+        auto _v = _natural;
+        if (_v - _natural > 1.0e30)  _v = _natural + 1.0e30;
+        if (_v - _natural < -1.0e30) _v = _natural - 1.0e30;
+        auto res_vclip_Eraw_active = 0.0, delta_vclip_Eraw_active = 0.0;
+        if (_v > Eraw_VsatP) {
+            delta_vclip_Eraw_active = Eraw_VsatP - vclip_Eraw;
+            vclip_Eraw = Eraw_VsatP;
+        } else if (_v < Eraw_VsatN) {
+            delta_vclip_Eraw_active = Eraw_VsatN - vclip_Eraw;
+            vclip_Eraw = Eraw_VsatN;
+        } else {
+            res_vclip_Eraw_active = res_vclip_Eraw; delta_vclip_Eraw_active = _v - vclip_Eraw;
+            vclip_Eraw = _v;
+        }
     
-        const auto _v = (float)(vclip_Eraw + delta_vclip_Eraw);
-        vclip_Eraw = clamp_opamp_output(_v, _v, 1.0e30, Eraw_VsatN, Eraw_VsatP);
+        auto residual_norm_sq = res_vclip_Eraw_active * res_vclip_Eraw_active;
+        auto step_norm_sq = delta_vclip_Eraw_active * delta_vclip_Eraw_active;
     
+        
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;
         

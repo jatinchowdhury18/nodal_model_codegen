@@ -42,6 +42,17 @@ Cluster_Unknown :: struct {
     zslew_name:    string;       // valid when has_slew; State field for the previous sample's output
     residual_name: string;       // Gen_Var name holding this unknown's residual f_j
     delta_name:    string;       // Gen_Var name holding this unknown's Newton delta
+
+    // Valid only when this unknown is one of the *other* unknowns in a
+    // cluster with an active-set AMP_CLIP unknown - see the comment there.
+    // Residual/delta for this unknown with the clip unknown held fixed at
+    // the positive/negative rail instead of solved for, i.e. the *correct*
+    // equations to use on a Newton iteration where the clip unknown is
+    // pinned, rather than the free-system ones.
+    residual_name_hi: string;
+    delta_name_hi:    string;
+    residual_name_lo: string;
+    delta_name_lo:    string;
 }
 
 // A group of nonlinear devices solved via one joint Newton-Raphson system.
@@ -56,6 +67,19 @@ Nonlinear_Cluster :: struct {
     // Newton-variant CSE temps plus the residual/delta Gen_Vars, topologically
     // ordered. Recomputed every Newton iteration.
     iteration_items: [..] Gen_Var;
+
+    // Index into `unknowns` of the single AMP_CLIP unknown handled with
+    // proper active-set rail clamping, or -1 if this cluster has none,
+    // or more than one (unsupported).
+    amp_clip_idx: int = -1;
+
+    // The reduced (unknowns.count - 1)-unknown Newton system with the clip
+    // unknown fixed at its positive/negative rail. Same shape as
+    // invariant_items/iteration_items above, just for the "clip is pinned" case.
+    hi_invariant_items: [..] Gen_Var;
+    hi_iteration_items: [..] Gen_Var;
+    lo_invariant_items: [..] Gen_Var;
+    lo_iteration_items: [..] Gen_Var;
 }
 
 // -----------------------------------------------------------------------
@@ -226,6 +250,125 @@ Raw_Unknown :: struct {
     zslew_name:   string;
     linear_form:  Expr_ID; // closed-form node-voltage-difference; still references raw branch-current symbols
     device_idx:   int;     // index into `devices`
+}
+
+// -----------------------------------------------------------------------
+// AMP_CLIP active-set reduced system
+// -----------------------------------------------------------------------
+
+// Deep-copies `e`, replacing every leaf reference to the symbol named
+// `old_name` with `replacement`.
+copy_expr_replacing_symbol :: (e: Expr_ID, old_name: string, replacement: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+    ex := exprs.*[e];
+    if ex.kind == .SYMBOL  return ifx ex.name == old_name then replacement else e;
+    if ex.kind == .NULL || ex.kind == .CONST  return copy_expr(e, exprs);
+    if is_unary(ex.kind)  return make_unary(ex.kind, copy_expr_replacing_symbol(ex.left, old_name, replacement, exprs), exprs);
+    return expr_bin(ex.kind, copy_expr_replacing_symbol(ex.left, old_name, replacement, exprs),
+                              copy_expr_replacing_symbol(ex.right, old_name, replacement, exprs), exprs);
+}
+
+// Builds the reduced (k-1)-unknown Newton system for an AMP_CLIP cluster
+// with the clip unknown (cluster_unknown_names[clip_idx]) held fixed at
+// one rail (rail_param_name) instead of solved for jointly.
+//
+// Why this exists: a hard rail clamp applied as a post-step patch (the
+// original AMP_CLIP behavior, still used whenever this doesn't apply) is
+// fine when the clip unknown is the only nonlinearity around, but breaks
+// once it's jointly Newton-solved with another device (e.g. a diode pair
+// sharing enough feedback that they can't be split into separate
+// clusters). The *other* unknowns' closed forms keep assuming the clip
+// unknown is still free even on iterations where it's actually pinned at a
+// rail post-clamp.
+//
+// The fix is proper active-set handling: derive a second (and, via a
+// second call, third) reduced system with the clip unknown substituted for
+// a constant *before* differentiating, so the equations the other
+// unknowns solve on a "clip is pinned" iteration are the ones that are
+// actually true given that fixed rail voltage, not the free-system ones
+// clamped after the fact.
+//
+// Mirrors the free-system derivation in build_nonlinear_clusters() below
+// almost exactly, just with one fewer unknown/equation and the clip
+// symbol pre-substituted. Must be called with `f_ids` in their pristine,
+// pre-CSE form (i.e. before cse() runs on the free system) -- CSE rewrites
+// f_ids' expression trees in place to reference new temp symbols that are
+// local to the free system's own generated code, which this copy would
+// otherwise silently (and wrongly) inherit as dangling references.
+derive_amp_clip_reduced_system :: (
+        f_ids: [] Expr_ID, cluster_unknown_names: [] string, clip_idx: int,
+        rail_param_name: string, exprs: *[..] Expr, temp_prefix: string)
+        -> (other_names: [..] string, res_names: [..] string, delta_names: [..] string,
+            invariant_items: [..] Gen_Var, iteration_items: [..] Gen_Var) {
+    clip_name := cluster_unknown_names[clip_idx];
+    rail_symbol := expr_symbol(rail_param_name, exprs);
+
+    other_names: [..] string;
+    f_reduced: [..] Expr_ID;
+    for name, i : cluster_unknown_names {
+        if i == clip_idx  continue;
+        array_add(*other_names, name);
+        f := copy_expr_replacing_symbol(f_ids[i], clip_name, rail_symbol, exprs);
+        array_add(*f_reduced, simplify(f, exprs));
+    }
+
+    k := other_names.count;
+    jacobian: [..] Expr_ID;
+    for j : 0..k-1 {
+        for m : 0..k-1 {
+            unknown_m := expr_symbol(other_names[m], exprs);
+            dj := differentiate(f_reduced[j], unknown_m, exprs);
+            array_add(*jacobian, simplify(dj, exprs));
+        }
+    }
+
+    delta_ids: [..] Expr_ID;
+    for name : other_names  array_add(*delta_ids, expr_symbol(tprint("delta_%1_%2", name, temp_prefix), exprs));
+
+    delta_equations: [..] Expr_ID;
+    for j : 0..k-1 {
+        eq := f_reduced[j];
+        for m : 0..k-1  eq = expr_add(eq, expr_mul(jacobian[j*k + m], delta_ids[m], exprs), exprs);
+        array_add(*delta_equations, eq);
+    }
+    delta_solutions: [..] Expr_ID;
+    if k > 0  delta_solutions = solve(delta_equations, delta_ids, exprs);
+
+    res_names: [..] string;
+    delta_names: [..] string;
+    gen_vars: [..] Gen_Var;
+    for name, j : other_names {
+        res_name := tprint("res_%1_%2", name, temp_prefix);
+        delta_name := tprint("delta_%1_%2", name, temp_prefix);
+        array_add(*res_names, res_name);
+        array_add(*delta_names, delta_name);
+        array_add(*gen_vars, Gen_Var.{ name = res_name, expr_id = f_reduced[j] });
+        array_add(*gen_vars, Gen_Var.{ name = delta_name, expr_id = delta_solutions[j] });
+    }
+
+    invariant_items: [..] Gen_Var;
+    iteration_items: [..] Gen_Var;
+    if gen_vars.count > 0 {
+        gen_var_ids: [..] Expr_ID;
+        for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
+
+        cse_vars := cse(gen_var_ids, exprs, temp_prefix);
+        sort_cse_topological(*cse_vars, exprs.*);
+        licm(gen_var_ids, *cse_vars, exprs, other_names, temp_prefix);
+        recip_hoist(gen_var_ids, *cse_vars, exprs, other_names, temp_prefix);
+
+        variant_cse_names: [..] string;
+        for cv : cse_vars {
+            if expr_is_loop_variant(cv.expr_id, exprs.*, other_names, variant_cse_names) {
+                array_add(*variant_cse_names, cv.name);
+                array_add(*iteration_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+            } else {
+                array_add(*invariant_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+            }
+        }
+        for gv : gen_vars  array_add(*iteration_items, gv);
+    }
+
+    return other_names, res_names, delta_names, invariant_items, iteration_items;
 }
 
 // -----------------------------------------------------------------------
@@ -441,16 +584,57 @@ build_nonlinear_clusters :: (elements: [] Element,
                 residual_name = residual_name, delta_name = delta_name });
         }
 
+        // Cluster-unique temp prefix, since this Newton-loop code shares a
+        // C++ scope with the linear pipeline's own temps (and other clusters').
+        temp_prefix := tprint("_%1_t", cluster.name);
+
+        // Active-set handling for AMP_CLIP's rail clamp. Must run
+        // before the free system's own cse() call below, since it needs
+        // f_ids in their pre-CSE form. Only handles exactly one AMP_CLIP
+        // unknown per cluster; 0 or 2+ keep today's plain post-step clamp.
+        amp_clip_idx := -1;
+        amp_clip_count := 0;
+        for u, i : cluster.unknowns {
+            if u.limiter_kind != .AMP_CLIP  continue;
+            amp_clip_count += 1;
+            amp_clip_idx = i;
+        }
+        if amp_clip_count == 1 {
+            cluster.amp_clip_idx = amp_clip_idx;
+            clip_unknown := cluster.unknowns[amp_clip_idx];
+
+            hi_other, hi_res, hi_delta, hi_inv, hi_iter := derive_amp_clip_reduced_system(
+                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_p_name, exprs, tprint("%1_hi", temp_prefix));
+            lo_other, lo_res, lo_delta, lo_inv, lo_iter := derive_amp_clip_reduced_system(
+                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_n_name, exprs, tprint("%1_lo", temp_prefix));
+
+            for name, i : hi_other {
+                for *cu : cluster.unknowns {
+                    if cu.name != name  continue;
+                    cu.residual_name_hi = hi_res[i];
+                    cu.delta_name_hi = hi_delta[i];
+                }
+            }
+            for name, i : lo_other {
+                for *cu : cluster.unknowns {
+                    if cu.name != name  continue;
+                    cu.residual_name_lo = lo_res[i];
+                    cu.delta_name_lo = lo_delta[i];
+                }
+            }
+
+            cluster.hi_invariant_items = hi_inv;
+            cluster.hi_iteration_items = hi_iter;
+            cluster.lo_invariant_items = lo_inv;
+            cluster.lo_iteration_items = lo_iter;
+        }
+
         // Same CSE/LICM/recip_hoist recipe as solve_and_codegen(), but the
         // loop-variant base is this cluster's own unknowns -- one loop level
         // in from the per-sample base -- so it hoists Newton-invariant
         // subexpressions automatically.
         gen_var_ids: [..] Expr_ID;
         for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
-
-        // Cluster-unique temp prefix, since this Newton-loop code shares a
-        // C++ scope with the linear pipeline's own temps (and other clusters').
-        temp_prefix := tprint("_%1_t", cluster.name);
 
         cse_vars := cse(gen_var_ids, exprs, temp_prefix);
         sort_cse_topological(*cse_vars, exprs.*);

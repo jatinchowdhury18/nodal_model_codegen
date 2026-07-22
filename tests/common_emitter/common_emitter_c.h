@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 50a08af.
+// Auto-generated with netlist_codegen version 25c9320.
 // Command: netlist_codegen common_emitter.net common_emitter_c.h -lang c -type_name double
 
 #pragma once
@@ -159,8 +159,8 @@ static void compute (const float* const* input, float** output, int num_channels
                 step_norm_sq += delta_vBCQ1 * delta_vBCQ1;
                 step_norm_sq += delta_vBEQ1 * delta_vBEQ1;
             
-                vBCQ1 = limit_junction_voltage(vBCQ1 + delta_vBCQ1, vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
-                vBEQ1 = limit_junction_voltage(vBEQ1 + delta_vBEQ1, vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+                vBCQ1 = limit_junction_voltage(vBCQ1 + (delta_vBCQ1), vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+                vBEQ1 = limit_junction_voltage(vBEQ1 + (delta_vBEQ1), vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
             
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
@@ -284,8 +284,8 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         step_norm_sq += delta_vBCQ1 * delta_vBCQ1;
         step_norm_sq += delta_vBEQ1 * delta_vBEQ1;
     
-        vBCQ1 = limit_junction_voltage(vBCQ1 + delta_vBCQ1, vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
-        vBEQ1 = limit_junction_voltage(vBEQ1 + delta_vBEQ1, vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+        vBCQ1 = limit_junction_voltage(vBCQ1 + (delta_vBCQ1), vBCQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
+        vBEQ1 = limit_junction_voltage(vBEQ1 + (delta_vBEQ1), vBEQ1, Q2N5089_vt, vcrit_Q2N5089_vt);
     
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;
