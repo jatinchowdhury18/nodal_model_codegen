@@ -1,27 +1,22 @@
 // Newton-Raphson system construction for nonlinear elements (DIODE /
 // DIODE_PAIR / BJT / JFET), on top of the linear MNA core in
-// nodal_analysis.jai / sym_algebra.jai. Which unknowns/branch currents each
-// device type contributes is data (nonlinear_device_spec(), nodal_analysis.jai);
-// the actual I-V law per type is code (device_iv_law(), below).
+// nodal_analysis.jai / sym_algebra.jai. Per-type unknowns/branch currents
+// are data (nonlinear_device_spec(), nodal_analysis.jai); the I-V law per
+// type is code (device_iv_law(), below).
 //
-// generate_kcl_equations() leaves nonlinear branch currents (i<name>,
-// iB<name>/iC<name>) as free symbols, so solve() gives closed-form node
-// voltages parametrized by those currents. From there we:
-//   1. Group devices into "clusters" -- connected components whose branch
-//      currents show up in each other's junction-voltage expressions, so
-//      they need one joint Newton-Raphson solve.
-//   2. Build each device's I-V law (Shockley for diodes, Ebers-Moll
-//      for BJT) as an Expr in its own junction voltage(s).
-//   3. Substitute those I-V laws in for the branch-current symbols.
-//   4. Build residuals f_j = closed_form_j - unknown_j, differentiate for
-//      the Jacobian, and solve J*delta = -f.
-//   5. Run cse()/licm()/recip_hoist() on the result, using the cluster's own
-//      unknowns as the variant base -- hoists Newton-iteration-invariant
-//      subexpressions the same way licm() hoists per-sample-invariant ones,
-//      just one loop level in.
+// generate_kcl_equations() leaves nonlinear branch currents as free symbols,
+// so solve() gives closed-form node voltages parametrized by them. From
+// there: (1) group devices into "clusters" -- connected components whose
+// branch currents appear in each other's junction-voltage expressions, so
+// they need one joint Newton solve; (2) build each device's I-V law as an
+// Expr in its own junction voltage(s); (3) substitute those laws in for the
+// branch-current symbols; (4) build residuals f_j = closed_form_j -
+// unknown_j, differentiate for the Jacobian, solve J*delta = -f; (5) run
+// cse()/licm()/recip_hoist() with the cluster's unknowns as the variant
+// base, hoisting Newton-iteration-invariant subexpressions one loop level in.
 //
-// This module doesn't emit any C/C++ or handle damping/convergence/limiter
-// control flow -- that's imperative and lives in netlist_codegen.jai.
+// This module does not handle any code generation or damping/convergence/limiter
+// control flow. Those concerns are handled in netlist_codegen.jai.
 
 #import "Basic";
 String :: #import "String";
@@ -87,52 +82,52 @@ Nonlinear_Cluster :: struct {
 // -----------------------------------------------------------------------
 
 // Single-diode Shockley I-V law: i = Is*(exp(v/vt) - 1).
-diode_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, exprs: *[..] Expr) -> Expr_ID {
-    v   := expr_symbol(junction_voltage_name, exprs);
-    vt  := expr_symbol(model.vt_name, exprs);
-    is_ := expr_symbol(model.is_name, exprs);
-    e   := expr_exp(expr_div(v, vt, exprs), exprs);
-    return expr_mul(is_, expr_sub(e, expr_const(1, exprs), exprs), exprs);
+diode_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, pool: *Expr_Pool) -> Expr_ID {
+    v   := expr_symbol(junction_voltage_name, pool);
+    vt  := expr_symbol(model.vt_name, pool);
+    is_ := expr_symbol(model.is_name, pool);
+    e   := expr_exp(expr_div(v, vt, pool), pool);
+    return expr_mul(is_, expr_sub(e, expr_const(1, pool), pool), pool);
 }
 
 // Antiparallel diode-pair I-V law: i = Is*(exp(v/vt) - 1/exp(v/vt))
 // Could also be written as: i =  2*Is*sinh(v/vt).
-diode_pair_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, exprs: *[..] Expr) -> Expr_ID {
-    v     := expr_symbol(junction_voltage_name, exprs);
-    vt    := expr_symbol(model.vt_name, exprs);
-    is_   := expr_symbol(model.is_name, exprs);
-    e     := expr_exp(expr_div(v, vt, exprs), exprs);
-    inv_e := expr_div(expr_const(1, exprs), e, exprs);
-    return expr_mul(is_, expr_sub(e, inv_e, exprs), exprs);
+diode_pair_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, pool: *Expr_Pool) -> Expr_ID {
+    v     := expr_symbol(junction_voltage_name, pool);
+    vt    := expr_symbol(model.vt_name, pool);
+    is_   := expr_symbol(model.is_name, pool);
+    e     := expr_exp(expr_div(v, vt, pool), pool);
+    inv_e := expr_div(expr_const(1, pool), e, pool);
+    return expr_mul(is_, expr_sub(e, inv_e, pool), pool);
 }
 
 // Ebers-Moll BJT base/collector current I-V laws:
 //   iB = Is*((exp(vBE/vt)-1)/BetaF + (exp(vBC/vt)-1)/BetaR)
 //   iC = Is*((exp(vBE/vt)-exp(vBC/vt)) - (exp(vBC/vt)-1)/BetaR)
-bjt_iv_laws :: (vbc_name: string, vbe_name: string, model: Nonlinear_Model, exprs: *[..] Expr) -> (ib: Expr_ID, ic: Expr_ID) {
-    vbc := expr_symbol(vbc_name, exprs);
-    vbe := expr_symbol(vbe_name, exprs);
-    vt    := expr_symbol(model.vt_name,    exprs);
-    is_   := expr_symbol(model.is_name,    exprs);
-    betaf := expr_symbol(model.betaf_name, exprs);
-    betar := expr_symbol(model.betar_name, exprs);
+bjt_iv_laws :: (vbc_name: string, vbe_name: string, model: Nonlinear_Model, pool: *Expr_Pool) -> (ib: Expr_ID, ic: Expr_ID) {
+    vbc := expr_symbol(vbc_name, pool);
+    vbe := expr_symbol(vbe_name, pool);
+    vt    := expr_symbol(model.vt_name,    pool);
+    is_   := expr_symbol(model.is_name,    pool);
+    betaf := expr_symbol(model.betaf_name, pool);
+    betar := expr_symbol(model.betar_name, pool);
 
-    exp_be := expr_exp(expr_div(vbe, vt, exprs), exprs);
-    exp_bc := expr_exp(expr_div(vbc, vt, exprs), exprs);
+    exp_be := expr_exp(expr_div(vbe, vt, pool), pool);
+    exp_bc := expr_exp(expr_div(vbc, vt, pool), pool);
 
     ib := expr_mul(is_,
               expr_add(
-                  expr_div(expr_sub(exp_be, expr_const(1, exprs), exprs), betaf, exprs),
-                  expr_div(expr_sub(exp_bc, expr_const(1, exprs), exprs), betar, exprs),
-                  exprs),
-              exprs);
+                  expr_div(expr_sub(exp_be, expr_const(1, pool), pool), betaf, pool),
+                  expr_div(expr_sub(exp_bc, expr_const(1, pool), pool), betar, pool),
+                  pool),
+              pool);
 
     ic := expr_mul(is_,
               expr_sub(
-                  expr_sub(exp_be, exp_bc, exprs),
-                  expr_div(expr_sub(exp_bc, expr_const(1, exprs), exprs), betar, exprs),
-                  exprs),
-              exprs);
+                  expr_sub(exp_be, exp_bc, pool),
+                  expr_div(expr_sub(exp_bc, expr_const(1, pool), pool), betar, pool),
+                  pool),
+              pool);
 
     return ib, ic;
 }
@@ -143,13 +138,13 @@ bjt_iv_laws :: (vbc_name: string, vbe_name: string, model: Nonlinear_Model, expr
 // this device shares a Newton cluster with another one (see clustering
 // above), a zero Jacobian entry there can ill-condition their shared linear
 // solve. 1mV epsilon floor keeps it off exact zero -- same idea as gmin.
-jfet_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, exprs: *[..] Expr) -> Expr_ID {
-    vgs  := expr_symbol(junction_voltage_name, exprs);
-    vp   := expr_symbol(model.vp_name, exprs);
-    beta := expr_symbol(model.beta_name, exprs);
-    epsilon := expr_div(expr_const(1, exprs), expr_const(1000, exprs), exprs);
-    diff := expr_add(expr_sub(vgs, vp, exprs), epsilon, exprs);
-    return expr_mul(beta, expr_mul(diff, diff, exprs), exprs);
+jfet_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, pool: *Expr_Pool) -> Expr_ID {
+    vgs  := expr_symbol(junction_voltage_name, pool);
+    vp   := expr_symbol(model.vp_name, pool);
+    beta := expr_symbol(model.beta_name, pool);
+    epsilon := expr_div(expr_const(1, pool), expr_const(1000, pool), pool);
+    diff := expr_add(expr_sub(vgs, vp, pool), epsilon, pool);
+    return expr_mul(beta, expr_mul(diff, diff, pool), pool);
 }
 
 // One device current, in terms of its junction-voltage unknown(s): the
@@ -163,14 +158,14 @@ Device_Branch_Current :: struct {
 // Dispatches to the right I-V law function above for `el.type`. This is the
 // one place that needs a new case when adding a device type -- everything
 // else in this file is driven generically by nonlinear_device_spec().
-device_iv_law :: (el: Element, unknown_names: [] string, exprs: *[..] Expr) -> [] Device_Branch_Current {
+device_iv_law :: (el: Element, unknown_names: [] string, pool: *Expr_Pool) -> [] Device_Branch_Current {
     result: [..] Device_Branch_Current;
     if el.type == {
         case .DIODE;
-            iv := diode_iv_law(unknown_names[0], el.nonlinear, exprs);
+            iv := diode_iv_law(unknown_names[0], el.nonlinear, pool);
             array_add(*result, .{ suffix = "", expr = iv });
         case .DIODE_PAIR;
-            iv := diode_pair_iv_law(unknown_names[0], el.nonlinear, exprs);
+            iv := diode_pair_iv_law(unknown_names[0], el.nonlinear, pool);
             array_add(*result, .{ suffix = "", expr = iv });
         case .BJT;
             vbc_name := ""; vbe_name := "";
@@ -178,11 +173,11 @@ device_iv_law :: (el: Element, unknown_names: [] string, exprs: *[..] Expr) -> [
                 if String.begins_with(n, "vBC")  vbc_name = n;
                 if String.begins_with(n, "vBE")  vbe_name = n;
             }
-            ib, ic := bjt_iv_laws(vbc_name, vbe_name, el.nonlinear, exprs);
+            ib, ic := bjt_iv_laws(vbc_name, vbe_name, el.nonlinear, pool);
             array_add(*result, .{ suffix = "B", expr = ib });
             array_add(*result, .{ suffix = "C", expr = ic });
         case .JFET;
-            iv := jfet_iv_law(unknown_names[0], el.nonlinear, exprs);
+            iv := jfet_iv_law(unknown_names[0], el.nonlinear, pool);
             array_add(*result, .{ suffix = "", expr = iv });
     }
     return result;
@@ -258,80 +253,70 @@ Raw_Unknown :: struct {
 
 // Deep-copies `e`, replacing every leaf reference to the symbol named
 // `old_name` with `replacement`.
-copy_expr_replacing_symbol :: (e: Expr_ID, old_name: string, replacement: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    ex := exprs.*[e];
+copy_expr_replacing_symbol :: (e: Expr_ID, old_name: string, replacement: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    ex := pool.exprs[e];
     if ex.kind == .SYMBOL  return ifx ex.name == old_name then replacement else e;
-    if ex.kind == .NULL || ex.kind == .CONST  return copy_expr(e, exprs);
-    if is_unary(ex.kind)  return make_unary(ex.kind, copy_expr_replacing_symbol(ex.left, old_name, replacement, exprs), exprs);
-    return expr_bin(ex.kind, copy_expr_replacing_symbol(ex.left, old_name, replacement, exprs),
-                              copy_expr_replacing_symbol(ex.right, old_name, replacement, exprs), exprs);
+    if ex.kind == .NULL || ex.kind == .CONST  return copy_expr(e, pool);
+    if is_unary(ex.kind)  return make_unary(ex.kind, copy_expr_replacing_symbol(ex.left, old_name, replacement, pool), pool);
+    return expr_bin(ex.kind, copy_expr_replacing_symbol(ex.left, old_name, replacement, pool),
+                              copy_expr_replacing_symbol(ex.right, old_name, replacement, pool), pool);
 }
 
 // Builds the reduced (k-1)-unknown Newton system for an AMP_CLIP cluster
 // with the clip unknown (cluster_unknown_names[clip_idx]) held fixed at
 // one rail (rail_param_name) instead of solved for jointly.
 //
-// Why this exists: a hard rail clamp applied as a post-step patch (the
-// original AMP_CLIP behavior, still used whenever this doesn't apply) is
-// fine when the clip unknown is the only nonlinearity around, but breaks
-// once it's jointly Newton-solved with another device (e.g. a diode pair
-// sharing enough feedback that they can't be split into separate
-// clusters). The *other* unknowns' closed forms keep assuming the clip
-// unknown is still free even on iterations where it's actually pinned at a
-// rail post-clamp.
+// A post-step rail clamp is fine when the clip unknown is the only
+// nonlinearity around, but wrong once it's jointly solved with another
+// device: the other unknowns' closed forms would keep assuming the clip
+// unknown is free even on iterations where it's actually pinned. So we
+// substitute the clip symbol for a constant *before* differentiating,
+// giving the equations that are actually true with that rail fixed, rather
+// than clamping the free-system solution after the fact.
 //
-// The fix is proper active-set handling: derive a second (and, via a
-// second call, third) reduced system with the clip unknown substituted for
-// a constant *before* differentiating, so the equations the other
-// unknowns solve on a "clip is pinned" iteration are the ones that are
-// actually true given that fixed rail voltage, not the free-system ones
-// clamped after the fact.
-//
-// Mirrors the free-system derivation in build_nonlinear_clusters() below
-// almost exactly, just with one fewer unknown/equation and the clip
-// symbol pre-substituted. Must be called with `f_ids` in their pristine,
-// pre-CSE form (i.e. before cse() runs on the free system) -- CSE rewrites
-// f_ids' expression trees in place to reference new temp symbols that are
-// local to the free system's own generated code, which this copy would
-// otherwise silently (and wrongly) inherit as dangling references.
+// Mirrors build_nonlinear_clusters()'s free-system derivation with one
+// fewer unknown/equation. Must be called with `f_ids` in pristine, pre-CSE
+// form -- CSE rewrites them in place to reference temp symbols local to the
+// free system's own generated code, which this copy would otherwise
+// wrongly inherit as dangling references.
 derive_amp_clip_reduced_system :: (
         f_ids: [] Expr_ID, cluster_unknown_names: [] string, clip_idx: int,
-        rail_param_name: string, exprs: *[..] Expr, temp_prefix: string)
+        rail_param_name: string, pool: *Expr_Pool, temp_prefix: string)
         -> (other_names: [..] string, res_names: [..] string, delta_names: [..] string,
             invariant_items: [..] Gen_Var, iteration_items: [..] Gen_Var) {
     clip_name := cluster_unknown_names[clip_idx];
-    rail_symbol := expr_symbol(rail_param_name, exprs);
+    rail_symbol := expr_symbol(rail_param_name, pool);
 
     other_names: [..] string;
     f_reduced: [..] Expr_ID;
     for name, i : cluster_unknown_names {
         if i == clip_idx  continue;
         array_add(*other_names, name);
-        f := copy_expr_replacing_symbol(f_ids[i], clip_name, rail_symbol, exprs);
-        array_add(*f_reduced, simplify(f, exprs));
+        f := copy_expr_replacing_symbol(f_ids[i], clip_name, rail_symbol, pool);
+        array_add(*f_reduced, simplify(f, pool));
     }
 
     k := other_names.count;
     jacobian: [..] Expr_ID;
     for j : 0..k-1 {
         for m : 0..k-1 {
-            unknown_m := expr_symbol(other_names[m], exprs);
-            dj := differentiate(f_reduced[j], unknown_m, exprs);
-            array_add(*jacobian, simplify(dj, exprs));
+            unknown_m := expr_symbol(other_names[m], pool);
+            dj := differentiate(f_reduced[j], unknown_m, pool);
+            array_add(*jacobian, simplify(dj, pool));
         }
     }
 
     delta_ids: [..] Expr_ID;
-    for name : other_names  array_add(*delta_ids, expr_symbol(tprint("delta_%1_%2", name, temp_prefix), exprs));
+    for name : other_names  array_add(*delta_ids, expr_symbol(tprint("delta_%1_%2", name, temp_prefix), pool));
 
     delta_equations: [..] Expr_ID;
     for j : 0..k-1 {
         eq := f_reduced[j];
-        for m : 0..k-1  eq = expr_add(eq, expr_mul(jacobian[j*k + m], delta_ids[m], exprs), exprs);
+        for m : 0..k-1  eq = expr_add(eq, expr_mul(jacobian[j*k + m], delta_ids[m], pool), pool);
         array_add(*delta_equations, eq);
     }
     delta_solutions: [..] Expr_ID;
-    if k > 0  delta_solutions = solve(delta_equations, delta_ids, exprs);
+    if k > 0  delta_solutions = solve(delta_equations, delta_ids, pool);
 
     res_names: [..] string;
     delta_names: [..] string;
@@ -351,14 +336,14 @@ derive_amp_clip_reduced_system :: (
         gen_var_ids: [..] Expr_ID;
         for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
 
-        cse_vars := cse(gen_var_ids, exprs, temp_prefix);
-        sort_cse_topological(*cse_vars, exprs.*);
-        licm(gen_var_ids, *cse_vars, exprs, other_names, temp_prefix);
-        recip_hoist(gen_var_ids, *cse_vars, exprs, other_names, temp_prefix);
+        cse_vars := cse(gen_var_ids, pool, temp_prefix);
+        sort_cse_topological(*cse_vars, pool.exprs);
+        licm(gen_var_ids, *cse_vars, pool, other_names, temp_prefix);
+        recip_hoist(gen_var_ids, *cse_vars, pool, other_names, temp_prefix);
 
         variant_cse_names: [..] string;
         for cv : cse_vars {
-            if expr_is_loop_variant(cv.expr_id, exprs.*, other_names, variant_cse_names) {
+            if expr_is_loop_variant(cv.expr_id, pool.exprs, other_names, variant_cse_names) {
                 array_add(*variant_cse_names, cv.name);
                 array_add(*iteration_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
             } else {
@@ -376,7 +361,7 @@ derive_amp_clip_reduced_system :: (
 // -----------------------------------------------------------------------
 //
 // Call after generate_kcl_equations()/solve() have produced solve_vars/
-// solutions over `exprs`, and after reduce_circuit()'s DIODE_PAIR pass.
+// solutions over `pool`, and after reduce_circuit()'s DIODE_PAIR pass.
 //
 // Side effect: every nonlinear branch-current symbol (i<name>, iB<name>/
 // iC<name>) gets substituted with its device's I-V law, in terms of the
@@ -384,7 +369,7 @@ derive_amp_clip_reduced_system :: (
 build_nonlinear_clusters :: (elements: [] Element,
                              solve_vars: [] Expr_ID,
                              solutions: [] Expr_ID,
-                             exprs: *[..] Expr) -> [] Nonlinear_Cluster {
+                             pool: *Expr_Pool) -> [] Nonlinear_Cluster {
     // Collect nonlinear devices and their raw (pre-substitution) junction
     // voltage unknowns.
     devices: [..] Element;
@@ -397,9 +382,9 @@ build_nonlinear_clusters :: (elements: [] Element,
         device_idx := devices.count;
         array_add(*devices, el);
         for u : spec.unknowns {
-            pos_v := copy_expr(lookup_node_voltage(el.terminals[u.pos_terminal], solve_vars, solutions, exprs), exprs);
-            neg_v := copy_expr(lookup_node_voltage(el.terminals[u.neg_terminal], solve_vars, solutions, exprs), exprs);
-            v := simplify(expr_sub(pos_v, neg_v, exprs), exprs);
+            pos_v := copy_expr(lookup_node_voltage(el.terminals[u.pos_terminal], solve_vars, solutions, pool), pool);
+            neg_v := copy_expr(lookup_node_voltage(el.terminals[u.neg_terminal], solve_vars, solutions, pool), pool);
+            v := simplify(expr_sub(pos_v, neg_v, pool), pool);
             vt_name, is_name, vp_name := device_limiter_names(u.limiter, el.nonlinear);
             array_add(*raw_unknowns, .{ name = tprint("%1%2", u.name_prefix, el.name), limiter_kind = u.limiter,
                                          vt_name = vt_name, is_name = is_name, vp_name = vp_name,
@@ -422,8 +407,8 @@ build_nonlinear_clusters :: (elements: [] Element,
 
         device_idx := devices.count;
         array_add(*devices, el);
-        v := copy_expr(lookup_node_voltage(opamp_bandwidth_node(el), solve_vars, solutions, exprs), exprs);
-        simplify(v, exprs);
+        v := copy_expr(lookup_node_voltage(opamp_bandwidth_node(el), solve_vars, solutions, pool), pool);
+        simplify(v, pool);
         array_add(*raw_unknowns, .{ name = tprint("vclip_%", el.name), limiter_kind = .AMP_CLIP,
                                      vsat_p_name = el.opamp.vsat_p_name, vsat_n_name = el.opamp.vsat_n_name,
                                      has_slew = el.opamp.has_slew, slew_name = el.opamp.slew_name,
@@ -448,13 +433,13 @@ build_nonlinear_clusters :: (elements: [] Element,
             for ru : raw_unknowns {
                 if ru.device_idx != a  continue;
                 refs: [..] string;
-                collect_symbol_names(ru.linear_form, exprs.*, *refs);
+                collect_symbol_names(ru.linear_form, pool.exprs, *refs);
                 for n : b_names  if array_find(refs, n)  coupled = true;
             }
             for ru : raw_unknowns {
                 if ru.device_idx != b  continue;
                 refs: [..] string;
-                collect_symbol_names(ru.linear_form, exprs.*, *refs);
+                collect_symbol_names(ru.linear_form, pool.exprs, *refs);
                 for n : a_names  if array_find(refs, n)  coupled = true;
             }
 
@@ -485,7 +470,7 @@ build_nonlinear_clusters :: (elements: [] Element,
         unknown_names: [..] string;
         for ru : raw_unknowns  if ru.device_idx == idx  array_add(*unknown_names, ru.name);
 
-        for bc : device_iv_law(d, unknown_names, exprs) {
+        for bc : device_iv_law(d, unknown_names, pool) {
             array_add(*iv_law_ids,   bc.expr);
             array_add(*iv_law_names, tprint("i%1%2", bc.suffix, d.name));
         }
@@ -495,8 +480,8 @@ build_nonlinear_clusters :: (elements: [] Element,
     for id, i : iv_law_ids {
         name := iv_law_names[i];
         matches: [..] Expr_ID;
-        for ex, node_id : exprs.*  if ex.kind == .SYMBOL && ex.name == name  array_add(*matches, node_id);
-        for m : matches  substitute(m, id, exprs);
+        for ex, node_id : pool.exprs  if ex.kind == .SYMBOL && ex.name == name  array_add(*matches, node_id);
+        for m : matches  substitute(m, id, pool);
     }
 
     // Build one Nonlinear_Cluster per connected component.
@@ -520,10 +505,10 @@ build_nonlinear_clusters :: (elements: [] Element,
         for name : cluster_unknown_names {
             ru_idx := -1;
             for ru, i : raw_unknowns  if ru.name == name  ru_idx = i;
-            closed_form := copy_expr(raw_unknowns[ru_idx].linear_form, exprs);
-            simplify(closed_form, exprs);
-            unknown_symbol := expr_symbol(name, exprs);
-            f := simplify(expr_sub(closed_form, unknown_symbol, exprs), exprs);
+            closed_form := copy_expr(raw_unknowns[ru_idx].linear_form, pool);
+            simplify(closed_form, pool);
+            unknown_symbol := expr_symbol(name, pool);
+            f := simplify(expr_sub(closed_form, unknown_symbol, pool), pool);
             array_add(*f_ids, f);
         }
 
@@ -533,26 +518,26 @@ build_nonlinear_clusters :: (elements: [] Element,
         jacobian: [..] Expr_ID; // row-major, k*k
         for j : 0..k-1 {
             for m : 0..k-1 {
-                unknown_m := expr_symbol(cluster_unknown_names[m], exprs);
-                dj := differentiate(f_ids[j], unknown_m, exprs);
-                simplify(dj, exprs);
+                unknown_m := expr_symbol(cluster_unknown_names[m], pool);
+                dj := differentiate(f_ids[j], unknown_m, pool);
+                simplify(dj, pool);
                 array_add(*jacobian, dj);
             }
         }
 
         // Newton delta solve: J*delta = -f, i.e. f_j + sum_m(J[j][m]*delta_m) = 0.
         delta_ids: [..] Expr_ID;
-        for name : cluster_unknown_names  array_add(*delta_ids, expr_symbol(tprint("delta_%", name), exprs));
+        for name : cluster_unknown_names  array_add(*delta_ids, expr_symbol(tprint("delta_%", name), pool));
 
         delta_equations: [..] Expr_ID;
         for j : 0..k-1 {
             eq := f_ids[j];
             for m : 0..k-1 {
-                eq = expr_add(eq, expr_mul(jacobian[j*k + m], delta_ids[m], exprs), exprs);
+                eq = expr_add(eq, expr_mul(jacobian[j*k + m], delta_ids[m], pool), pool);
             }
             array_add(*delta_equations, eq);
         }
-        delta_solutions := solve(delta_equations, delta_ids, exprs);
+        delta_solutions := solve(delta_equations, delta_ids, pool);
 
         // Named Gen_Vars: residual (for the convergence check) and delta
         // (the Newton update) per unknown.
@@ -604,9 +589,9 @@ build_nonlinear_clusters :: (elements: [] Element,
             clip_unknown := cluster.unknowns[amp_clip_idx];
 
             hi_other, hi_res, hi_delta, hi_inv, hi_iter := derive_amp_clip_reduced_system(
-                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_p_name, exprs, tprint("%1_hi", temp_prefix));
+                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_p_name, pool, tprint("%1_hi", temp_prefix));
             lo_other, lo_res, lo_delta, lo_inv, lo_iter := derive_amp_clip_reduced_system(
-                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_n_name, exprs, tprint("%1_lo", temp_prefix));
+                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_n_name, pool, tprint("%1_lo", temp_prefix));
 
             for name, i : hi_other {
                 for *cu : cluster.unknowns {
@@ -636,14 +621,14 @@ build_nonlinear_clusters :: (elements: [] Element,
         gen_var_ids: [..] Expr_ID;
         for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
 
-        cse_vars := cse(gen_var_ids, exprs, temp_prefix);
-        sort_cse_topological(*cse_vars, exprs.*);
-        licm(gen_var_ids, *cse_vars, exprs, cluster_unknown_names, temp_prefix);
-        recip_hoist(gen_var_ids, *cse_vars, exprs, cluster_unknown_names, temp_prefix);
+        cse_vars := cse(gen_var_ids, pool, temp_prefix);
+        sort_cse_topological(*cse_vars, pool.exprs);
+        licm(gen_var_ids, *cse_vars, pool, cluster_unknown_names, temp_prefix);
+        recip_hoist(gen_var_ids, *cse_vars, pool, cluster_unknown_names, temp_prefix);
 
         variant_cse_names: [..] string;
         for cv : cse_vars {
-            if expr_is_loop_variant(cv.expr_id, exprs.*, cluster_unknown_names, variant_cse_names) {
+            if expr_is_loop_variant(cv.expr_id, pool.exprs, cluster_unknown_names, variant_cse_names) {
                 array_add(*variant_cse_names, cv.name);
                 array_add(*cluster.iteration_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
             } else {

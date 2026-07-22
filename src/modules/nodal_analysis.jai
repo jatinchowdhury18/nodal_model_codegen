@@ -267,6 +267,21 @@ Element :: struct {
     no_combine: bool;
 };
 
+// A (name, value) pair for a Params struct field -- parsed by
+// netlist_codegen.jai's parse_netlist, emitted by codegen.jai's
+// generate_params_struct.
+Element_Value :: struct {
+    name: string;
+    value: float;
+};
+
+// A generated variable: a named expression that will become a `const auto`
+// (C++) or `const <type>` (C).
+Gen_Var :: struct {
+    name:    string;
+    expr_id: Expr_ID;
+}
+
 // Return a Param_Expr leaf for an element.
 // If the element already carries a combo_expr, return that; otherwise make a fresh leaf.
 get_param_expr :: (el: Element) -> *Param_Expr {
@@ -512,54 +527,11 @@ reduce_circuit :: (elements: *[..] Element, inputs: [] string, outputs: [] strin
     }
 }
 
-// Options controlling the target language for code generation.
-Codegen_Options :: struct {
-    lang:      string = "cpp";   // "cpp" or "c"
-    type_name: string = "float"; // numeric type used for variable declarations
-}
-
-// Counts of floating-point operations in a block of generated code.
-Flop_Count :: struct {
-    muls: int;
-    divs: int;
-    adds: int; // ADD, SUB, and NEG all counted here
-}
-
-// Recursively walk an expression tree and accumulate op counts into `result`.
-// Stops at SYMBOL and CONST leaves; does not cross into sub-expressions that
-// are already named CSE variables (they appear as SYMBOL nodes).
-count_flops_expr :: (e: Expr_ID, exprs: [] Expr, result: *Flop_Count) {
-    if e == NO_EXPR  return;
-    kind := exprs[e].kind;
-    if      kind == .MUL                                    result.muls += 1;
-    else if kind == .DIV                                    result.divs += 1;
-    else if kind == .ADD || kind == .SUB || kind == .NEG    result.adds += 1;
-
-    if kind == .ADD || kind == .SUB || kind == .MUL || kind == .DIV {
-        count_flops_expr(exprs[e].left,  exprs, result);
-        count_flops_expr(exprs[e].right, exprs, result);
-    } else if kind == .NEG {
-        count_flops_expr(exprs[e].left, exprs, result);
-    }
-}
-
-count_flops :: (items: [] Gen_Var, exprs: [] Expr) -> Flop_Count {
-    result: Flop_Count;
-    for item : items  count_flops_expr(item.expr_id, exprs, *result);
-    return result;
-}
-
-// A generated variable: a named expression that will become a `const auto` (C++) or `const <type>` (C).
-Gen_Var :: struct {
-    name:    string;
-    expr_id: Expr_ID;
-}
-
 // `dc_mode`: build the DC-equivalent circuit instead. Capacitors are open
 // circuits at DC, so CAPACITOR/RC_SERIES are dropped entirely; RC_PARALLEL
 // still conducts through its resistor half. INDUCTOR DC (short circuit)
 // isn't implemented yet. (@TODO)
-generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, [..]Expr, []Element {
+generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, Expr_Pool, []Element {
     // Op-amp handling below (substitute_node) mutates terminals in place.
     // Callers reuse the same Element array across an AC-mode call and a
     // separate DC-mode call (build_dc_operating_point) -- work on a local
@@ -604,7 +576,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         array_add_if_unique(*eqn_nodes, opamp_bandwidth_node(el));
     }
 
-    exprs : [..] Expr;
+    pool: Expr_Pool;
     equations : [..] Expr_ID;
     for _ : eqn_nodes array_add(*equations, NO_EXPR);
 
@@ -616,7 +588,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     voltages: [..] Sub_Expr;
 
     solve_vars: [..]Expr_ID;
-    for node : eqn_nodes array_add(*solve_vars, expr_symbol(node, *exprs));
+    for node : eqn_nodes array_add(*solve_vars, expr_symbol(node, *pool));
 
     // All 2-terminal elements beside op-amps, fixed voltage sources, and
     // nonlinear devices (those get their branch currents wired up below,
@@ -631,37 +603,36 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
 
         pos_node := el.terminals[0];
         neg_node := el.terminals[1];
-        current_symbol := expr_symbol(tprint("i%", el.name), *exprs);
-        pos_node_symbol := ifx pos_node == "0" then expr_const(0, *exprs) else expr_symbol(pos_node, *exprs);
-        neg_node_symbol := ifx neg_node == "0" then expr_const(0, *exprs) else expr_symbol(neg_node, *exprs);
+        current_symbol := expr_symbol(tprint("i%", el.name), *pool);
+        pos_node_symbol := ifx pos_node == "0" then expr_const(0, *pool) else expr_symbol(pos_node, *pool);
+        neg_node_symbol := ifx neg_node == "0" then expr_const(0, *pool) else expr_symbol(neg_node, *pool);
 
         for node, idx : eqn_nodes {
-            if node == pos_node equations[idx] = combine(equations[idx], current_symbol, .SUB, *exprs); // current leaving this node
-            if node == neg_node equations[idx] = combine(equations[idx], current_symbol, .ADD, *exprs); // current entering this node
+            if node == pos_node equations[idx] = combine(equations[idx], current_symbol, .SUB, *pool); // current leaving this node
+            if node == neg_node equations[idx] = combine(equations[idx], current_symbol, .ADD, *pool); // current entering this node
         }
 
         current_expr := NO_EXPR;
-        impedance_symbol := expr_symbol(tprint("g%", el.name), *exprs);
-        state_symbol := expr_symbol(tprint("z%", el.name), *exprs);
+        impedance_symbol := expr_symbol(tprint("g%", el.name), *pool);
+        state_symbol := expr_symbol(tprint("z%", el.name), *pool);
         if el.type == {
             case .RESISTOR;
-                current_expr = expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs);
+                current_expr = expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *pool), *pool);
             case .CAPACITOR;
-                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *pool), *pool), state_symbol, *pool);
             case .INDUCTOR;
-                current_expr = expr_add(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_add(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *pool), *pool), state_symbol, *pool);
             case .RC_SERIES;
-                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
+                current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *pool), *pool), state_symbol, *pool);
             case .RC_PARALLEL;
                 if dc_mode {
                     // only the resistor half conducts at DC -- use its raw param, not the trapezoidal g
-                    res_symbol := expr_symbol(el.rc_internal.res_name, *exprs);
-                    current_expr = expr_div(expr_sub(pos_node_symbol, neg_node_symbol, *exprs), res_symbol, *exprs);
+                    res_symbol := expr_symbol(el.rc_internal.res_name, *pool);
+                    current_expr = expr_div(expr_sub(pos_node_symbol, neg_node_symbol, *pool), res_symbol, *pool);
                 } else {
-                    current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *exprs), *exprs), state_symbol, *exprs);
+                    current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *pool), *pool), state_symbol, *pool);
                 }
         }
-        // assert(current_expr != NO_EXPR);
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
     }
 
@@ -673,11 +644,11 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     for el : elements {
         spec := nonlinear_device_spec(el.type);
         for term : spec.kcl_terms {
-            symbol := expr_symbol(tprint("i%1%2", term.branch_suffix, el.name), *exprs);
+            symbol := expr_symbol(tprint("i%1%2", term.branch_suffix, el.name), *pool);
             node   := el.terminals[term.terminal_idx];
             op     := ifx term.entering then Expr_Kind.ADD else Expr_Kind.SUB;
             for n, idx : eqn_nodes {
-                if n == node  equations[idx] = combine(equations[idx], symbol, op, *exprs);
+                if n == node  equations[idx] = combine(equations[idx], symbol, op, *pool);
             }
         }
     }
@@ -705,11 +676,11 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     for el : elements {
         if el.type != .FIXED_VOLTAGE  continue;
         fixed_node   := el.terminals[0];
-        node_symbol  := expr_symbol(fixed_node, *exprs);
-        param_symbol := expr_symbol(el.name,    *exprs);
+        node_symbol  := expr_symbol(fixed_node, *pool);
+        param_symbol := expr_symbol(el.name,    *pool);
         for node, idx : eqn_nodes {
             if node == fixed_node {
-                equations[idx] = expr_sub(node_symbol, param_symbol, *exprs);
+                equations[idx] = expr_sub(node_symbol, param_symbol, *pool);
                 pinned[idx] = true;
                 break;
             }
@@ -726,8 +697,8 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
                 if equations[idx] == NO_EXPR {
                     // At DC `value` can itself be undefined (e.g. another
                     // floating node) -- ground instead, like gmin below.
-                    pin_value := ifx dc_mode then expr_const(0, *exprs) else value;
-                    equations[idx] = expr_sub(expr_symbol(node, *exprs), pin_value, *exprs);
+                    pin_value := ifx dc_mode then expr_const(0, *pool) else value;
+                    equations[idx] = expr_sub(expr_symbol(node, *pool), pin_value, *pool);
                     pinned[idx] = true;
                 }
                 break;
@@ -746,33 +717,33 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         // Ibias/Ios: constant currents drawn from each input node. Applies
         // either way below (ideal merge or explicit VCVS).
         if o.has_ibias || o.has_ios {
-            bias_symbol := ifx o.has_ibias then expr_symbol(o.ibias_name, *exprs) else NO_EXPR;
-            half_ios     := ifx o.has_ios   then expr_div(expr_symbol(o.ios_name, *exprs), expr_const(2, *exprs), *exprs) else NO_EXPR;
-            ibias_pos := combine(bias_symbol, half_ios, .ADD, *exprs);
-            ibias_neg := combine(bias_symbol, half_ios, .SUB, *exprs);
+            bias_symbol := ifx o.has_ibias then expr_symbol(o.ibias_name, *pool) else NO_EXPR;
+            half_ios     := ifx o.has_ios   then expr_div(expr_symbol(o.ios_name, *pool), expr_const(2, *pool), *pool) else NO_EXPR;
+            ibias_pos := combine(bias_symbol, half_ios, .ADD, *pool);
+            ibias_neg := combine(bias_symbol, half_ios, .SUB, *pool);
             for node, idx : eqn_nodes {
-                if node == pos_node  equations[idx] = combine(equations[idx], ibias_pos, .SUB, *exprs);
-                if node == neg_node  equations[idx] = combine(equations[idx], ibias_neg, .SUB, *exprs);
+                if node == pos_node  equations[idx] = combine(equations[idx], ibias_pos, .SUB, *pool);
+                if node == neg_node  equations[idx] = combine(equations[idx], ibias_neg, .SUB, *pool);
             }
         }
 
-        vos_symbol := ifx o.has_vos then expr_symbol(o.vos_name, *exprs) else NO_EXPR;
+        vos_symbol := ifx o.has_vos then expr_symbol(o.vos_name, *pool) else NO_EXPR;
 
         if needs_explicit_vcvs(el) {
             // Explicit finite-gain VCVS: overwrite the gain node's row with
             // a hard constraint (same idea as FIXED_VOLTAGE below), instead
             // of merging pos/neg symbols. Rin/Rout/GBW are synthesized as
             // ordinary R/C elements upstream.
-            pos_symbol := ifx pos_node == "0" then expr_const(0, *exprs) else expr_symbol(pos_node, *exprs);
-            neg_symbol := ifx neg_node == "0" then expr_const(0, *exprs) else expr_symbol(neg_node, *exprs);
-            diff_expr := expr_sub(pos_symbol, neg_symbol, *exprs);
-            if vos_symbol != NO_EXPR  diff_expr = expr_add(diff_expr, vos_symbol, *exprs);
-            rhs := expr_mul(expr_symbol(o.aol_name, *exprs), diff_expr, *exprs);
+            pos_symbol := ifx pos_node == "0" then expr_const(0, *pool) else expr_symbol(pos_node, *pool);
+            neg_symbol := ifx neg_node == "0" then expr_const(0, *pool) else expr_symbol(neg_node, *pool);
+            diff_expr := expr_sub(pos_symbol, neg_symbol, *pool);
+            if vos_symbol != NO_EXPR  diff_expr = expr_add(diff_expr, vos_symbol, *pool);
+            rhs := expr_mul(expr_symbol(o.aol_name, *pool), diff_expr, *pool);
 
             gain_node := opamp_gain_node(el);
             for node, idx : eqn_nodes {
                 if node == gain_node {
-                    equations[idx] = expr_sub(expr_symbol(gain_node, *exprs), rhs, *exprs);
+                    equations[idx] = expr_sub(expr_symbol(gain_node, *pool), rhs, *pool);
                     pinned[idx] = true;
                     break;
                 }
@@ -784,7 +755,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
                 clip_node := opamp_clip_node(el);
                 for node, idx : eqn_nodes {
                     if node == out_node {
-                        equations[idx] = expr_sub(expr_symbol(out_node, *exprs), expr_symbol(clip_node, *exprs), *exprs);
+                        equations[idx] = expr_sub(expr_symbol(out_node, *pool), expr_symbol(clip_node, *pool), *pool);
                         pinned[idx] = true;
                         break;
                     }
@@ -795,39 +766,39 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
 
         // Ideal (infinite-gain) op-amp: merge pos/neg node symbols, same as
         // before, optionally offset by Vos (constraint: pos - neg + Vos = 0).
-        current_symbol := expr_symbol(tprint("i%", el.name), *exprs);
+        current_symbol := expr_symbol(tprint("i%", el.name), *pool);
         for node, idx : eqn_nodes {
-            if node == out_node  equations[idx] = combine(equations[idx], current_symbol, .ADD, *exprs); // current entering this node
+            if node == out_node  equations[idx] = combine(equations[idx], current_symbol, .ADD, *pool); // current entering this node
         }
         array_add(*solve_vars, current_symbol);
 
         if pos_node == "0" {
-            target := ifx vos_symbol != NO_EXPR then vos_symbol else expr_const(0, *exprs); // neg = Vos
+            target := ifx vos_symbol != NO_EXPR then vos_symbol else expr_const(0, *pool); // neg = Vos
             print("Setting % → 0\n", neg_node);
-            array_add(*voltages, .{ expr_symbol(neg_node, *exprs), target });
-            array_unordered_remove_by_value(*solve_vars, expr_symbol(neg_node, *exprs));
+            array_add(*voltages, .{ expr_symbol(neg_node, *pool), target });
+            array_unordered_remove_by_value(*solve_vars, expr_symbol(neg_node, *pool));
             pin_node_equation(neg_node, target);
             if vos_symbol == NO_EXPR  substitute_node(neg_node, "0");
         } else if neg_node == "0" {
-            target := ifx vos_symbol != NO_EXPR then expr_neg(vos_symbol, *exprs) else expr_const(0, *exprs); // pos = -Vos
+            target := ifx vos_symbol != NO_EXPR then expr_neg(vos_symbol, *pool) else expr_const(0, *pool); // pos = -Vos
             print("Setting % → 0\n", pos_node);
-            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), target });
-            array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
+            array_add(*voltages, .{ expr_symbol(pos_node, *pool), target });
+            array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *pool));
             pin_node_equation(pos_node, target);
             if vos_symbol == NO_EXPR  substitute_node(pos_node, "0");
         } else {
-            target := ifx vos_symbol != NO_EXPR then expr_sub(expr_symbol(neg_node, *exprs), vos_symbol, *exprs) else expr_symbol(neg_node, *exprs); // pos = neg - Vos
+            target := ifx vos_symbol != NO_EXPR then expr_sub(expr_symbol(neg_node, *pool), vos_symbol, *pool) else expr_symbol(neg_node, *pool); // pos = neg - Vos
             print("Setting % → %\n", pos_node, neg_node);
-            array_add(*voltages, .{ expr_symbol(pos_node, *exprs), target });
-            array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *exprs));
+            array_add(*voltages, .{ expr_symbol(pos_node, *pool), target });
+            array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *pool));
             pin_node_equation(pos_node, target);
             if vos_symbol == NO_EXPR  substitute_node(pos_node, neg_node);
         }
     }
 
     // substitute current and voltage expressions
-    for current_sub : currents  substitute(current_sub.id, current_sub.replace_id, *exprs);
-    for voltage_sub : voltages  substitute(voltage_sub.id, voltage_sub.replace_id, *exprs);
+    for current_sub : currents  substitute(current_sub.id, current_sub.replace_id, *pool);
+    for voltage_sub : voltages  substitute(voltage_sub.id, voltage_sub.replace_id, *pool);
 
     // At DC, a node reachable only through a dropped capacitor and a diode
     // branch gets a KCL row with no solve_var at all (just "-iDiode = 0").
@@ -836,7 +807,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     if dc_mode {
         for node, idx : eqn_nodes {
             if equations[idx] == NO_EXPR continue;
-            if expr_depends_on(equations[idx], solve_vars, exprs) continue;
+            if expr_depends_on(equations[idx], solve_vars, pool.exprs) continue;
 
             for el : elements {
                 if el.type != .DIODE && el.type != .DIODE_PAIR continue;
@@ -845,8 +816,8 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
                 else if el.terminals[1] == node then other = el.terminals[0];
                 if other.count == 0 continue;
 
-                other_symbol := ifx other == "0" then expr_const(0, *exprs) else expr_symbol(other, *exprs);
-                equations[idx] = expr_sub(expr_symbol(node, *exprs), other_symbol, *exprs);
+                other_symbol := ifx other == "0" then expr_const(0, *pool) else expr_symbol(other, *pool);
+                equations[idx] = expr_sub(expr_symbol(node, *pool), other_symbol, *pool);
                 pinned[idx] = true;
                 break;
             }
@@ -860,79 +831,23 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     // same as real SPICE's gmin-to-ground regularization.
     if dc_mode {
         // expr_const is integer-only -- build 1e-9 as 1/1e9.
-        gmin := expr_div(expr_const(1, *exprs), expr_const(1_000_000_000, *exprs), *exprs);
+        gmin := expr_div(expr_const(1, *pool), expr_const(1_000_000_000, *pool), *pool);
         for node, idx : eqn_nodes {
             if equations[idx] == NO_EXPR continue;
             if pinned[idx] continue;
-            leak := expr_mul(gmin, expr_symbol(node, *exprs), *exprs);
-            equations[idx] = expr_sub(equations[idx], leak, *exprs);
+            leak := expr_mul(gmin, expr_symbol(node, *pool), *pool);
+            equations[idx] = expr_sub(equations[idx], leak, *pool);
         }
     }
 
-    return solve_vars, equations, exprs, elements;
-}
-
-generate_expressions :: (elements: [] Element,
-                         outputs: [] string,
-                         solve_vars: [] Expr_ID,
-                         solutions: [] Expr_ID,
-                         exprs: *[..] Expr) -> [] Gen_Var {
-    gen_vars: [..] Gen_Var;
-
-    add_gen_var :: (name: string, e: Expr_ID) #expand {
-        array_add(*gen_vars, Gen_Var.{ name = name, expr_id = e });
-    }
-
-    add_expression_for_node :: (node: string) #expand {
-        // Skip nodes whose voltage is already defined by a FIXED_VOLTAGE element
-        // in the outer code (generate_impedance_defs emits them there).
-        for fv_el : elements {
-            if fv_el.type == .FIXED_VOLTAGE && fv_el.terminals[0] == node  return;
-        }
-        node_symbol := expr_symbol(node, exprs);
-        found_solve_var, solve_idx := array_find(solve_vars, node_symbol);
-        if !found_solve_var  return;
-
-        for gv : gen_vars  if gv.name == node  return;
-        add_gen_var(node, simplify(solutions[solve_idx], exprs));
-    }
-
-    for output : outputs {
-        add_expression_for_node(output);
-    }
-
-    for el : elements {
-        if el.type == {
-            case .CAPACITOR; #through;
-            case .INDUCTOR;
-                pos_node := el.terminals[0];
-                neg_node := el.terminals[1];
-                add_expression_for_node(pos_node);
-                add_expression_for_node(neg_node);
-
-                expr_name := tprint("t%", el.name);
-                add_gen_var(expr_name, expr_mul(tprint("g%", el.name), expr_sub(pos_node, neg_node, exprs), exprs));
-
-            case .RC_SERIES; #through;
-            case .RC_PARALLEL;
-                pos_node := el.terminals[0];
-                neg_node := el.terminals[1];
-                add_expression_for_node(pos_node);
-                add_expression_for_node(neg_node);
-
-                expr_name := tprint("v%", el.name);
-                add_gen_var(expr_name, expr_sub(pos_node, neg_node, exprs));
-        }
-    }
-
-    return gen_vars;
+    return solve_vars, equations, pool, elements;
 }
 
 // Look up the closed-form linear MNA solution for `node`.
-lookup_node_voltage :: (node: string, solve_vars: [] Expr_ID, solutions: [] Expr_ID, exprs: *[..] Expr, inputs: [] string = .[]) -> Expr_ID {
-    if node == "0"  return expr_const(0, exprs);
-    if array_find(inputs, node)  return expr_symbol(node, exprs);
-    node_symbol := expr_symbol(node, exprs);
+lookup_node_voltage :: (node: string, solve_vars: [] Expr_ID, solutions: [] Expr_ID, pool: *Expr_Pool, inputs: [] string = .[]) -> Expr_ID {
+    if node == "0"  return expr_const(0, pool);
+    if array_find(inputs, node)  return expr_symbol(node, pool);
+    node_symbol := expr_symbol(node, pool);
     found, idx := array_find(solve_vars, node_symbol);
     assert(found, "Nonlinear element terminal references a node that isn't part of the solved MNA system");
     return solutions[idx];
@@ -950,183 +865,18 @@ Junction_Voltage :: struct {
 generate_junction_voltage_expressions :: (elements: [] Element,
                                           solve_vars: [] Expr_ID,
                                           solutions: [] Expr_ID,
-                                          exprs: *[..] Expr) -> [] Junction_Voltage {
+                                          pool: *Expr_Pool) -> [] Junction_Voltage {
     junctions: [..] Junction_Voltage;
 
     for el : elements {
         spec := nonlinear_device_spec(el.type);
         for u : spec.unknowns {
-            pos_v := lookup_node_voltage(el.terminals[u.pos_terminal], solve_vars, solutions, exprs);
-            neg_v := lookup_node_voltage(el.terminals[u.neg_terminal], solve_vars, solutions, exprs);
-            v := simplify(expr_sub(pos_v, neg_v, exprs), exprs);
+            pos_v := lookup_node_voltage(el.terminals[u.pos_terminal], solve_vars, solutions, pool);
+            neg_v := lookup_node_voltage(el.terminals[u.neg_terminal], solve_vars, solutions, pool);
+            v := simplify(expr_sub(pos_v, neg_v, pool), pool);
             array_add(*junctions, .{ name = tprint("%1%2", u.name_prefix, el.name), expr_id = v });
         }
     }
 
     return junctions;
-}
-
-// Build the set of base loop-variant symbol names: inputs + state variables
-// + nonlinear branch currents (free per-sample symbols, not solved-for MNA
-// unknowns -- see generate_kcl_equations).
-build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
-    names: [..] string;
-    for inp : inputs  array_add(*names, inp);
-    for el : elements {
-        if el.type == .CAPACITOR || el.type == .INDUCTOR
-           || el.type == .RC_SERIES || el.type == .RC_PARALLEL {
-            array_add(*names, tprint("z%", el.name));
-        }
-        spec := nonlinear_device_spec(el.type);
-        for term : spec.kcl_terms {
-            array_add_if_unique(*names, tprint("i%1%2", term.branch_suffix, el.name));
-        }
-    }
-    return names;
-}
-
-// Emit items into builder as `const auto name = expr;` lines in topological
-// order: each item is written only after all inner-loop symbol dependencies it
-// references have already been written.
-emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder, options: Codegen_Options = .{}) {
-    decl_type := ifx options.lang == "c" then options.type_name else "auto";
-    emitted: [..] bool;
-    for _ : 0..items.count-1  array_add(*emitted, false);
-
-    remaining := items.count;
-    while remaining > 0 {
-        made_progress := false;
-        for i : 0..items.count-1 {
-            if emitted[i]  continue;
-            deps: [..] string;
-            collect_symbol_names(items[i].expr_id, exprs, *deps);
-            ready := true;
-            for dep : deps {
-                for j : 0..items.count-1 {
-                    if j != i && items[j].name == dep && !emitted[j] {
-                        ready = false;
-                        break;
-                    }
-                }
-                if !ready  break;
-            }
-            if ready {
-                emitted[i]  = true;
-                remaining  -= 1;
-                made_progress = true;
-                print_to_builder(builder, "const % % = %;\n",
-                                 decl_type, items[i].name, print_expr(items[i].expr_id, exprs));
-            }
-        }
-        if !made_progress  break;  // Cycle guard.
-    }
-}
-
-// Generate code for the given gen_vars and CSE temporaries.
-//
-// Returns two strings:
-//   outer_code — loop-invariant CSE temporaries (hoist outside the sample loop)
-//   inner_code — loop-variant CSE temps + gen_var assignments + state updates
-// `extra_variant_names` lets a caller add more loop-variant names on top of
-// build_variant_base() -- the nonlinear pipeline uses this to mark junction
-// voltages (vD1, vBCQ1, ...) as sample-variant.
-codegen :: (elements: [] Element, inputs: [] string,
-            gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
-            exprs: [] Expr, options: Codegen_Options = .{},
-            extra_variant_names: [] string = .[]) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
-
-    variant_base := build_variant_base(elements, inputs);
-    // Gen_vars are computed inside the per-sample loop; treat their names as
-    // loop-variant base symbols so that any CSE temp depending on them is
-    // correctly classified as loop-variant.
-    for gv : gen_vars  array_add(*variant_base, gv.name);
-    for n : extra_variant_names  array_add(*variant_base, n);
-
-    // Accumulate names of CSE temps that are loop-variant so we can propagate
-    // variant-ness through the (topologically ordered) temp list.
-    variant_cse_names: [..] string;
-
-    outer_builder: String_Builder;
-    inner_builder: String_Builder;
-
-    // Collect loop-variant CSE temps + gen_vars (inner) and loop-invariant CSE
-    // temps (outer) separately; both will be emitted in topological order so
-    // that every temporary is declared after all the items it depends on.
-    outer_items: [..] Gen_Var;
-    inner_items: [..] Gen_Var;
-
-    for cv : cse_vars {
-        if expr_is_loop_variant(cv.expr_id, exprs, variant_base, variant_cse_names) {
-            array_add(*variant_cse_names, cv.name);
-            array_add(*inner_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
-        } else {
-            array_add(*outer_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
-        }
-    }
-
-    for gv : gen_vars {
-        array_add(*inner_items, gv);
-    }
-
-    // Count FLOPs for both groups before emitting.
-    outer_flops := count_flops(outer_items, exprs);
-    inner_flops := count_flops(inner_items, exprs);
-
-    // Emit both groups in topological order (dependencies before uses).
-    emit_topological_order(outer_items, exprs, *outer_builder, options);
-    emit_topological_order(inner_items, exprs, *inner_builder, options);
-    print_to_builder(*inner_builder, "\n");
-
-    for el : elements {
-        if el.type == {
-            case .CAPACITOR;
-                print_to_builder(*inner_builder, "z%1 = 2 * t%1 - z%1;\n", el.name);
-                inner_flops.muls += 1;  inner_flops.adds += 1;  // 2*t, minus
-            case .INDUCTOR;
-                print_to_builder(*inner_builder, "z%1 = 2 * t%1 + z%1;\n", el.name);
-                inner_flops.muls += 1;  inner_flops.adds += 1;  // 2*t, plus
-            case .RC_SERIES;
-                print_to_builder(*inner_builder, "z%1 = g%1 * (1 - gn%1) * v%1 + gn%1 * z%1; // RC series\n", el.name);
-                inner_flops.muls += 3;  inner_flops.adds += 2;  // 3 muls, (1-gn), plus
-            case .RC_PARALLEL;
-                print_to_builder(*inner_builder, "z%1 = gz%1 * v%1 - z%1; // RC parallel\n", el.name);
-                inner_flops.muls += 1;  inner_flops.adds += 1;  // gz*v, minus
-            case .AMP;
-                // Captures this sample's converged output for next
-                // sample's slew comparison.
-                if el.opamp.has_slew {
-                    print_to_builder(*inner_builder, "zslew_%1 = vclip_%1;\n", el.name);
-                }
-        }
-    }
-
-    return builder_to_string(*outer_builder), builder_to_string(*inner_builder), outer_flops, inner_flops;
-}
-
-solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, options: Codegen_Options = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
-    reduce_circuit(elements, inputs, outputs);
-
-    solve_vars, equations, exprs, kcl_elements := generate_kcl_equations(elements.*, inputs);
-
-    solutions := solve(equations, solve_vars, *exprs);
-
-    // kcl_elements (not elements.*): op-amp-merged nodes (e.g. vpos -> vneg)
-    // only have their aliased terminal there.
-    gen_vars := generate_expressions(kcl_elements, outputs, solve_vars, solutions, *exprs);
-
-    // Collect gen_var expression IDs for CSE.
-    gen_var_ids: [..] Expr_ID;
-    for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
-
-    cse_vars := cse(gen_var_ids, *exprs);
-    sort_cse_topological(*cse_vars, exprs);  // ensure deps appear before dependents
-
-    // Build the variant base for LICM (inputs + state vars + gen_var names).
-    licm_variant_base := build_variant_base(kcl_elements, inputs);
-    for gv : gen_vars  array_add(*licm_variant_base, gv.name);
-    licm(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
-    recip_hoist(gen_var_ids, *cse_vars, *exprs, licm_variant_base);
-
-    outer_code, inner_code, outer_flops, inner_flops := codegen(kcl_elements, inputs, gen_vars, cse_vars, exprs, options);
-    return outer_code, inner_code, outer_flops, inner_flops;
 }

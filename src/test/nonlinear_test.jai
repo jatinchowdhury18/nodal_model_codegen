@@ -55,16 +55,16 @@ main :: () {
         array_add(*circuit, Element.{ name = "D1", type = .DIODE, terminals = make_arr(string.["vd", "0"]),
                                        nonlinear = .{ is_name = "D1_Is", vt_name = "D1_vt" } });
 
-        solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
+        solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
         print("solve_vars count: %\n", solve_vars.count); // expect 1 (vd) -- iD1 is NOT an MNA unknown
 
-        solutions := solve(equations, solve_vars, *exprs);
-        junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *exprs);
-        for j : junctions  print("%: %\n", j.name, print_expr(j.expr_id, exprs));
+        solutions := solve(equations, solve_vars, *pool);
+        junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *pool);
+        for j : junctions  print("%: %\n", j.name, print_expr(j.expr_id, pool.exprs));
 
-        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *exprs);
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *pool);
         print("cluster count: %\n", clusters.count); // expect 1 (single device, single unknown)
-        for c : clusters  print_cluster(c, exprs);
+        for c : clusters  print_cluster(c, pool.exprs);
     }
 
     // 2. Lone BJT: base fed through R1 from vi, collector tied to a supply
@@ -81,16 +81,16 @@ main :: () {
         array_add(*circuit, Element.{ name = "Q1", type = .BJT, terminals = make_arr(string.["vcc", "vb", "ve"]),
                                        nonlinear = .{ is_name = "Q1_Is", vt_name = "Q1_vt", betaf_name = "Q1_BetaF", betar_name = "Q1_BetaR" } });
 
-        solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
+        solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
         print("solve_vars count: %\n", solve_vars.count); // expect 3 (vb, ve, vcc) -- iBQ1/iCQ1 are NOT MNA unknowns
 
-        solutions := solve(equations, solve_vars, *exprs);
-        junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *exprs);
-        for j : junctions  print("%: %\n", j.name, print_expr(j.expr_id, exprs));
+        solutions := solve(equations, solve_vars, *pool);
+        junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *pool);
+        for j : junctions  print("%: %\n", j.name, print_expr(j.expr_id, pool.exprs));
 
-        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *exprs);
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *pool);
         print("cluster count: %\n", clusters.count); // expect 1 (single device, both junctions coupled)
-        for c : clusters  print_cluster(c, exprs);
+        for c : clusters  print_cluster(c, pool.exprs);
     }
 
     // 3. Coupled devices: a diode D1 sharing a node with a BJT Q1's base,
@@ -110,12 +110,12 @@ main :: () {
         array_add(*circuit, Element.{ name = "D1", type = .DIODE, terminals = make_arr(string.["vb", "0"]),
                                        nonlinear = .{ is_name = "D1_Is", vt_name = "D1_vt" } });
 
-        solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
-        solutions := solve(equations, solve_vars, *exprs);
+        solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
+        solutions := solve(equations, solve_vars, *pool);
 
-        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *exprs);
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *pool);
         print("cluster count: %\n", clusters.count); // expect 1 (coupled)
-        for c : clusters  print_cluster(c, exprs);
+        for c : clusters  print_cluster(c, pool.exprs);
     }
 
     // 4. DC operating-point solve (dc_mode=true): a common-emitter-shaped
@@ -154,9 +154,9 @@ main :: () {
                                        nonlinear = .{ is_name = "Q1_Is", vt_name = "Q1_vt", betaf_name = "Q1_BetaF", betar_name = "Q1_BetaR" } });
         array_add(*circuit, Element.{ name = "C1", type = .CAPACITOR, terminals = make_arr(string.["vi", "vb"]) });
 
-        dc_solve_vars, dc_equations, dc_exprs := generate_kcl_equations(circuit, .["vi"], true);
-        dc_solutions := solve(dc_equations, dc_solve_vars, *dc_exprs);
-        dc_clusters := build_nonlinear_clusters(circuit, dc_solve_vars, dc_solutions, *dc_exprs);
+        dc_solve_vars, dc_equations, dc_pool := generate_kcl_equations(circuit, .["vi"], true);
+        dc_solutions := solve(dc_equations, dc_solve_vars, *dc_pool);
+        dc_clusters := build_nonlinear_clusters(circuit, dc_solve_vars, dc_solutions, *dc_pool);
         print("cluster count: %\n", dc_clusters.count); // expect 1 (Q1's vBC/vBE)
 
         // No node's closed form should still reference a branch-current
@@ -165,7 +165,7 @@ main :: () {
         all_ok := true;
         for node : dc_solve_vars {
             refs: [..] string;
-            collect_symbol_names(node, dc_exprs, *refs);
+            collect_symbol_names(node, dc_pool.exprs, *refs);
             for r : refs {
                 if array_find(string.["iBQ1", "iCQ1"], r) {
                     print("FAIL: a node's closed form still references unsubstituted branch current '%'\n", r);
@@ -178,8 +178,8 @@ main :: () {
         // C1's terminal "vi" is a raw circuit input, not a solved node --
         // lookup_node_voltage() must resolve it via the `inputs` parameter
         // rather than asserting.
-        vi_v := lookup_node_voltage("vi", dc_solve_vars, dc_solutions, *dc_exprs, .["vi"]);
-        check("dc_input_node_lookup", vi_v, "vi", dc_exprs);
+        vi_v := lookup_node_voltage("vi", dc_solve_vars, dc_solutions, *dc_pool, .["vi"]);
+        check("dc_input_node_lookup", vi_v, "vi", dc_pool.exprs);
     }
 
     // 5. Op-amp output clip (AMP_CLIP): inverting amp (R1 from vi to n1, RF
@@ -226,11 +226,11 @@ main :: () {
         array_add(*amp.terminals, "0");
         array_add(*circuit, amp);
 
-        solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
+        solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
         check_bool("vclip_Eop excluded from solve_vars", solve_vars.count == 3, true); // n1, vo, vgain_Eop
 
-        solutions := solve(equations, solve_vars, *exprs);
-        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *exprs);
+        solutions := solve(equations, solve_vars, *pool);
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *pool);
         check_bool("one AMP_CLIP cluster", clusters.count == 1, true);
         check_bool("one unknown in the cluster", clusters[0].unknowns.count == 1, true);
         u := clusters[0].unknowns[0];
@@ -243,9 +243,9 @@ main :: () {
         // (bug (a) above), the whole clip nonlinearity silently vanishes
         // from the circuit's actual output.
         vo_idx := -1;
-        for sv, i : solve_vars  if print_expr(sv, exprs) == "vo"  vo_idx = i;
+        for sv, i : solve_vars  if print_expr(sv, pool.exprs) == "vo"  vo_idx = i;
         vo_refs: [..] string;
-        collect_symbol_names(solutions[vo_idx], exprs, *vo_refs);
+        collect_symbol_names(solutions[vo_idx], pool.exprs, *vo_refs);
         check_bool("vo depends on vclip_Eop", array_find(vo_refs, "vclip_Eop"), true);
 
         // The Jacobian (d(residual)/d(vclip_Eop)) must pick up the feedback
@@ -254,8 +254,8 @@ main :: () {
         // invariant/iteration item must actually reference Aol, not just the
         // residual's own affine "+vclip_Eop" term.
         references_aol := false;
-        for gv : clusters[0].invariant_items  if String.contains(print_expr(gv.expr_id, exprs), "Eop_Aol")  references_aol = true;
-        for gv : clusters[0].iteration_items  if String.contains(print_expr(gv.expr_id, exprs), "Eop_Aol")  references_aol = true;
+        for gv : clusters[0].invariant_items  if String.contains(print_expr(gv.expr_id, pool.exprs), "Eop_Aol")  references_aol = true;
+        for gv : clusters[0].iteration_items  if String.contains(print_expr(gv.expr_id, pool.exprs), "Eop_Aol")  references_aol = true;
         check_bool("Jacobian/delta construction references Aol (not a trivial constant)", references_aol, true);
     }
 
@@ -280,11 +280,11 @@ main :: () {
         array_add(*amp.terminals, "0");
         array_add(*circuit, amp);
 
-        solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
+        solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
         check_bool("slew alone still routes through the free vclip symbol", solve_vars.count == 3, true);
 
-        solutions := solve(equations, solve_vars, *exprs);
-        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *exprs);
+        solutions := solve(equations, solve_vars, *pool);
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *pool);
         check_bool("one cluster", clusters.count == 1, true);
         u := clusters[0].unknowns[0];
         check_bool("has_slew threaded through", u.has_slew, true);

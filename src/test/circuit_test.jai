@@ -1,5 +1,6 @@
 #import "nodal_analysis";
 #import "sym_algebra";
+#import "codegen";
 #import "Basic";
 
 make_arr :: (list: [] $T) -> [..] T {
@@ -75,15 +76,15 @@ test_finite_gain_inverting_amp :: () {
     array_add(*amp.terminals, "0");  // pos
     array_add(*circuit, amp);
 
-    solve_vars, equations, exprs := generate_kcl_equations(circuit, .["vi"]);
+    solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
     check_bool("no free op-amp current unknown (explicit VCVS, not merge)", solve_vars.count == 2, true); // n1, vo
 
-    solutions := solve(equations, solve_vars, *exprs);
+    solutions := solve(equations, solve_vars, *pool);
     vo_idx, found := 0, false;
-    for sv, i : solve_vars  if print_expr(sv, exprs) == "vo" { vo_idx = i; found = true; }
+    for sv, i : solve_vars  if print_expr(sv, pool.exprs) == "vo" { vo_idx = i; found = true; }
     check_bool("vo is a solved var", found, true);
 
-    check_str("vo closed form", print_expr(solutions[vo_idx], exprs),
+    check_str("vo closed form", print_expr(solutions[vo_idx], pool.exprs),
         "(-(((gR1 * vi) * Aol) / ((gR1 + gRF) + (gRF * Aol))))");
 }
 

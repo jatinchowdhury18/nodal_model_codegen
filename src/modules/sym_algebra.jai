@@ -1,105 +1,27 @@
-// sym_algebra -- symbolic computer algebra for Jai
+// sym_algebra -- symbolic computer algebra for Jai: build, simplify, and
+// solve expressions, then generate code to evaluate them.
 //
-// This module can be used to represent, simplify, and solve
-// mathematical expressions sybmolically. The module can also
-// be used to generate code to evaluate these expressions.
+// Expressions live in an Expr_Pool (a flat arena + name->id interning
+// table), referenced by Expr_ID (an index into pool.exprs). NO_EXPR (-1)
+// means "absent/zero". Build with expr_symbol/expr_const/expr_add/.../
+// expr_neg; substitute() rewrites a variable in place.
 //
-// The linear solver (linearize/solve) only supports linear expressions.
-// EXP (and differentiate()) exist to support building and solving small
-// nonlinear systems (e.g. Newton-Raphson for diode/BJT device equations)
-// on top of the linear core -- see nonlinear_solve.jai.
+// fold() constant-folds and collapses algebraic identities (0+x->x, 1*x->x).
+// simplify() cancels common MUL/DIV factors; call fold() first.
 //
-// ===========================================================================
-// REPRESENTATION
-// ===========================================================================
+// linearize()/solve() are the linear MNA solver -- only linear expressions.
+// EXP and differentiate() exist to build/solve small nonlinear systems
+// (Newton-Raphson for diode/BJT equations) on top of that linear core --
+// see nonlinear_solve.jai.
 //
-// Expressions are stored in a flat [..] Expr array owned by the caller,
-// referenced by Expr_ID (an s64 index into that array).  Passing
-// expressions around is cheap; the array grows as needed and IDs
-// remain stable. NO_EXPR (-1) is the sentinel for "absent / zero."
-//
-// Build expressions with:
-//   expr_symbol (name,  *exprs)     -- a named unknown
-//   expr_const  (value, *exprs)     -- an integer literal
-//   expr_add / expr_sub / expr_mul / expr_div
-//                                   -- binary arithmetic nodes
-//   expr_neg    (a,     *exprs)     -- unary negation
-//   substitute  (old, new, *exprs)  -- in-place variable substitution
-//
-// Note that `expr_symbol` is de-duplicated, i.e. if you call `expr_symbol("x", *exprs)`
-// when a symbol called "x" already exists in the `exprs` array, the function
-// will just return the ID of the "x" that already exist.
-//
-// ===========================================================================
-// SIMPLIFICATION
-// ===========================================================================
-//
-// This module contains two methods for simplifying expressions.
-//
-//   fold (e, *exprs)  -- Performs constant folding, and collapses algebraic
-//                        identities. For example: 0+x -> x, 1*x -> x, etc.
-//
-//   simplify (e, *exprs)  -- Performs sybmolic simplification of an expression,
-//                            by trying to reduce the number of multiplies and divides,
-//                            using common-factor cancellation and similar techniques.
-//                            For best results, call after `fold`.
-//
-// ===========================================================================
-// LINEAR SOLVER
-// ===========================================================================
-//
-//   linearize (e, vars, *exprs)  -- Decomposes `e` into a linear combination of the
-//                                   provided `vars`, plus a constant term.
-//
-//   solve :: (equations, vars, exprs) -- Solves a system of equations.
-//
-// Some notes on the solver:
-//   - As of this writing, the largest system of equations that the solver
-//     has been tested with had 10 equations and 10 unknowns.
-//   - The solver uses Cramer's rule (cofactor / Laplace expansion) with a
-//     memoized sub-determinant cache. Previous versions of this code used
-//     Gaussian elimination, but the resulting "product of pivots" structure
-//     resulted in floating-point underflows when attempting to compute the
-//     resulting expressions with 32-bit floats.
-//
-// ===========================================================================
-// CODE-GENERATION PASSES
-// ===========================================================================
-//
-// Before generating code, the following methods may be useful for generating
-// optimal code, using common sub-expression elimination and loop-invariant
-// code motion. While is possible for the compiler to do these things for us,
-// it can be a lot of work (especially for bigger math expressions), and the
-// compiler may give up, or so it's nice to give the compiler a head start.
-//
-// For best results, run these methods in thie order before emitting code:
-//
-//   cse (gen_vars, *exprs) -> [..] CSE_Var
-//       Common Subexpression Elimination -- extracts shared sub-expressions
-//       into named temporaries (_t0, _t1, …) to avoid recomputing them.
-//
-//   sort_cse_topological (*cse_vars)
-//       Sort temporaries so each temp is defined before it is used.
-//       Run this before the LICM and recip_hoist passes.
-//
-//   licm (gen_vars, *cse_vars, *exprs, variant_names)
-//       Loop-Invariant Code Motion -- identifies which temporaries depend
-//       on loop-variant inputs and hoists the rest to an outer scope.
-//
-//   recip_hoist (gen_vars, *cse_vars, *exprs, variant_names)
-//       Reciprocal hoisting -- when an outer-loop temporary T appears only
-//       as a divisor in inner-loop expressions, replaces it with 1/T and
-//       rewrites x/T as x*(1/T), turning an inner-loop division into a
-//       cheaper multiply.
-//
-// ===========================================================================
-// PRINTING
-// ===========================================================================
-//
-//   print_expr (e, exprs) -> string  -- render an expression to a string
-//
+// cse()/licm()/recip_hoist() are codegen-prep passes: common subexpression
+// elimination, loop-invariant code motion, and reciprocal hoisting (turning
+// repeated inner-loop divisions by a hoisted temp into multiplies). Run in
+// that order -- cse(), then sort_cse_topological(), then licm(), then
+// recip_hoist() -- before print_expr().
 
 #import "Basic";
+#import "Hash_Table";
 
 Expr_Kind :: enum {
     NULL;
@@ -135,44 +57,42 @@ Expr :: struct {
     right: Expr_ID;
 }
 
-expr_symbol :: (id: Expr_ID, exprs: *[..] Expr) -> Expr_ID { return id; }
-expr_symbol :: (name: string, exprs: *[..] Expr) -> Expr_ID {
-    // @TODO: Is this slow?
-    for expr, id : exprs.* {
-        if expr.name == name return id;
-    }
+// The expression arena, plus a name -> id interning table so expr_symbol()
+// doesn't have to linear-scan the whole arena on every lookup.
+Expr_Pool :: struct {
+    exprs:      [..] Expr;
+    symbol_ids: Table(string, Expr_ID);
+}
 
-    id := exprs.count;
-    array_add(exprs, Expr.{ kind = .SYMBOL, name = name });
+expr_symbol :: (id: Expr_ID, pool: *Expr_Pool) -> Expr_ID { return id; }
+expr_symbol :: (name: string, pool: *Expr_Pool) -> Expr_ID {
+    found, existing_id := table_find(*pool.symbol_ids, name);
+    if found  return existing_id;
+
+    id := pool.exprs.count;
+    array_add(*pool.exprs, Expr.{ kind = .SYMBOL, name = name });
+    table_add(*pool.symbol_ids, name, id);
     return id;
 }
 
-expr_neg :: (a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    id := exprs.count;
-    array_add(exprs, Expr.{ kind = .NEG, left = a });
+expr_neg :: (a: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    id := pool.exprs.count;
+    array_add(*pool.exprs, Expr.{ kind = .NEG, left = a });
     return id;
 }
 
-expr_neg :: (a: string, exprs: *[..] Expr) -> Expr_ID {
-    return expr_neg(expr_symbol(a), exprs);
-}
-
-expr_exp :: (a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    id := exprs.count;
-    array_add(exprs, Expr.{ kind = .EXP, left = a });
+expr_exp :: (a: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    id := pool.exprs.count;
+    array_add(*pool.exprs, Expr.{ kind = .EXP, left = a });
     return id;
-}
-
-expr_exp :: (a: string, exprs: *[..] Expr) -> Expr_ID {
-    return expr_exp(expr_symbol(a, exprs), exprs);
 }
 
 // Rebuild a unary (NEG/EXP) node with the given operand. Used by passes
 // (cse_pass, licm_walk) that hoist a node into a fresh temporary and need
 // to reconstruct it generically, without hardcoding NEG.
-make_unary :: (kind: Expr_Kind, a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    id := exprs.count;
-    array_add(exprs, Expr.{ kind = kind, left = a });
+make_unary :: (kind: Expr_Kind, a: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    id := pool.exprs.count;
+    array_add(*pool.exprs, Expr.{ kind = kind, left = a });
     return id;
 }
 
@@ -185,42 +105,42 @@ make_unary :: (kind: Expr_Kind, a: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
 // SYMBOL leaves are returned as-is, not copied -- they're already interned
 // by name, and sharing them is what lets CSE/print_expr recognize repeated
 // uses of the same symbol.
-copy_expr :: (e: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    ex := exprs.*[e];
+copy_expr :: (e: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    ex := pool.exprs[e];
     if ex.kind == .SYMBOL || ex.kind == .NULL  return e;
-    if ex.kind == .CONST  return expr_const(ex.value, exprs);
-    if is_unary(ex.kind)  return make_unary(ex.kind, copy_expr(ex.left, exprs), exprs);
-    return expr_bin(ex.kind, copy_expr(ex.left, exprs), copy_expr(ex.right, exprs), exprs);
+    if ex.kind == .CONST  return expr_const(ex.value, pool);
+    if is_unary(ex.kind)  return make_unary(ex.kind, copy_expr(ex.left, pool), pool);
+    return expr_bin(ex.kind, copy_expr(ex.left, pool), copy_expr(ex.right, pool), pool);
 }
 
-expr_const :: (value: s64, exprs: *[..] Expr) -> Expr_ID {
-    id := exprs.count;
-    array_add(exprs, Expr.{ kind = .CONST, value = value });
+expr_const :: (value: s64, pool: *Expr_Pool) -> Expr_ID {
+    id := pool.exprs.count;
+    array_add(*pool.exprs, Expr.{ kind = .CONST, value = value });
     return id;
 }
 
-expr_bin :: (kind: Expr_Kind, a: Expr_ID, b: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    id := exprs.count;
-    array_add(exprs, Expr.{ kind = kind, left = a, right = b });
+expr_bin :: (kind: Expr_Kind, a: Expr_ID, b: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    id := pool.exprs.count;
+    array_add(*pool.exprs, Expr.{ kind = kind, left = a, right = b });
     return id;
 }
 
-expr_add :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.ADD, expr_symbol(a, exprs), expr_symbol(b, exprs), exprs); }
-expr_sub :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.SUB, expr_symbol(a, exprs), expr_symbol(b, exprs), exprs); }
-expr_mul :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.MUL, expr_symbol(a, exprs), expr_symbol(b, exprs), exprs); }
-expr_div :: (a: $T1, b: $T2, exprs: *[..] Expr) -> Expr_ID { return expr_bin(.DIV, expr_symbol(a, exprs), expr_symbol(b, exprs), exprs); }
+expr_add :: (a: $T1, b: $T2, pool: *Expr_Pool) -> Expr_ID { return expr_bin(.ADD, expr_symbol(a, pool), expr_symbol(b, pool), pool); }
+expr_sub :: (a: $T1, b: $T2, pool: *Expr_Pool) -> Expr_ID { return expr_bin(.SUB, expr_symbol(a, pool), expr_symbol(b, pool), pool); }
+expr_mul :: (a: $T1, b: $T2, pool: *Expr_Pool) -> Expr_ID { return expr_bin(.MUL, expr_symbol(a, pool), expr_symbol(b, pool), pool); }
+expr_div :: (a: $T1, b: $T2, pool: *Expr_Pool) -> Expr_ID { return expr_bin(.DIV, expr_symbol(a, pool), expr_symbol(b, pool), pool); }
 
-substitute :: (old_expr: Expr_ID, new_expr: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    if exprs.*[new_expr].kind == .SYMBOL {
-        exprs.*[old_expr] = .{ kind = .NULL };
-        for *expr : exprs.* {
+substitute :: (old_expr: Expr_ID, new_expr: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    if pool.exprs[new_expr].kind == .SYMBOL {
+        pool.exprs[old_expr] = .{ kind = .NULL };
+        for *expr : pool.exprs {
             if expr.left == old_expr  expr.left = new_expr;
             if expr.right == old_expr expr.right = new_expr;
         }
         return new_expr;
     }
 
-    exprs.*[old_expr] = exprs.*[new_expr];
+    pool.exprs[old_expr] = pool.exprs[new_expr];
     return new_expr;
 }
 
@@ -256,35 +176,35 @@ expr_depends_on :: (e: Expr_ID, vars: [] Expr_ID, exprs: [] Expr) -> bool {
 
 // Combine two optional expression IDs with ADD or SUB, treating NO_EXPR as zero.
 // For SUB with `a` absent: produces (0 - b), i.e. negation.
-combine :: (a: Expr_ID, b: Expr_ID, op: Expr_Kind, exprs: *[..] Expr) -> Expr_ID {
+combine :: (a: Expr_ID, b: Expr_ID, op: Expr_Kind, pool: *Expr_Pool) -> Expr_ID {
     if a == NO_EXPR && b == NO_EXPR  return NO_EXPR;
     if a == NO_EXPR {
         if op == .ADD  return b;
         assert(op == .SUB);
-        return expr_neg(b, exprs);
+        return expr_neg(b, pool);
     }
     if b == NO_EXPR  return a; // a +/- 0 = a
-    return expr_bin(op, a, b, exprs);
+    return expr_bin(op, a, b, pool);
 }
 
 // Decompose `e` into a linear combination of `vars`.
 // Each entry in the returned Linear.coeffs is parallel to `vars`.
 // Asserts if the expression is not linear in the given variables.
-linearize :: (e: Expr_ID, vars: [] Expr_ID, exprs: *[..] Expr) -> Linear {
+linearize :: (e: Expr_ID, vars: [] Expr_ID, pool: *Expr_Pool) -> Linear {
     result: Linear;
     for i: 0..vars.count-1  array_add(*result.coeffs, NO_EXPR);
     result.constant = NO_EXPR;
 
     // If this subtree doesn't reference any of `vars` at all, treat it as an
     // opaque constant coefficient without recursing into its structure.
-    if !expr_depends_on(e, vars, exprs.*) {
+    if !expr_depends_on(e, vars, pool.exprs) {
         result.constant = e;
         return result;
     }
 
     // Copy the node before recursing: array_add inside recursive calls may
     // reallocate, but Expr is a value type so this local copy stays valid.
-    expr := exprs.*[e];
+    expr := pool.exprs[e];
 
     if expr.kind == {
         case .CONST;
@@ -293,29 +213,29 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, exprs: *[..] Expr) -> Linear {
         case .SYMBOL;
             for i: 0..vars.count-1 {
                 if vars[i] == e {
-                    result.coeffs[i] = expr_const(1, exprs);
+                    result.coeffs[i] = expr_const(1, pool);
                     return result;
                 }
             }
             result.constant = e; // a parameter symbol, not one of the vars we care about
 
         case .NEG;
-            la := linearize(expr.left, vars, exprs);
+            la := linearize(expr.left, vars, pool);
             for i: 0..vars.count-1
-                result.coeffs[i] = combine(NO_EXPR, la.coeffs[i], .SUB, exprs);
-            result.constant = combine(NO_EXPR, la.constant, .SUB, exprs);
+                result.coeffs[i] = combine(NO_EXPR, la.coeffs[i], .SUB, pool);
+            result.constant = combine(NO_EXPR, la.constant, .SUB, pool);
 
         case .ADD; #through;
         case .SUB;
-            la := linearize(expr.left,  vars, exprs);
-            lb := linearize(expr.right, vars, exprs);
+            la := linearize(expr.left,  vars, pool);
+            lb := linearize(expr.right, vars, pool);
             for i: 0..vars.count-1
-                result.coeffs[i] = combine(la.coeffs[i], lb.coeffs[i], expr.kind, exprs);
-            result.constant = combine(la.constant, lb.constant, expr.kind, exprs);
+                result.coeffs[i] = combine(la.coeffs[i], lb.coeffs[i], expr.kind, pool);
+            result.constant = combine(la.constant, lb.constant, expr.kind, pool);
 
         case .MUL;
-            la := linearize(expr.left,  vars, exprs);
-            lb := linearize(expr.right, vars, exprs);
+            la := linearize(expr.left,  vars, pool);
+            lb := linearize(expr.right, vars, pool);
             la_const := linear_is_constant(la);
             lb_const := linear_is_constant(lb);
             assert(la_const || lb_const, "Expression is not linear in the given variables!");
@@ -324,24 +244,24 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, exprs: *[..] Expr) -> Linear {
             if scalar != NO_EXPR {
                 for i: 0..vars.count-1 {
                     if var_part.coeffs[i] != NO_EXPR
-                        result.coeffs[i] = expr_mul(scalar, var_part.coeffs[i], exprs);
+                        result.coeffs[i] = expr_mul(scalar, var_part.coeffs[i], pool);
                 }
                 if var_part.constant != NO_EXPR
-                    result.constant = expr_mul(scalar, var_part.constant, exprs);
+                    result.constant = expr_mul(scalar, var_part.constant, pool);
             }
 
         case .DIV;
-            la := linearize(expr.left,  vars, exprs);
-            lb := linearize(expr.right, vars, exprs);
+            la := linearize(expr.left,  vars, pool);
+            lb := linearize(expr.right, vars, pool);
             assert(linear_is_constant(lb), "Expression is not linear! (non-constant divisor)");
             divisor := lb.constant;
             if divisor != NO_EXPR {
                 for i: 0..vars.count-1 {
                     if la.coeffs[i] != NO_EXPR
-                        result.coeffs[i] = expr_div(la.coeffs[i], divisor, exprs);
+                        result.coeffs[i] = expr_div(la.coeffs[i], divisor, pool);
                 }
                 if la.constant != NO_EXPR
-                    result.constant = expr_div(la.constant, divisor, exprs);
+                    result.constant = expr_div(la.constant, divisor, pool);
             }
 
         case .EXP;
@@ -354,58 +274,58 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, exprs: *[..] Expr) -> Linear {
 }
 
 // ===========================================================================
-// Symbolic differentiation: differentiate(e, var, *exprs) -> d(e)/d(var).
-// `var` must come from the same expr_symbol(name, *exprs) call used in `e`.
+// Symbolic differentiation: differentiate(e, var, *pool) -> d(e)/d(var).
+// `var` must come from the same expr_symbol(name, *pool) call used in `e`.
 // Used to build the Newton-Raphson Jacobian (see nonlinear_solve.jai).
 //
 // Result is unsimplified -- run simplify() after, fold()'s identities
 // (0+x->x, 0*x->0, 1*x->x) clean up most of the 0/1 clutter.
 // ===========================================================================
-differentiate :: (e: Expr_ID, var: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    expr := exprs.*[e]; // Copy the node before recursing.
+differentiate :: (e: Expr_ID, var: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    expr := pool.exprs[e]; // Copy the node before recursing.
 
     if expr.kind == {
         case .CONST;
-            return expr_const(0, exprs);
+            return expr_const(0, pool);
 
         case .SYMBOL;
             // Compare by name, not by raw ID: fold()'s `-(-x) -> x` rule (and
             // others) can leave a second node with the same name but a
             // different ID floating around.
-            if expr.name == exprs.*[var].name  return expr_const(1, exprs);   // d/dvar(var) = 1
-            return expr_const(0, exprs);                                      // d/dvar(other symbol) = 0
+            if expr.name == pool.exprs[var].name  return expr_const(1, pool);   // d/dvar(var) = 1
+            return expr_const(0, pool);                                      // d/dvar(other symbol) = 0
 
         case .NEG;
-            return expr_neg(differentiate(expr.left, var, exprs), exprs);
+            return expr_neg(differentiate(expr.left, var, pool), pool);
 
         case .ADD;
-            return expr_add(differentiate(expr.left, var, exprs),
-                             differentiate(expr.right, var, exprs), exprs);
+            return expr_add(differentiate(expr.left, var, pool),
+                             differentiate(expr.right, var, pool), pool);
 
         case .SUB;
-            return expr_sub(differentiate(expr.left, var, exprs),
-                             differentiate(expr.right, var, exprs), exprs);
+            return expr_sub(differentiate(expr.left, var, pool),
+                             differentiate(expr.right, var, pool), pool);
 
         case .MUL;
             // Product rule: d(u*v) = u'*v + u*v'
-            du := differentiate(expr.left,  var, exprs);
-            dv := differentiate(expr.right, var, exprs);
-            return expr_add(expr_mul(du, expr.right, exprs),
-                             expr_mul(expr.left, dv, exprs), exprs);
+            du := differentiate(expr.left,  var, pool);
+            dv := differentiate(expr.right, var, pool);
+            return expr_add(expr_mul(du, expr.right, pool),
+                             expr_mul(expr.left, dv, pool), pool);
 
         case .DIV;
             // Quotient rule: d(u/v) = (u'*v - u*v') / v^2
-            du := differentiate(expr.left,  var, exprs);
-            dv := differentiate(expr.right, var, exprs);
-            numerator   := expr_sub(expr_mul(du, expr.right, exprs),
-                                     expr_mul(expr.left, dv, exprs), exprs);
-            denominator := expr_mul(expr.right, expr.right, exprs);
-            return expr_div(numerator, denominator, exprs);
+            du := differentiate(expr.left,  var, pool);
+            dv := differentiate(expr.right, var, pool);
+            numerator   := expr_sub(expr_mul(du, expr.right, pool),
+                                     expr_mul(expr.left, dv, pool), pool);
+            denominator := expr_mul(expr.right, expr.right, pool);
+            return expr_div(numerator, denominator, pool);
 
         case .EXP;
             // Chain rule: d(exp(u)) = exp(u) * u'
-            du := differentiate(expr.left, var, exprs);
-            return expr_mul(e, du, exprs); // reuse `e` itself as exp(u)
+            du := differentiate(expr.left, var, pool);
+            return expr_mul(e, du, pool); // reuse `e` itself as exp(u)
     }
 
     assert(false, "differentiate: unhandled Expr_Kind");
@@ -415,33 +335,33 @@ differentiate :: (e: Expr_ID, var: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
 //==================================================
 // Fold constants and algebraic identities in place, bottom-up.
 // Children are fully folded before the parent is checked, so one pass suffices.
-fold :: (e: Expr_ID, exprs: *[..] Expr) {
-    expr := exprs.*[e];
+fold :: (e: Expr_ID, pool: *Expr_Pool) {
+    expr := pool.exprs[e];
     if expr.kind == {
         case .CONST;  return;
         case .SYMBOL; return;
 
         case .NEG;
-            fold(expr.left, exprs);
-            child := exprs.*[expr.left];
+            fold(expr.left, pool);
+            child := pool.exprs[expr.left];
             if child.kind == .CONST {
-                exprs.*[e] = .{ kind = .CONST, value = -child.value }; // -C     → CONST(-C)
+                pool.exprs[e] = .{ kind = .CONST, value = -child.value }; // -C     → CONST(-C)
             } else if child.kind == .NEG {
-                exprs.*[e] = exprs.*[child.left];                       // -(-x)  → x
+                pool.exprs[e] = pool.exprs[child.left];                       // -(-x)  → x
             // NOTE: -(a+b) is intentionally NOT distributed to (-a)+(-b).
             // Keeping it factored enables (-a)/(-b)->a/b and (-a)-b->-(a+b) to fire.
             } else if child.kind == .SUB {
-                exprs.*[e] = .{ kind = .SUB, left = child.right, right = child.left }; // -(a-b) → b-a
+                pool.exprs[e] = .{ kind = .SUB, left = child.right, right = child.left }; // -(a-b) → b-a
             }
 
         case .EXP;
-            fold(expr.left, exprs); // no further constant-folding for a transcendental of a non-literal operand
+            fold(expr.left, pool); // no further constant-folding for a transcendental of a non-literal operand
 
         case; // ADD, SUB, MUL, DIV
-            fold(expr.left,  exprs);
-            fold(expr.right, exprs);
-            left  := exprs.*[expr.left];
-            right := exprs.*[expr.right];
+            fold(expr.left,  pool);
+            fold(expr.right, pool);
+            left  := pool.exprs[expr.left];
+            right := pool.exprs[expr.right];
 
             // Evaluate arithmetic on two literal constants
             if left.kind == .CONST && right.kind == .CONST {
@@ -455,95 +375,95 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
                             result = left.value / right.value;
                         else return; // not exactly divisible; leave as-is
                 }
-                exprs.*[e] = .{ kind = .CONST, value = result };
+                pool.exprs[e] = .{ kind = .CONST, value = result };
                 return;
             }
 
             if expr.kind == .ADD {
-                if left.kind  == .CONST && left.value  == 0 { exprs.*[e] = right; return; } // 0 + x → x
-                if right.kind == .CONST && right.value == 0 { exprs.*[e] = left;  return; } // x + 0 → x
+                if left.kind  == .CONST && left.value  == 0 { pool.exprs[e] = right; return; } // 0 + x → x
+                if right.kind == .CONST && right.value == 0 { pool.exprs[e] = left;  return; } // x + 0 → x
                 // (-a) + (-b) → -(a+b) : factor out shared negation
                 if left.kind == .NEG && right.kind == .NEG {
-                    inner := expr_bin(.ADD, left.left, right.left, exprs);
-                    fold(inner, exprs);
-                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    inner := expr_bin(.ADD, left.left, right.left, pool);
+                    fold(inner, pool);
+                    pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
                 // a + (-b) → a - b : normalize to SUB form
                 if right.kind == .NEG {
-                    exprs.*[e] = .{ kind = .SUB, left = expr.left, right = right.left };
-                    fold(e, exprs);
+                    pool.exprs[e] = .{ kind = .SUB, left = expr.left, right = right.left };
+                    fold(e, pool);
                     return;
                 }
                 // (-a) + b → b - a : normalize so the NEG term is on the right
                 if left.kind == .NEG {
-                    exprs.*[e] = .{ kind = .SUB, left = expr.right, right = left.left };
-                    fold(e, exprs);
+                    pool.exprs[e] = .{ kind = .SUB, left = expr.right, right = left.left };
+                    fold(e, pool);
                     return;
                 }
             }
             if expr.kind == .SUB {
-                if right.kind == .CONST && right.value == 0 { exprs.*[e] = left;  return; } // x - 0 → x
-                if left.kind  == .CONST && left.value  == 0 { exprs.*[e] = .{ kind = .NEG, left = expr.right }; return; } // 0 - x → -x
+                if right.kind == .CONST && right.value == 0 { pool.exprs[e] = left;  return; } // x - 0 → x
+                if left.kind  == .CONST && left.value  == 0 { pool.exprs[e] = .{ kind = .NEG, left = expr.right }; return; } // 0 - x → -x
                 // a - (-b) → a + b : eliminate double sign
                 if right.kind == .NEG {
-                    exprs.*[e] = .{ kind = .ADD, left = expr.left, right = right.left };
-                    fold(e, exprs);
+                    pool.exprs[e] = .{ kind = .ADD, left = expr.left, right = right.left };
+                    fold(e, pool);
                     return;
                 }
                 // (-a) - b → -(a+b) : factor out negation from left operand
                 if left.kind == .NEG {
-                    inner := expr_bin(.ADD, left.left, expr.right, exprs);
-                    fold(inner, exprs);
-                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    inner := expr_bin(.ADD, left.left, expr.right, pool);
+                    fold(inner, pool);
+                    pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
             }
             if expr.kind == .MUL {
-                if left.kind  == .CONST && left.value  ==  0 { exprs.*[e] = left;  return; } // 0 * x → 0
-                if right.kind == .CONST && right.value ==  0 { exprs.*[e] = right; return; } // x * 0 → 0
-                if left.kind  == .CONST && left.value  ==  1 { exprs.*[e] = right; return; } // 1 * x → x
-                if right.kind == .CONST && right.value ==  1 { exprs.*[e] = left;  return; } // x * 1 → x
-                if left.kind  == .CONST && left.value  == -1 { exprs.*[e] = .{ kind = .NEG, left = expr.right }; return; } // -1 * x → -x
-                if right.kind == .CONST && right.value == -1 { exprs.*[e] = .{ kind = .NEG, left = expr.left  }; return; } // x * -1 → -x
+                if left.kind  == .CONST && left.value  ==  0 { pool.exprs[e] = left;  return; } // 0 * x → 0
+                if right.kind == .CONST && right.value ==  0 { pool.exprs[e] = right; return; } // x * 0 → 0
+                if left.kind  == .CONST && left.value  ==  1 { pool.exprs[e] = right; return; } // 1 * x → x
+                if right.kind == .CONST && right.value ==  1 { pool.exprs[e] = left;  return; } // x * 1 → x
+                if left.kind  == .CONST && left.value  == -1 { pool.exprs[e] = .{ kind = .NEG, left = expr.right }; return; } // -1 * x → -x
+                if right.kind == .CONST && right.value == -1 { pool.exprs[e] = .{ kind = .NEG, left = expr.left  }; return; } // x * -1 → -x
                 // Pull NEG out of MUL: a*(-b) → -(a*b), (-a)*b → -(a*b)
                 // Re-fold afterwards to collapse any resulting NEG(NEG(...))
                 if right.kind == .NEG {
-                    inner := expr_mul(expr.left, right.left, exprs);
-                    fold(inner, exprs);
-                    exprs.*[e] = .{ kind = .NEG, left = inner };
-                    fold(e, exprs);
+                    inner := expr_mul(expr.left, right.left, pool);
+                    fold(inner, pool);
+                    pool.exprs[e] = .{ kind = .NEG, left = inner };
+                    fold(e, pool);
                     return;
                 }
                 if left.kind == .NEG {
-                    inner := expr_mul(left.left, expr.right, exprs);
-                    fold(inner, exprs);
-                    exprs.*[e] = .{ kind = .NEG, left = inner };
-                    fold(e, exprs);
+                    inner := expr_mul(left.left, expr.right, pool);
+                    fold(inner, pool);
+                    pool.exprs[e] = .{ kind = .NEG, left = inner };
+                    fold(e, pool);
                     return;
                 }
             }
             if expr.kind == .DIV {
-                if right.kind == .CONST && right.value == 1 { exprs.*[e] = left; return; } // x / 1 → x
-                if left.kind  == .CONST && left.value  == 0 { exprs.*[e] = left; return; } // 0 / x → 0 (x assumed nonzero; other identities here also don't guard divide-by-zero either)
+                if right.kind == .CONST && right.value == 1 { pool.exprs[e] = left; return; } // x / 1 → x
+                if left.kind  == .CONST && left.value  == 0 { pool.exprs[e] = left; return; } // 0 / x → 0 (x assumed nonzero; other identities here also don't guard divide-by-zero either)
                 // (-a) / (-b) → a / b : cancel double negation (check this before single-NEG cases)
                 if left.kind == .NEG && right.kind == .NEG {
-                    exprs.*[e] = .{ kind = .DIV, left = left.left, right = right.left };
-                    fold(e, exprs);
+                    pool.exprs[e] = .{ kind = .DIV, left = left.left, right = right.left };
+                    fold(e, pool);
                     return;
                 }
                 // (-a) / b → -(a/b) : move negation outside the division
                 if left.kind == .NEG {
-                    inner := expr_bin(.DIV, left.left, expr.right, exprs);
-                    fold(inner, exprs);
-                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    inner := expr_bin(.DIV, left.left, expr.right, pool);
+                    fold(inner, pool);
+                    pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
                 // a / (-b) → -(a/b) : move negation outside the division
                 if right.kind == .NEG {
-                    inner := expr_bin(.DIV, expr.left, right.left, exprs);
-                    fold(inner, exprs);
-                    exprs.*[e] = .{ kind = .NEG, left = inner };
+                    inner := expr_bin(.DIV, expr.left, right.left, pool);
+                    fold(inner, pool);
+                    pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
             }
@@ -553,21 +473,17 @@ fold :: (e: Expr_ID, exprs: *[..] Expr) {
 // ===========================================================================
 // Cramer's rule solver using memoized cofactor expansion.
 //
-// Replaces the previous fraction-free Gauss-Jordan implementation.
+// Why not Gauss-Jordan: it builds each diagonal entry as a product of
+// intermediate pivots. For typical audio-circuit conductances (~1e-3 to
+// 1e-5) an 8x8 system produces pivot products of 1e-45 to 1e-60 -- at or
+// below float32's minimum denormal (~1.4e-45), underflowing to zero and
+// producing NaN/Inf output.
 //
-// Motivation: Gauss-Jordan builds each diagonal entry as a product of
-// intermediate pivot values.  For typical audio-circuit conductances
-// (~1e-3 to 1e-5) an 8×8 system produces pivot products in the range
-// 1e-45 to 1e-60 — at or below float32's minimum denormal (~1.4e-45).
-// Those denominators underflow to zero in float32, causing NaN/Inf output.
-//
-// Cramer's rule computes det(A) via cofactor (Laplace) expansion, which
-// expresses it as a *sum* of products rather than a *product* of pivots.
-// For the same circuit the determinant evaluates to ~6e-16 — well within
-// float32's normal range.  All n solutions share the identical det(A)
-// denominator, so CSE extracts it once and recip_hoist turns it into a
-// single precomputed reciprocal, matching the structure produced by the
-// old Mathematica pipeline.
+// Cramer's rule expresses det(A) via cofactor (Laplace) expansion -- a
+// *sum* of products rather than a *product* of pivots -- which for the same
+// circuit stays around ~6e-16, well within float32's normal range. All n
+// solutions share the same det(A) denominator, so CSE extracts it once and
+// recip_hoist turns it into a single precomputed reciprocal.
 // ===========================================================================
 
 // Count the number of set bits in a 64-bit integer.
@@ -601,7 +517,7 @@ Det_Cache_Entry :: struct {
 symbolic_det :: (M: [] Expr_ID, n: int,
                  rows: u64, cols: u64,
                  cache: *[..] Det_Cache_Entry,
-                 exprs: *[..] Expr) -> Expr_ID {
+                 pool: *Expr_Pool) -> Expr_ID {
 
     // Cache lookup.
     for e: cache.*  if e.rows == rows && e.cols == cols  return e.value;
@@ -613,13 +529,13 @@ symbolic_det :: (M: [] Expr_ID, n: int,
 
     if k == 0 {
         // Empty sub-matrix: determinant = 1 (multiplicative identity).
-        det = expr_const(1, exprs);
+        det = expr_const(1, pool);
 
     } else if k == 1 {
         r   := ctz_u64(rows);
         c   := ctz_u64(cols);
         det = M[r * n + c];
-        if det == NO_EXPR  det = expr_const(0, exprs);
+        if det == NO_EXPR  det = expr_const(0, pool);
 
     } else {
         // Cofactor expansion along the lowest-numbered remaining row.
@@ -637,20 +553,20 @@ symbolic_det :: (M: [] Expr_ID, n: int,
             if entry == NO_EXPR { col_pos += 1; continue; }   // structural zero
 
             sub_cols := cols ^ (cast(u64)1 << cj);
-            minor    := symbolic_det(M, n, sub_rows, sub_cols, cache, exprs);
+            minor    := symbolic_det(M, n, sub_rows, sub_cols, cache, pool);
 
             // Skip if the minor is the constant zero.
-            minor_zero := exprs.*[minor].kind == .CONST && exprs.*[minor].value == 0;
+            minor_zero := pool.exprs[minor].kind == .CONST && pool.exprs[minor].value == 0;
             if !minor_zero {
-                term := expr_mul(entry, minor, exprs);
-                fold(term, exprs);
+                term := expr_mul(entry, minor, pool);
+                fold(term, pool);
                 sign_plus := (col_pos % 2) == 0;
-                det = ifx sign_plus then combine(det, term, .ADD, exprs)
-                                    else combine(det, term, .SUB, exprs);
+                det = ifx sign_plus then combine(det, term, .ADD, pool)
+                                    else combine(det, term, .SUB, pool);
             }
             col_pos += 1;
         }
-        if det == NO_EXPR  det = expr_const(0, exprs);
+        if det == NO_EXPR  det = expr_const(0, pool);
     }
 
     array_add(cache, .{ rows = rows, cols = cols, value = det });
@@ -659,11 +575,10 @@ symbolic_det :: (M: [] Expr_ID, n: int,
 
 // Solve a square linear system A*x = b using Cramer's rule.
 // Every solution x[i] = det(A_i) / det(A), where A_i is A with column i
-// replaced by b.  Because all solutions share the *same* det(A), the CSE
-// pass will extract it as one shared temporary and recip_hoist will turn
-// it into a single precomputed reciprocal — identical in structure to the
-// single `temp17 = 1/det` produced by the old Mathematica pipeline.
-solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [..] Expr_ID {
+// replaced by b. All solutions share the same det(A), so CSE extracts it as
+// one shared temporary and recip_hoist turns it into a single precomputed
+// reciprocal.
+solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..] Expr_ID {
     n := equations.count;
     assert(n == solve_for.count, "Need one equation per unknown!");
     assert(n <= 62, "System too large for bitmask Cramer solver (n > 62)");
@@ -678,14 +593,14 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [.
     b: [..] Expr_ID;
 
     for i: 0..n-1 {
-        lin := linearize(equations[i], solve_for, exprs);
+        lin := linearize(equations[i], solve_for, pool);
         for j: 0..n-1 {
             a_ij := lin.coeffs[j];
-            if a_ij != NO_EXPR  fold(a_ij, exprs);
+            if a_ij != NO_EXPR  fold(a_ij, pool);
             array_add(*A, a_ij);
         }
-        rhs_i := ifx lin.constant != NO_EXPR then expr_neg(lin.constant, exprs) else NO_EXPR;
-        if rhs_i != NO_EXPR  fold(rhs_i, exprs);
+        rhs_i := ifx lin.constant != NO_EXPR then expr_neg(lin.constant, pool) else NO_EXPR;
+        if rhs_i != NO_EXPR  fold(rhs_i, pool);
         array_add(*b, rhs_i);
     }
 
@@ -697,10 +612,10 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [.
     // a *sum* of products of conductances, keeping values in float32 range.
     // -----------------------------------------------------------------------
     det_A_cache: [..] Det_Cache_Entry;
-    det_A := symbolic_det(A, n, all_mask, all_mask, *det_A_cache, exprs);
-    assert(!(exprs.*[det_A].kind == .CONST && exprs.*[det_A].value == 0),
+    det_A := symbolic_det(A, n, all_mask, all_mask, *det_A_cache, pool);
+    assert(!(pool.exprs[det_A].kind == .CONST && pool.exprs[det_A].value == 0),
            "System matrix is singular!");
-    fold(det_A, exprs);
+    fold(det_A, pool);
 
     // -----------------------------------------------------------------------
     // Step 3: For each variable x[i], build A_i and compute det(A_i).
@@ -728,17 +643,17 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, exprs: *[..] Expr) -> [.
                 array_add(*det_Ai_cache, e);
         }
 
-        det_Ai := symbolic_det(A_i, n, all_mask, all_mask, *det_Ai_cache, exprs);
-        fold(det_Ai, exprs);
+        det_Ai := symbolic_det(A_i, n, all_mask, all_mask, *det_Ai_cache, pool);
+        fold(det_Ai, pool);
 
         // Numerically zero solution — return directly without a division.
-        if exprs.*[det_Ai].kind == .CONST && exprs.*[det_Ai].value == 0 {
+        if pool.exprs[det_Ai].kind == .CONST && pool.exprs[det_Ai].value == 0 {
             array_add(*result, det_Ai);
             continue;
         }
 
-        sol := expr_div(det_Ai, det_A, exprs);
-        fold(sol, exprs);
+        sol := expr_div(det_Ai, det_A, pool);
+        fold(sol, pool);
         array_add(*result, sol);
     }
 
@@ -829,31 +744,31 @@ flatten :: (e: Expr_ID, exprs: [] Expr) -> Flat {
 
 // Left-associative product:  coeff * syms[0] * syms[1] * ...
 // Returns expr_const(1, exprs) when coeff == 1 and syms is empty.
-build_product :: (coeff: s64, syms: [] Expr_ID, exprs: *[..] Expr) -> Expr_ID {
+build_product :: (coeff: s64, syms: [] Expr_ID, pool: *Expr_Pool) -> Expr_ID {
     result := NO_EXPR;
-    if coeff != 1 || syms.count == 0  result = expr_const(coeff, exprs);
+    if coeff != 1 || syms.count == 0  result = expr_const(coeff, pool);
     for s: syms {
         if result == NO_EXPR  result = s;
-        else                  result = expr_bin(.MUL, result, s, exprs);
+        else                  result = expr_bin(.MUL, result, s, pool);
     }
-    if result == NO_EXPR  result = expr_const(1, exprs);
+    if result == NO_EXPR  result = expr_const(1, pool);
     return result;
 }
 
 // Reconstruct an expression from a Flat.  Caller should fold() afterwards if needed.
-rebuild_flat :: (f: Flat, exprs: *[..] Expr) -> Expr_ID {
-    if f.int_num == 0  return expr_const(0, exprs);
+rebuild_flat :: (f: Flat, pool: *Expr_Pool) -> Expr_ID {
+    if f.int_num == 0  return expr_const(0, pool);
     negative  := f.int_num < 0;
     abs_coeff := ifx negative then -f.int_num else f.int_num;
-    num_expr  := build_product(abs_coeff, f.sym_num, exprs);
+    num_expr  := build_product(abs_coeff, f.sym_num, pool);
     result: Expr_ID;
     if f.int_denom == 1 && f.sym_denom.count == 0 {
         result = num_expr;
     } else {
-        denom_expr := build_product(f.int_denom, f.sym_denom, exprs);
-        result = expr_bin(.DIV, num_expr, denom_expr, exprs);
+        denom_expr := build_product(f.int_denom, f.sym_denom, pool);
+        result = expr_bin(.DIV, num_expr, denom_expr, pool);
     }
-    if negative  result = expr_neg(result, exprs);
+    if negative  result = expr_neg(result, pool);
     return result;
 }
 
@@ -865,26 +780,26 @@ rebuild_flat :: (f: Flat, exprs: *[..] Expr) -> Expr_ID {
 // Returns (true, result_id) on success, (false, NO_EXPR) on failure.
 // On failure the expression array may contain a few unreachable scratch nodes;
 // those are harmless and will not be printed.
-try_cancel :: (num: Expr_ID, factor: Expr_ID, exprs: *[..] Expr) -> (bool, Expr_ID) {
-    expr := exprs.*[num];
+try_cancel :: (num: Expr_ID, factor: Expr_ID, pool: *Expr_Pool) -> (bool, Expr_ID) {
+    expr := pool.exprs[num];
 
     if expr.kind == .NEG {
-        ok, inner := try_cancel(expr.left, factor, exprs);
-        if ok  return true, expr_neg(inner, exprs);
+        ok, inner := try_cancel(expr.left, factor, pool);
+        if ok  return true, expr_neg(inner, pool);
         return false, NO_EXPR;
     }
 
     if expr.kind == .ADD || expr.kind == .SUB {
-        ok_l, res_l := try_cancel(expr.left,  factor, exprs);
+        ok_l, res_l := try_cancel(expr.left,  factor, pool);
         if !ok_l  return false, NO_EXPR;
-        ok_r, res_r := try_cancel(expr.right, factor, exprs);
+        ok_r, res_r := try_cancel(expr.right, factor, pool);
         if !ok_r  return false, NO_EXPR;
-        return true, expr_bin(expr.kind, res_l, res_r, exprs);
+        return true, expr_bin(expr.kind, res_l, res_r, pool);
     }
 
     // Leaf / product node: use Flat arithmetic.
-    nf := flatten(num,    exprs.*);
-    df := flatten(factor, exprs.*);
+    nf := flatten(num,    pool.exprs);
+    df := flatten(factor, pool.exprs);
 
     // Integer part: (nf.n / nf.d) / (df.n / df.d) = (nf.n * df.d) / (nf.d * df.n).
     // Must reduce to an exact integer (reduced denominator == 1).
@@ -919,7 +834,7 @@ try_cancel :: (num: Expr_ID, factor: Expr_ID, exprs: *[..] Expr) -> (bool, Expr_
         if used_d[i]  continue;
         for j: 0..combined_n.count-1 {
             if used_n[j]  continue;
-            if exprs_equal(combined_d[i], combined_n[j], exprs.*) {
+            if exprs_equal(combined_d[i], combined_n[j], pool.exprs) {
                 used_d[i] = true;
                 used_n[j] = true;
                 break;
@@ -938,23 +853,23 @@ try_cancel :: (num: Expr_ID, factor: Expr_ID, exprs: *[..] Expr) -> (bool, Expr_
     result_f.int_denom = 1;
     for i: 0..combined_n.count-1  if !used_n[i]  array_add(*result_f.sym_num,   combined_n[i]);
     for i: 0..combined_d.count-1  if !used_d[i]  array_add(*result_f.sym_denom, combined_d[i]);
-    return true, rebuild_flat(result_f, exprs);
+    return true, rebuild_flat(result_f, pool);
 }
 
 // Simplify a DIV node in-place by cancelling common symbolic and integer factors
 // between numerator and denominator.
-simplify_div :: (e: Expr_ID, exprs: *[..] Expr) {
-    expr := exprs.*[e];
+simplify_div :: (e: Expr_ID, pool: *Expr_Pool) {
+    expr := pool.exprs[e];
     num  := expr.left;
     den  := expr.right;
 
     // a / a  →  1
-    if exprs_equal(num, den, exprs.*) {
-        exprs.*[e] = .{ kind = .CONST, value = 1 };
+    if exprs_equal(num, den, pool.exprs) {
+        pool.exprs[e] = .{ kind = .CONST, value = 1 };
         return;
     }
 
-    den_flat := flatten(den, exprs.*);
+    den_flat := flatten(den, pool.exprs);
     if den_flat.int_num == 0  return;  // degenerate denominator; leave as-is
 
     cur_num := num;
@@ -962,7 +877,7 @@ simplify_div :: (e: Expr_ID, exprs: *[..] Expr) {
     // Cancel symbolic denominator factors from the numerator one-by-one.
     remaining_sym: [..] Expr_ID;
     for sym: den_flat.sym_num {
-        ok, new_num := try_cancel(cur_num, sym, exprs);
+        ok, new_num := try_cancel(cur_num, sym, pool);
         if ok  cur_num = new_num;
         else   array_add(*remaining_sym, sym);
     }
@@ -970,19 +885,19 @@ simplify_div :: (e: Expr_ID, exprs: *[..] Expr) {
     // Try to cancel the integer coefficient of the denominator (exact division).
     remaining_int := den_flat.int_num;  // > 0 after fold normalises sign
     if den_flat.int_denom == 1 && remaining_int > 1 {
-        int_factor := expr_const(remaining_int, exprs);
-        ok, new_num := try_cancel(cur_num, int_factor, exprs);
+        int_factor := expr_const(remaining_int, pool);
+        ok, new_num := try_cancel(cur_num, int_factor, pool);
         if ok { cur_num = new_num;  remaining_int = 1; }
     }
 
     // Partial integer GCD: if the numerator is a plain CONST, reduce by GCD.
     if den_flat.int_denom == 1 && remaining_int > 1 {
-        cur_expr := exprs.*[cur_num];
+        cur_expr := pool.exprs[cur_num];
         if cur_expr.kind == .CONST && cur_expr.value != 0 {
             abs_val := ifx cur_expr.value < 0 then -cur_expr.value else cur_expr.value;
             g := gcd(abs_val, remaining_int);
             if g > 1 {
-                cur_num       = expr_const(cur_expr.value / g, exprs);
+                cur_num       = expr_const(cur_expr.value / g, pool);
                 remaining_int /= g;
             }
         }
@@ -991,65 +906,65 @@ simplify_div :: (e: Expr_ID, exprs: *[..] Expr) {
     // If the denominator itself had a denominator (den_flat.sym_denom / den_flat.int_denom),
     // those factors flip to the numerator:  num / (A/B)  =  num * B / A.
     for sym: den_flat.sym_denom {
-        cur_num = expr_bin(.MUL, cur_num, sym, exprs);
+        cur_num = expr_bin(.MUL, cur_num, sym, pool);
     }
     if den_flat.int_denom != 1 {
-        cur_num = expr_bin(.MUL, cur_num, expr_const(den_flat.int_denom, exprs), exprs);
+        cur_num = expr_bin(.MUL, cur_num, expr_const(den_flat.int_denom, pool), pool);
     }
 
     // Has the denominator fully cancelled?
     if remaining_sym.count == 0 && remaining_int == 1 {
-        exprs.*[e] = exprs.*[cur_num];
-        fold(e, exprs);
+        pool.exprs[e] = pool.exprs[cur_num];
+        fold(e, pool);
         return;
     }
 
-    new_den := build_product(remaining_int, remaining_sym, exprs);
-    exprs.*[e] = .{ kind = .DIV, left = cur_num, right = new_den };
-    fold(e, exprs);
+    new_den := build_product(remaining_int, remaining_sym, pool);
+    pool.exprs[e] = .{ kind = .DIV, left = cur_num, right = new_den };
+    fold(e, pool);
 }
 
 // If a MUL has a DIV child, lift it into a single top-level DIV so that
 // simplify_div can see the full numerator and denominator.
 //   (a/b) * c  →  (a*c) / b
 //    a * (b/c) →  (a*b) / c
-simplify_mul :: (e: Expr_ID, exprs: *[..] Expr) {
-    expr  := exprs.*[e];
-    left  := exprs.*[expr.left];
-    right := exprs.*[expr.right];
+simplify_mul :: (e: Expr_ID, pool: *Expr_Pool) {
+    expr  := pool.exprs[e];
+    left  := pool.exprs[expr.left];
+    right := pool.exprs[expr.right];
     if left.kind == .DIV {
-        new_num := expr_bin(.MUL, left.left, expr.right, exprs);
-        exprs.*[e] = .{ kind = .DIV, left = new_num, right = left.right };
-        simplify_div(e, exprs);
+        new_num := expr_bin(.MUL, left.left, expr.right, pool);
+        pool.exprs[e] = .{ kind = .DIV, left = new_num, right = left.right };
+        simplify_div(e, pool);
     } else if right.kind == .DIV {
-        new_num := expr_bin(.MUL, expr.left, right.left, exprs);
-        exprs.*[e] = .{ kind = .DIV, left = new_num, right = right.right };
-        simplify_div(e, exprs);
+        new_num := expr_bin(.MUL, expr.left, right.left, pool);
+        pool.exprs[e] = .{ kind = .DIV, left = new_num, right = right.right };
+        simplify_div(e, pool);
     }
 }
 
 // Recursive bottom-up pass: simplify children first, then the current node.
-simplify_node :: (e: Expr_ID, exprs: *[..] Expr) {
-    expr := exprs.*[e];
+simplify_node :: (e: Expr_ID, pool: *Expr_Pool) {
+    expr := pool.exprs[e];
     if expr.kind == .CONST || expr.kind == .SYMBOL || expr.kind == .NULL  return;
     if is_unary(expr.kind) {
-        simplify_node(expr.left, exprs);
+        simplify_node(expr.left, pool);
     } else {
-        simplify_node(expr.left,  exprs);
-        simplify_node(expr.right, exprs);
+        simplify_node(expr.left,  pool);
+        simplify_node(expr.right, pool);
     }
-    expr = exprs.*[e];  // re-read: a child may have changed its own kind
-    if expr.kind == .DIV  simplify_div(e, exprs);
-    if expr.kind == .MUL  simplify_mul(e, exprs);
+    expr = pool.exprs[e];  // re-read: a child may have changed its own kind
+    if expr.kind == .DIV  simplify_div(e, pool);
+    if expr.kind == .MUL  simplify_mul(e, pool);
 }
 
 //==================================================
-simplify :: (e: Expr_ID, exprs: *[..] Expr) -> Expr_ID {
-    fold(e, exprs);             // constant-fold and normalise signs
-    simplify_node(e, exprs);    // cancel common factors (MUL/DIV lifting)
-    fold(e, exprs);             // clean up any new constant sub-expressions
-    simplify_node(e, exprs);    // second pass: catches opportunities exposed above
-    fold(e, exprs);
+simplify :: (e: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    fold(e, pool);             // constant-fold and normalise signs
+    simplify_node(e, pool);    // cancel common factors (MUL/DIV lifting)
+    fold(e, pool);             // clean up any new constant sub-expressions
+    simplify_node(e, pool);    // second pass: catches opportunities exposed above
+    fold(e, pool);
     return e;
 }
 
@@ -1127,11 +1042,11 @@ cse_count_refs :: (e: Expr_ID, exprs: [] Expr,
 }
 
 cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
-             exprs: *[..] Expr, counter: *int, prefix: string) -> bool {
+             pool: *Expr_Pool, counter: *int, prefix: string) -> bool {
     ids:    [..] Expr_ID;
     counts: [..] int;
-    for v  : gen_var_ids  cse_count_refs(v,          exprs.*, *ids, *counts);
-    for cv : cse_vars.*   cse_count_refs(cv.expr_id, exprs.*, *ids, *counts);
+    for v  : gen_var_ids  cse_count_refs(v,          pool.exprs, *ids, *counts);
+    for cv : cse_vars.*   cse_count_refs(cv.expr_id, pool.exprs, *ids, *counts);
     if ids.count == 0  return false;
 
     // Union-find: merge structurally-equal nodes into one equivalence class.
@@ -1142,7 +1057,7 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
         for j: i+1..ids.count-1 {
             if parent[j] != j    continue;
             if ids[i] == ids[j]  continue;
-            if exprs_equal(ids[i], ids[j], exprs.*) {
+            if exprs_equal(ids[i], ids[j], pool.exprs) {
                 parent[j]   = i;
                 counts[i]  += counts[j];
             }
@@ -1153,22 +1068,22 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
     for i: 0..ids.count-1 {
         if parent[i] != i                        continue;  // not the class representative
         if counts[i] < 2                         continue;  // not shared enough to CSE
-        if cse_expr_size(ids[i], exprs.*) == 0   continue;  // trivial (leaf) node
+        if cse_expr_size(ids[i], pool.exprs) == 0   continue;  // trivial (leaf) node
 
         temp_name := tprint("%1%2", prefix, counter.*);
         counter.* += 1;
 
-        ex       := exprs.*[ids[i]];
+        ex       := pool.exprs[ids[i]];
         saved_id := ifx is_unary(ex.kind)
-                    then make_unary(ex.kind, ex.left, exprs)
-                    else expr_bin(ex.kind, ex.left, ex.right, exprs);
+                    then make_unary(ex.kind, ex.left, pool)
+                    else expr_bin(ex.kind, ex.left, ex.right, pool);
         array_add(cse_vars, .{ name = temp_name, expr_id = saved_id });
 
-        temp_sym_id := expr_symbol(temp_name, exprs);
-        exprs.*[ids[i]] = exprs.*[temp_sym_id];
+        temp_sym_id := expr_symbol(temp_name, pool);
+        pool.exprs[ids[i]] = pool.exprs[temp_sym_id];
         for j: 0..ids.count-1 {
             if parent[j] == i && j != i
-                exprs.*[ids[j]] = exprs.*[temp_sym_id];
+                pool.exprs[ids[j]] = pool.exprs[temp_sym_id];
         }
         made_progress = true;
     }
@@ -1195,12 +1110,12 @@ expr_is_loop_variant :: (e: Expr_ID, exprs: [] Expr,
 // `prefix` names the generated temps ("_t0", "_t1", ... by default). Pass a
 // distinct prefix if you're emitting more than one cse()'d block into the
 // same C/C++ scope, or their temp names will collide.
-cse :: (gen_var_ids: [] Expr_ID, exprs: *[..] Expr, prefix: string = "_t") -> [..] CSE_Var {
+cse :: (gen_var_ids: [] Expr_ID, pool: *Expr_Pool, prefix: string = "_t") -> [..] CSE_Var {
     cse_vars: [..] CSE_Var;
     counter: int = 0;
     MAX_PASSES :: 20;
     for 0..MAX_PASSES-1 {
-        if !cse_pass(gen_var_ids, *cse_vars, exprs, *counter, prefix)  break;
+        if !cse_pass(gen_var_ids, *cse_vars, pool, *counter, prefix)  break;
     }
     return cse_vars;
 }
@@ -1245,28 +1160,28 @@ sort_cse_topological :: (cse_vars: *[..] CSE_Var, exprs: [] Expr) {
 }
 // Walk a loop-variant expression and hoist any loop-invariant sub-expressions
 // into new_vars as new CSE temporaries (even if they appear only once).
-licm_walk :: (e: Expr_ID, exprs: *[..] Expr,
+licm_walk :: (e: Expr_ID, pool: *Expr_Pool,
               new_vars: *[..] CSE_Var, counter: *int,
               variant_base: [] string, variant_cse_names: [] string, prefix: string) -> bool {
-    ex := (exprs.*)[e];
+    ex := (pool.exprs)[e];
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return false;
 
     made_progress := false;
     n_children := ifx is_unary(ex.kind) then 1 else 2;
     for ci : 0..n_children-1 {
         child_id := ifx ci == 0 then ex.left else ex.right;
-        ch := (exprs.*)[child_id];
+        ch := (pool.exprs)[child_id];
         if ch.kind == .CONST || ch.kind == .SYMBOL || ch.kind == .NULL  continue;
-        if !expr_is_loop_variant(child_id, exprs.*, variant_base, variant_cse_names) {
+        if !expr_is_loop_variant(child_id, pool.exprs, variant_base, variant_cse_names) {
             // Loop-invariant compound sub-expression inside a loop-variant context -- hoist it.
             temp_name := tprint("%1%2", prefix, counter.*);  counter.* += 1;
             saved_id  := ifx is_unary(ch.kind)
-                         then make_unary(ch.kind, ch.left, exprs)
-                         else expr_bin(ch.kind, ch.left, ch.right, exprs);
+                         then make_unary(ch.kind, ch.left, pool)
+                         else expr_bin(ch.kind, ch.left, ch.right, pool);
             array_add(new_vars, .{ name = temp_name, expr_id = saved_id });
-            (exprs.*)[child_id] = (exprs.*)[expr_symbol(temp_name, exprs)];
+            (pool.exprs)[child_id] = (pool.exprs)[expr_symbol(temp_name, pool)];
             made_progress = true;
-        } else if licm_walk(child_id, exprs, new_vars, counter, variant_base, variant_cse_names, prefix) {
+        } else if licm_walk(child_id, pool, new_vars, counter, variant_base, variant_cse_names, prefix) {
             made_progress = true;
         }
     }
@@ -1279,13 +1194,13 @@ licm_walk :: (e: Expr_ID, exprs: *[..] Expr,
 // temporaries are appended to cse_vars; codegen will hoist them outside the
 // per-sample loop because they classify as loop-invariant. `prefix` must
 // match whatever prefix cse_vars' own names were generated with (see cse()).
-licm :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
+licm :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Pool,
          variant_base: [] string, prefix: string = "_t") {
     // Propagate variant-ness through the existing (topologically ordered) CSE temps
     // so that expr_is_loop_variant correctly handles temps that depend on other temps.
     variant_cse_names: [..] string;
     for cv : cse_vars.* {
-        if expr_is_loop_variant(cv.expr_id, exprs.*, variant_base, variant_cse_names)
+        if expr_is_loop_variant(cv.expr_id, pool.exprs, variant_base, variant_cse_names)
             array_add(*variant_cse_names, cv.name);
     }
 
@@ -1297,15 +1212,15 @@ licm :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
         made_progress := false;
 
         for gv_id : gen_var_ids {
-            if expr_is_loop_variant(gv_id, exprs.*, variant_base, variant_cse_names) {
-                if licm_walk(gv_id, exprs, *new_vars, *counter, variant_base, variant_cse_names, prefix)
+            if expr_is_loop_variant(gv_id, pool.exprs, variant_base, variant_cse_names) {
+                if licm_walk(gv_id, pool, *new_vars, *counter, variant_base, variant_cse_names, prefix)
                     made_progress = true;
             }
         }
 
         for cv : cse_vars.* {
-            if expr_is_loop_variant(cv.expr_id, exprs.*, variant_base, variant_cse_names) {
-                if licm_walk(cv.expr_id, exprs, *new_vars, *counter, variant_base, variant_cse_names, prefix)
+            if expr_is_loop_variant(cv.expr_id, pool.exprs, variant_base, variant_cse_names) {
+                if licm_walk(cv.expr_id, pool, *new_vars, *counter, variant_base, variant_cse_names, prefix)
                     made_progress = true;
             }
         }
@@ -1366,27 +1281,27 @@ count_sym_uses_by_name :: (e: Expr_ID, sym_name: string, exprs: [] Expr,
 }
 
 // In expression tree e, replace every DIV(A, sym_name) with MUL(A, recip_sym_id).
-replace_div_by_name :: (e: Expr_ID, sym_name: string, recip_sym_id: Expr_ID, exprs: *[..] Expr) {
-    ex := (exprs.*)[e];
+replace_div_by_name :: (e: Expr_ID, sym_name: string, recip_sym_id: Expr_ID, pool: *Expr_Pool) {
+    ex := (pool.exprs)[e];
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return;
     if is_unary(ex.kind) {
-        replace_div_by_name(ex.left, sym_name, recip_sym_id, exprs);
+        replace_div_by_name(ex.left, sym_name, recip_sym_id, pool);
         return;
     }
     if ex.kind == .DIV {
-        right_ex := (exprs.*)[ex.right];
+        right_ex := (pool.exprs)[ex.right];
         if right_ex.kind == .SYMBOL && right_ex.name == sym_name {
-            (exprs.*)[e].kind  = .MUL;
-            (exprs.*)[e].right = recip_sym_id;
-            replace_div_by_name(ex.left, sym_name, recip_sym_id, exprs);
+            (pool.exprs)[e].kind  = .MUL;
+            (pool.exprs)[e].right = recip_sym_id;
+            replace_div_by_name(ex.left, sym_name, recip_sym_id, pool);
         } else {
-            replace_div_by_name(ex.left,  sym_name, recip_sym_id, exprs);
-            replace_div_by_name(ex.right, sym_name, recip_sym_id, exprs);
+            replace_div_by_name(ex.left,  sym_name, recip_sym_id, pool);
+            replace_div_by_name(ex.right, sym_name, recip_sym_id, pool);
         }
         return;
     }
-    replace_div_by_name(ex.left,  sym_name, recip_sym_id, exprs);
-    replace_div_by_name(ex.right, sym_name, recip_sym_id, exprs);
+    replace_div_by_name(ex.left,  sym_name, recip_sym_id, pool);
+    replace_div_by_name(ex.right, sym_name, recip_sym_id, pool);
 }
 
 // Pre-compute reciprocals of loop-invariant expressions that appear as divisors
@@ -1400,12 +1315,12 @@ replace_div_by_name :: (e: Expr_ID, sym_name: string, recip_sym_id: Expr_ID, exp
 //     (x / _tN) with (x * new_temp).
 // `prefix` must match whatever prefix cse_vars' own names were generated
 // with (see cse()) -- new dedicated-reciprocal temporaries are named after it.
-recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] Expr,
+recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Pool,
                 variant_base: [] string, prefix: string = "_t") {
     // Classify each CSE temp as inner (loop-variant) or outer (loop-invariant).
     variant_cse_names: [..] string;
     for cv : cse_vars.* {
-        if expr_is_loop_variant(cv.expr_id, exprs.*, variant_base, variant_cse_names)
+        if expr_is_loop_variant(cv.expr_id, pool.exprs, variant_base, variant_cse_names)
             array_add(*variant_cse_names, cv.name);
     }
 
@@ -1427,10 +1342,10 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] E
     // Count inner-loop uses.
     for i : 0..infos.count-1 {
         for gv_id : gen_var_ids
-            count_sym_uses_by_name(gv_id, infos[i].name, exprs.*, *infos[i].inner_div, *infos[i].inner_other);
+            count_sym_uses_by_name(gv_id, infos[i].name, pool.exprs, *infos[i].inner_div, *infos[i].inner_other);
         for cv : cse_vars.* {
             if array_find(variant_cse_names, cv.name)
-                count_sym_uses_by_name(cv.expr_id, infos[i].name, exprs.*, *infos[i].inner_div, *infos[i].inner_other);
+                count_sym_uses_by_name(cv.expr_id, infos[i].name, pool.exprs, *infos[i].inner_div, *infos[i].inner_other);
         }
     }
 
@@ -1440,7 +1355,7 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] E
             if cv.name == infos[i].name  continue;
             if !array_find(variant_cse_names, cv.name) {
                 d, o := 0, 0;
-                count_sym_uses_by_name(cv.expr_id, infos[i].name, exprs.*, *d, *o);
+                count_sym_uses_by_name(cv.expr_id, infos[i].name, pool.exprs, *d, *o);
                 infos[i].outer_refs += d + o;
             }
         }
@@ -1451,31 +1366,31 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, exprs: *[..] E
     for info : infos {
         if info.inner_div == 0  continue;
 
-        sym_id := expr_symbol(info.name, exprs);
+        sym_id := expr_symbol(info.name, pool);
 
         if info.inner_other == 0 && info.outer_refs == 0 {
             // Safe to flip: temp is used only as a divisor and nothing else depends on it.
-            one_id := expr_const(1, exprs);
+            one_id := expr_const(1, pool);
             cse_vars.*[info.cse_idx].expr_id =
-                expr_bin(.DIV, one_id, cse_vars.*[info.cse_idx].expr_id, exprs);
-            for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, sym_id, exprs);
+                expr_bin(.DIV, one_id, cse_vars.*[info.cse_idx].expr_id, pool);
+            for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, sym_id, pool);
             for cv : cse_vars.* {
                 if array_find(variant_cse_names, cv.name)
-                    replace_div_by_name(cv.expr_id, info.name, sym_id, exprs);
+                    replace_div_by_name(cv.expr_id, info.name, sym_id, pool);
             }
         } else {
             // Temp is used elsewhere too; add a dedicated reciprocal.
             recip_name := tprint("%1%2", prefix, counter);
             counter += 1;
-            one_id := expr_const(1, exprs);
-            recip_expr_id := expr_bin(.DIV, one_id, sym_id, exprs);
+            one_id := expr_const(1, pool);
+            recip_expr_id := expr_bin(.DIV, one_id, sym_id, pool);
             array_add(cse_vars, .{ name = recip_name, expr_id = recip_expr_id });
 
-            recip_sym_id := expr_symbol(recip_name, exprs);
-            for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, recip_sym_id, exprs);
+            recip_sym_id := expr_symbol(recip_name, pool);
+            for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, recip_sym_id, pool);
             for cv : cse_vars.* {
                 if array_find(variant_cse_names, cv.name)
-                    replace_div_by_name(cv.expr_id, info.name, recip_sym_id, exprs);
+                    replace_div_by_name(cv.expr_id, info.name, recip_sym_id, pool);
             }
         }
     }
