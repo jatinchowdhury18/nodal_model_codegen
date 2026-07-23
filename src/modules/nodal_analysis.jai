@@ -14,6 +14,8 @@ Element_Type :: enum {
                  // to one junction-voltage unknown via a closed-form sinh I-V law.
     BJT;         // 3-terminal: [collector, base, emitter]. Ebers-Moll I-V law.
     JFET;        // 3-terminal: [drain, gate, source]. Square-law I-V law.
+    VCCS;            // 4-terminal: [pos, neg, ctrl_pos, ctrl_neg]. Linear: I = gm*(V(ctrl_pos)-V(ctrl_neg)), sourced at pos/sunk at neg.
+    CURRENT_SOURCE;  // 2-terminal: [pos, neg]. Constant current, sourced at pos/sunk at neg.
 }
 
 Combo_Op_Type :: enum {
@@ -633,6 +635,14 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
                 } else {
                     current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *pool), *pool), state_symbol, *pool);
                 }
+            case .VCCS;
+                ctrl_pos := el.terminals[2];
+                ctrl_neg := el.terminals[3];
+                ctrl_pos_symbol := ifx ctrl_pos == "0" then expr_const(0, *pool) else expr_symbol(ctrl_pos, *pool);
+                ctrl_neg_symbol := ifx ctrl_neg == "0" then expr_const(0, *pool) else expr_symbol(ctrl_neg, *pool);
+                current_expr = expr_mul(impedance_symbol, expr_sub(ctrl_pos_symbol, ctrl_neg_symbol, *pool), *pool);
+            case .CURRENT_SOURCE;
+                current_expr = expr_symbol(el.name, *pool);
         }
         if current_expr != NO_EXPR array_add(*currents, .{ current_symbol, current_expr });
     }

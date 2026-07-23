@@ -207,7 +207,9 @@ generate_params_struct :: (elements: [] Element,
                 collect_param_leaf_names(el.rc_internal.res_expr, *leaf_names);
                 collect_param_leaf_names(el.rc_internal.cap_expr, *leaf_names);
                 for pname : leaf_names  append(*builder, write_value(pname));
-            case .FIXED_VOLTAGE;
+            case .FIXED_VOLTAGE; #through;
+            case .VCCS; #through;
+            case .CURRENT_SOURCE;
                 append(*builder, write_value(el.name));
             case .DIODE; #through;
             case .DIODE_PAIR; #through;
@@ -348,6 +350,10 @@ generate_impedance_defs :: (elements: [] Element, backend: Backend = .{}) -> str
                 if node_name != param_name {
                     append(*builder, tprint("const %1 %2 = %3;\n\n", auto_or_type, node_name, param_name));
                 }
+            case .VCCS;
+                append(*builder, tprint("const %1 g%2 = %3;\n\n", auto_or_type, el.name, val_name));
+            case .CURRENT_SOURCE;
+                append(*builder, tprint("const %1 %2 = %3;\n\n", auto_or_type, el.name, val_name));
         }
     }
 

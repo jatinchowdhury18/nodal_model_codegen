@@ -523,6 +523,25 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                         array_add(*elements, element);
                 }
                 continue;
+            case "G";
+                // G<name> n+ n- nc+ nc- value  (linear VCCS: I = value*(V(nc+)-V(nc-)), sourced at n+/sunk at n-)
+                ctrl_pos := tokens[3];
+                ctrl_neg := tokens[4];
+                gm_value := parse_spice_value(tokens[5]);
+                if !Math.is_nan_is_inf(gm_value)  add_value_once(*values, name, gm_value);
+
+                element := Element.{ name = name, type = .VCCS };
+                array_add(*element.terminals, n1);
+                array_add(*element.terminals, n2);
+                array_add(*element.terminals, ctrl_pos);
+                array_add(*element.terminals, ctrl_neg);
+                array_add(*elements, element);
+                continue;
+            case "I";
+                // I<name> n+ n- value (constant current, sourced at n+/sunk at n-).
+                // The generic `value` parse above (tokens[3]) already registered it.
+                add_element(name, .CURRENT_SOURCE, .[n1, n2], has_no_combine);
+                continue;
             case;
                 log("Warning: unsupported element '%' (prefix '%'); ignoring.\n", name, prefix);
                 continue;
