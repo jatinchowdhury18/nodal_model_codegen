@@ -555,7 +555,22 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     clusters: [] Nonlinear_Cluster;
     cluster_exprs: [] Expr; // only valid/used when has_nonlinear
 
+    flop_str :: (f: Flop_Count) -> string #expand {
+        b: String_Builder;
+        sep := "";
+        if f.muls > 0 { append(*b, sep); print_to_builder(*b, "% mul", f.muls); sep = ", "; }
+        if f.divs > 0 { append(*b, sep); print_to_builder(*b, "% div", f.divs); sep = ", "; }
+        if f.adds > 0 { append(*b, sep); print_to_builder(*b, "% add", f.adds); sep = ", "; }
+        if f.exps > 0 { append(*b, sep); print_to_builder(*b, "% exp", f.exps); sep = ", "; }
+        total := f.muls + f.divs + f.adds + f.exps;
+        if total == 0  return "0 ops";
+        return tprint("% ops (%)", total, builder_to_string(*b));
+    }
+    flop_total :: (f: Flop_Count) -> int #expand { return f.muls + f.divs + f.adds + f.exps; }
+
     if has_nonlinear {
+        log("Nonlinear system: resolving with Newton-Raphson (tol²=%, max_iter=%)\n", net.newton_tol_sq, net.newton_max_iter);
+
         // Same as solve_and_codegen(), but with build_nonlinear_clusters()
         // spliced in between solve() and generate_expressions() -- see
         // nonlinear_solve.jai for why the ordering matters.
@@ -564,6 +579,15 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         solutions := solve(equations, solve_vars, *pool);
 
         clusters = build_nonlinear_clusters(kcl_elements, solve_vars, solutions, *pool);
+
+        for c : clusters {
+            unknown_names: [..] string;
+            for u : c.unknowns  array_add(*unknown_names, u.name);
+            log("  Cluster \"%\": % joint unknown(s): %\n", c.name, c.unknowns.count, String.join(..unknown_names, separator = ", "));
+            if c.amp_clip_idx >= 0 {
+                log("    Active-set clipping on % -- generating pinned-high/pinned-low reduced Newton systems\n", c.unknowns[c.amp_clip_idx].name);
+            }
+        }
 
         // Junction-voltage unknowns (vD1, vBCQ1, ...) only appear in the tree
         // *after* nonlinear_solve.jai substitutes them in for branch-current
@@ -593,17 +617,25 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
             solve_and_codegen(*net.elements, net.inputs, net.outputs, backend);
     }
 
-    flop_str :: (f: Flop_Count) -> string #expand {
-        b: String_Builder;
-        sep := "";
-        if f.muls > 0 { append(*b, sep); print_to_builder(*b, "% mul", f.muls); sep = ", "; }
-        if f.divs > 0 { append(*b, sep); print_to_builder(*b, "% div", f.divs); sep = ", "; }
-        if f.adds > 0 { append(*b, sep); print_to_builder(*b, "% add", f.adds); sep = ", "; }
-        total := f.muls + f.divs + f.adds;
-        if total == 0  return "0 ops";
-        return tprint("% ops (%)", total, builder_to_string(*b));
-    }
     log("  Outer loop: %\n  Inner loop: %\n", flop_str(outer_flops), flop_str(inner_flops));
+
+    newton_worst_case := 0;
+    if has_nonlinear {
+        for c : clusters {
+            setup_flops := count_flops(c.invariant_items, cluster_exprs);
+            iter_flops  := count_flops(c.iteration_items, cluster_exprs);
+            log("  Cluster \"%\" Newton setup: %\n", c.name, flop_str(setup_flops));
+            log("  Cluster \"%\" Newton iteration: % × up to % iters\n", c.name, flop_str(iter_flops), net.newton_max_iter);
+            if c.invariant_items.count == 0 {
+                log("    No Newton-invariant subexpressions found -- nothing hoisted out of the per-iteration loop\n");
+            }
+            newton_worst_case += flop_total(setup_flops) + net.newton_max_iter * flop_total(iter_flops);
+        }
+    }
+    log("  Estimated worst-case ops/sample: % (% outer + % inner%)\n",
+        flop_total(outer_flops) + flop_total(inner_flops) + newton_worst_case,
+        flop_total(outer_flops), flop_total(inner_flops),
+        ifx has_nonlinear then tprint(" + % Newton (worst case)", newton_worst_case) else "");
 
     builder: String_Builder;
     append(*builder, "#pragma once\n\n");

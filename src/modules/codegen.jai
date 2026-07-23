@@ -97,6 +97,7 @@ Flop_Count :: struct {
     muls: int;
     divs: int;
     adds: int; // ADD, SUB, and NEG all counted here
+    exps: int; // transcendental ops (currently just EXP)
 }
 
 // Recursively walk an expression tree and accumulate op counts into `result`.
@@ -108,11 +109,12 @@ count_flops_expr :: (e: Expr_ID, exprs: [] Expr, result: *Flop_Count) {
     if      kind == .MUL                                    result.muls += 1;
     else if kind == .DIV                                    result.divs += 1;
     else if kind == .ADD || kind == .SUB || kind == .NEG    result.adds += 1;
+    else if kind == .EXP                                    result.exps += 1;
 
     if kind == .ADD || kind == .SUB || kind == .MUL || kind == .DIV {
         count_flops_expr(exprs[e].left,  exprs, result);
         count_flops_expr(exprs[e].right, exprs, result);
-    } else if kind == .NEG {
+    } else if kind == .NEG || kind == .EXP {
         count_flops_expr(exprs[e].left, exprs, result);
     }
 }
