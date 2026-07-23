@@ -22,6 +22,7 @@
 
 #import "Basic";
 #import "Hash_Table";
+Hash :: #import "Hash";
 
 Expr_Kind :: enum {
     NULL;
@@ -335,14 +336,44 @@ differentiate :: (e: Expr_ID, var: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
 //==================================================
 // Fold constants and algebraic identities in place, bottom-up.
 // Children are fully folded before the parent is checked, so one pass suffices.
+//
+// fold() and fold_dag() are the same rule set with $memoize baked in at
+// compile time (false / true). Why fold_dag() exists: pool.exprs is a DAG
+// once symbolic_det()'s cofactor cache is in play (one Expr_ID shared as
+// a child of many sum terms), and a plain walk re-folds a shared node once
+// per path to it. fold() stays unmemoized - not worth the table checks for
+// the small unshared expressions from differentiate()/linearize()/etc.
 fold :: (e: Expr_ID, pool: *Expr_Pool) {
+    fold_impl(e, pool, null, false);
+}
+
+fold_dag :: (e: Expr_ID, pool: *Expr_Pool) {
+    visited: Table(Expr_ID, bool);
+    fold_impl(e, pool, *visited, true);
+    deinit(*visited);
+}
+
+fold_impl :: (e: Expr_ID, pool: *Expr_Pool, visited: *Table(Expr_ID, bool), $memoize: bool) {
+    // Recurse into a child: memoized case skips a node some other path
+    // already folded this call, unmemoized case just recurses.
+    recurse :: (child: Expr_ID) #expand {
+        #if memoize {
+            if !table_contains(visited, child) {
+                table_add(visited, child, true);
+                fold_impl(child, pool, visited, memoize);
+            }
+        } else {
+            fold_impl(child, pool, visited, memoize);
+        }
+    }
+
     expr := pool.exprs[e];
     if expr.kind == {
         case .CONST;  return;
         case .SYMBOL; return;
 
         case .NEG;
-            fold(expr.left, pool);
+            recurse(expr.left);
             child := pool.exprs[expr.left];
             if child.kind == .CONST {
                 pool.exprs[e] = .{ kind = .CONST, value = -child.value }; // -C     → CONST(-C)
@@ -355,11 +386,11 @@ fold :: (e: Expr_ID, pool: *Expr_Pool) {
             }
 
         case .EXP;
-            fold(expr.left, pool); // no further constant-folding for a transcendental of a non-literal operand
+            recurse(expr.left); // no further constant-folding for a transcendental of a non-literal operand
 
         case; // ADD, SUB, MUL, DIV
-            fold(expr.left,  pool);
-            fold(expr.right, pool);
+            recurse(expr.left);
+            recurse(expr.right);
             left  := pool.exprs[expr.left];
             right := pool.exprs[expr.right];
 
@@ -385,20 +416,20 @@ fold :: (e: Expr_ID, pool: *Expr_Pool) {
                 // (-a) + (-b) → -(a+b) : factor out shared negation
                 if left.kind == .NEG && right.kind == .NEG {
                     inner := expr_bin(.ADD, left.left, right.left, pool);
-                    fold(inner, pool);
+                    recurse(inner);
                     pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
                 // a + (-b) → a - b : normalize to SUB form
                 if right.kind == .NEG {
                     pool.exprs[e] = .{ kind = .SUB, left = expr.left, right = right.left };
-                    fold(e, pool);
+                    fold_impl(e, pool, visited, memoize);
                     return;
                 }
                 // (-a) + b → b - a : normalize so the NEG term is on the right
                 if left.kind == .NEG {
                     pool.exprs[e] = .{ kind = .SUB, left = expr.right, right = left.left };
-                    fold(e, pool);
+                    fold_impl(e, pool, visited, memoize);
                     return;
                 }
             }
@@ -408,13 +439,13 @@ fold :: (e: Expr_ID, pool: *Expr_Pool) {
                 // a - (-b) → a + b : eliminate double sign
                 if right.kind == .NEG {
                     pool.exprs[e] = .{ kind = .ADD, left = expr.left, right = right.left };
-                    fold(e, pool);
+                    fold_impl(e, pool, visited, memoize);
                     return;
                 }
                 // (-a) - b → -(a+b) : factor out negation from left operand
                 if left.kind == .NEG {
                     inner := expr_bin(.ADD, left.left, expr.right, pool);
-                    fold(inner, pool);
+                    recurse(inner);
                     pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
@@ -430,16 +461,16 @@ fold :: (e: Expr_ID, pool: *Expr_Pool) {
                 // Re-fold afterwards to collapse any resulting NEG(NEG(...))
                 if right.kind == .NEG {
                     inner := expr_mul(expr.left, right.left, pool);
-                    fold(inner, pool);
+                    recurse(inner);
                     pool.exprs[e] = .{ kind = .NEG, left = inner };
-                    fold(e, pool);
+                    fold_impl(e, pool, visited, memoize);
                     return;
                 }
                 if left.kind == .NEG {
                     inner := expr_mul(left.left, expr.right, pool);
-                    fold(inner, pool);
+                    recurse(inner);
                     pool.exprs[e] = .{ kind = .NEG, left = inner };
-                    fold(e, pool);
+                    fold_impl(e, pool, visited, memoize);
                     return;
                 }
             }
@@ -449,20 +480,20 @@ fold :: (e: Expr_ID, pool: *Expr_Pool) {
                 // (-a) / (-b) → a / b : cancel double negation (check this before single-NEG cases)
                 if left.kind == .NEG && right.kind == .NEG {
                     pool.exprs[e] = .{ kind = .DIV, left = left.left, right = right.left };
-                    fold(e, pool);
+                    fold_impl(e, pool, visited, memoize);
                     return;
                 }
                 // (-a) / b → -(a/b) : move negation outside the division
                 if left.kind == .NEG {
                     inner := expr_bin(.DIV, left.left, expr.right, pool);
-                    fold(inner, pool);
+                    recurse(inner);
                     pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
                 // a / (-b) → -(a/b) : move negation outside the division
                 if right.kind == .NEG {
                     inner := expr_bin(.DIV, expr.left, right.left, pool);
-                    fold(inner, pool);
+                    recurse(inner);
                     pool.exprs[e] = .{ kind = .NEG, left = inner };
                     return;
                 }
@@ -559,7 +590,6 @@ symbolic_det :: (M: [] Expr_ID, n: int,
             minor_zero := pool.exprs[minor].kind == .CONST && pool.exprs[minor].value == 0;
             if !minor_zero {
                 term := expr_mul(entry, minor, pool);
-                fold(term, pool);
                 sign_plus := (col_pos % 2) == 0;
                 det = ifx sign_plus then combine(det, term, .ADD, pool)
                                     else combine(det, term, .SUB, pool);
@@ -615,7 +645,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..
     det_A := symbolic_det(A, n, all_mask, all_mask, *det_A_cache, pool);
     assert(!(pool.exprs[det_A].kind == .CONST && pool.exprs[det_A].value == 0),
            "System matrix is singular!");
-    fold(det_A, pool);
+    fold_dag(det_A, pool);
 
     // -----------------------------------------------------------------------
     // Step 3: For each variable x[i], build A_i and compute det(A_i).
@@ -644,7 +674,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..
         }
 
         det_Ai := symbolic_det(A_i, n, all_mask, all_mask, *det_Ai_cache, pool);
-        fold(det_Ai, pool);
+        fold_dag(det_Ai, pool);
 
         // Numerically zero solution — return directly without a division.
         if pool.exprs[det_Ai].kind == .CONST && pool.exprs[det_Ai].value == 0 {
@@ -653,7 +683,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..
         }
 
         sol := expr_div(det_Ai, det_A, pool);
-        fold(sol, pool);
+        fold_dag(sol, pool);
         array_add(*result, sol);
     }
 
@@ -681,6 +711,33 @@ exprs_equal :: (a: Expr_ID, b: Expr_ID, exprs: [] Expr) -> bool {
     if ea.kind == .SYMBOL  return ea.name == eb.name;
     if ea.kind == .NEG     return exprs_equal(ea.left, eb.left, exprs);
     return exprs_equal(ea.left, eb.left, exprs) && exprs_equal(ea.right, eb.right, exprs);
+}
+
+// Structural hash matching exprs_equal -- equal subtrees always hash equal,
+// collisions are fine (cse_pass still confirms with exprs_equal, this is
+// just to avoid comparing every pair). `cache` memoizes per cse_pass() call,
+// same DAG-sharing reason as fold_dag.
+expr_hash :: (e: Expr_ID, exprs: [] Expr, cache: *Table(Expr_ID, u32)) -> u32 {
+    found, cached := table_find(cache, e);
+    if found  return cached;
+
+    ex := exprs[e];
+    h: u32;
+    if ex.kind == {
+        case .CONST;  h = Hash.get_hash(ex.value, cast(u32) ex.kind);
+        case .SYMBOL; h = Hash.get_hash(ex.name,  cast(u32) ex.kind);
+        case;
+            if is_unary(ex.kind) {
+                lh := expr_hash(ex.left, exprs, cache);
+                h = Hash.get_hash(lh, cast(u32) ex.kind);
+            } else {
+                lh := expr_hash(ex.left,  exprs, cache);
+                rh := expr_hash(ex.right, exprs, cache);
+                h = Hash.get_hash(rh, Hash.get_hash(lh, cast(u32) ex.kind));
+            }
+    }
+    table_add(cache, e, h);
+    return h;
 }
 
 // Rational product form:  (int_num / int_denom) * ∏ sym_num / ∏ sym_denom
@@ -1021,23 +1078,26 @@ cse_expr_size :: (e: Expr_ID, exprs: [] Expr) -> int {
     return 1 + cse_expr_size(ex.left, exprs) + cse_expr_size(ex.right, exprs);
 }
 
+// `seen` maps an Expr_ID we've already recorded to its slot in `ids`/`counts`,
+// so a repeat visit is O(1) instead of a linear scan -- with cofactor-shared
+// nodes recurring thousands of times, the scan used to make this O(ids^2).
 cse_count_refs :: (e: Expr_ID, exprs: [] Expr,
-                   ids: *[..] Expr_ID, counts: *[..] int) {
+                   ids: *[..] Expr_ID, counts: *[..] int, seen: *Table(Expr_ID, int)) {
     ex := exprs[e];
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return;
-    for i: 0..ids.count-1 {
-        if ids.*[i] == e {
-            counts.*[i] += 1;
-            return;
-        }
+    found, idx := table_find(seen, e);
+    if found {
+        counts.*[idx] += 1;
+        return;
     }
     array_add(ids,    e);
     array_add(counts, 1);
+    table_add(seen, e, ids.count - 1);
     if is_unary(ex.kind) {
-        cse_count_refs(ex.left, exprs, ids, counts);
+        cse_count_refs(ex.left, exprs, ids, counts, seen);
     } else {
-        cse_count_refs(ex.left,  exprs, ids, counts);
-        cse_count_refs(ex.right, exprs, ids, counts);
+        cse_count_refs(ex.left,  exprs, ids, counts, seen);
+        cse_count_refs(ex.right, exprs, ids, counts, seen);
     }
 }
 
@@ -1045,24 +1105,51 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
              pool: *Expr_Pool, counter: *int, prefix: string) -> bool {
     ids:    [..] Expr_ID;
     counts: [..] int;
-    for v  : gen_var_ids  cse_count_refs(v,          pool.exprs, *ids, *counts);
-    for cv : cse_vars.*   cse_count_refs(cv.expr_id, pool.exprs, *ids, *counts);
+    seen: Table(Expr_ID, int);
+    for v  : gen_var_ids  cse_count_refs(v,          pool.exprs, *ids, *counts, *seen);
+    for cv : cse_vars.*   cse_count_refs(cv.expr_id, pool.exprs, *ids, *counts, *seen);
+    deinit(*seen);
     if ids.count == 0  return false;
 
     // Union-find: merge structurally-equal nodes into one equivalence class.
+    // Bucket by hash first so exprs_equal only checks pairs that already
+    // match -- `ids` can run into the thousands, so the old all-pairs loop
+    // was O(ids^2) per pass, x20 passes.
+    hash_cache: Table(Expr_ID, u32);
+    hashes: [..] u32;
+    array_resize(*hashes, ids.count);
+    for i: 0..ids.count-1  hashes[i] = expr_hash(ids[i], pool.exprs, *hash_cache);
+    deinit(*hash_cache);
+
+    buckets: Table(u32, [..] int);
+    for i: 0..ids.count-1 {
+        list := table_find_pointer(*buckets, hashes[i]);
+        if !list {
+            empty: [..] int;
+            list = table_add(*buckets, hashes[i], empty);
+        }
+        array_add(list, i);
+    }
+
     parent: [..] int;
     for i: 0..ids.count-1  array_add(*parent, i);
-    for i: 0..ids.count-1 {
-        if parent[i] != i  continue;
-        for j: i+1..ids.count-1 {
-            if parent[j] != j    continue;
-            if ids[i] == ids[j]  continue;
-            if exprs_equal(ids[i], ids[j], pool.exprs) {
-                parent[j]   = i;
-                counts[i]  += counts[j];
+    for bucket : buckets {
+        for bi: 0..bucket.count-1 {
+            i := bucket[bi];
+            if parent[i] != i  continue;
+            for bj: bi+1..bucket.count-1 {
+                j := bucket[bj];
+                if parent[j] != j    continue;
+                if ids[i] == ids[j]  continue;
+                if exprs_equal(ids[i], ids[j], pool.exprs) {
+                    parent[j]   = i;
+                    counts[i]  += counts[j];
+                }
             }
         }
     }
+    for bucket : buckets  array_free(bucket);
+    deinit(*buckets);
 
     made_progress := false;
     for i: 0..ids.count-1 {
@@ -1250,34 +1337,50 @@ collect_symbol_names :: (e: Expr_ID, exprs: [] Expr, names: *[..] string) {
 }
 
 
-// Count how many times a named symbol appears as a *direct* divisor
-// (the immediate right child of a DIV node) vs. all other positions,
-// in the expression tree rooted at e.
-count_sym_uses_by_name :: (e: Expr_ID, sym_name: string, exprs: [] Expr,
-                           div_count: *int, other_count: *int) {
+// Counts, for every name in `name_to_idx`, how many times it shows up as a
+// *direct* divisor (right child of a DIV) vs. anywhere else in `e`.
+// div_counts/other_counts are parallel to name_to_idx's values.
+//
+// One walk checks all names at once and is memoized per call, to avoid doing
+// redundant re-walks of the same expressions. Memoizing repeat-visits is safe
+// here since callers only ever check the counts against zero, never the exact value.
+count_sym_uses_multi :: (e: Expr_ID, name_to_idx: *Table(string, int), exprs: [] Expr,
+                         div_counts: [] int, other_counts: [] int) {
+    visited: Table(Expr_ID, bool);
+    count_sym_uses_multi_impl(e, name_to_idx, exprs, div_counts, other_counts, *visited);
+    deinit(*visited);
+}
+
+count_sym_uses_multi_impl :: (e: Expr_ID, name_to_idx: *Table(string, int), exprs: [] Expr,
+                              div_counts: [] int, other_counts: [] int, visited: *Table(Expr_ID, bool)) {
+    if table_contains(visited, e)  return;
+    table_add(visited, e, true);
+
     ex := exprs[e];
     if ex.kind == .CONST || ex.kind == .NULL  return;
     if ex.kind == .SYMBOL {
-        if ex.name == sym_name  other_count.* += 1;
+        found, idx := table_find(name_to_idx, ex.name);
+        if found  other_counts[idx] += 1;
         return;
     }
     if is_unary(ex.kind) {
-        count_sym_uses_by_name(ex.left, sym_name, exprs, div_count, other_count);
+        count_sym_uses_multi_impl(ex.left, name_to_idx, exprs, div_counts, other_counts, visited);
         return;
     }
     if ex.kind == .DIV {
         // Treat the right (divisor) child specially.
         right_ex := exprs[ex.right];
-        if right_ex.kind == .SYMBOL && right_ex.name == sym_name {
-            div_count.* += 1;
+        if right_ex.kind == .SYMBOL {
+            found, idx := table_find(name_to_idx, right_ex.name);
+            if found  div_counts[idx] += 1;
         } else {
-            count_sym_uses_by_name(ex.right, sym_name, exprs, div_count, other_count);
+            count_sym_uses_multi_impl(ex.right, name_to_idx, exprs, div_counts, other_counts, visited);
         }
-        count_sym_uses_by_name(ex.left, sym_name, exprs, div_count, other_count);
+        count_sym_uses_multi_impl(ex.left, name_to_idx, exprs, div_counts, other_counts, visited);
         return;
     }
-    count_sym_uses_by_name(ex.left,  sym_name, exprs, div_count, other_count);
-    count_sym_uses_by_name(ex.right, sym_name, exprs, div_count, other_count);
+    count_sym_uses_multi_impl(ex.left,  name_to_idx, exprs, div_counts, other_counts, visited);
+    count_sym_uses_multi_impl(ex.right, name_to_idx, exprs, div_counts, other_counts, visited);
 }
 
 // In expression tree e, replace every DIV(A, sym_name) with MUL(A, recip_sym_id).
@@ -1319,9 +1422,12 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
                 variant_base: [] string, prefix: string = "_t") {
     // Classify each CSE temp as inner (loop-variant) or outer (loop-invariant).
     variant_cse_names: [..] string;
+    variant_set: Table(string, bool);
     for cv : cse_vars.* {
-        if expr_is_loop_variant(cv.expr_id, pool.exprs, variant_base, variant_cse_names)
+        if expr_is_loop_variant(cv.expr_id, pool.exprs, variant_base, variant_cse_names) {
             array_add(*variant_cse_names, cv.name);
+            table_add(*variant_set, cv.name, true);
+        }
     }
 
     // Build a usage-info record for every outer-loop CSE temp.
@@ -1333,31 +1439,41 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
         outer_refs:  int;   // Times referenced (any position) by other outer-loop expressions.
     }
     infos: [..] Div_Info;
+    name_to_idx: Table(string, int);
     for cv, idx : cse_vars.* {
-        if !array_find(variant_cse_names, cv.name)
+        if !table_contains(*variant_set, cv.name) {
+            table_add(*name_to_idx, cv.name, infos.count);
             array_add(*infos, .{ name = cv.name, cse_idx = idx });
+        }
     }
     if infos.count == 0  return;
 
-    // Count inner-loop uses.
+    // Count inner-loop uses -- one walk per expression, all names at once.
+    inner_div:   [..] int;
+    inner_other: [..] int;
+    array_resize(*inner_div,   infos.count);
+    array_resize(*inner_other, infos.count);
+    for gv_id : gen_var_ids
+        count_sym_uses_multi(gv_id, *name_to_idx, pool.exprs, inner_div, inner_other);
+    for cv : cse_vars.* {
+        if table_contains(*variant_set, cv.name)
+            count_sym_uses_multi(cv.expr_id, *name_to_idx, pool.exprs, inner_div, inner_other);
+    }
     for i : 0..infos.count-1 {
-        for gv_id : gen_var_ids
-            count_sym_uses_by_name(gv_id, infos[i].name, pool.exprs, *infos[i].inner_div, *infos[i].inner_other);
-        for cv : cse_vars.* {
-            if array_find(variant_cse_names, cv.name)
-                count_sym_uses_by_name(cv.expr_id, infos[i].name, pool.exprs, *infos[i].inner_div, *infos[i].inner_other);
-        }
+        infos[i].inner_div   = inner_div[i];
+        infos[i].inner_other = inner_other[i];
     }
 
     // Count references in *other* outer-loop CSE expressions (guards the in-place flip).
-    for i : 0..infos.count-1 {
-        for cv : cse_vars.* {
-            if cv.name == infos[i].name  continue;
-            if !array_find(variant_cse_names, cv.name) {
-                d, o := 0, 0;
-                count_sym_uses_by_name(cv.expr_id, infos[i].name, pool.exprs, *d, *o);
-                infos[i].outer_refs += d + o;
-            }
+    for cv : cse_vars.* {
+        if table_contains(*variant_set, cv.name)  continue;
+        d: [..] int; o: [..] int;
+        array_resize(*d, infos.count);
+        array_resize(*o, infos.count);
+        count_sym_uses_multi(cv.expr_id, *name_to_idx, pool.exprs, d, o);
+        for j : 0..infos.count-1 {
+            if infos[j].name == cv.name  continue;
+            infos[j].outer_refs += d[j] + o[j];
         }
     }
 
@@ -1375,7 +1491,7 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
                 expr_bin(.DIV, one_id, cse_vars.*[info.cse_idx].expr_id, pool);
             for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, sym_id, pool);
             for cv : cse_vars.* {
-                if array_find(variant_cse_names, cv.name)
+                if table_contains(*variant_set, cv.name)
                     replace_div_by_name(cv.expr_id, info.name, sym_id, pool);
             }
         } else {
@@ -1389,7 +1505,7 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
             recip_sym_id := expr_symbol(recip_name, pool);
             for gv_id : gen_var_ids  replace_div_by_name(gv_id, info.name, recip_sym_id, pool);
             for cv : cse_vars.* {
-                if array_find(variant_cse_names, cv.name)
+                if table_contains(*variant_set, cv.name)
                     replace_div_by_name(cv.expr_id, info.name, recip_sym_id, pool);
             }
         }
