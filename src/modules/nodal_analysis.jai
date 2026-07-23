@@ -529,8 +529,9 @@ reduce_circuit :: (elements: *[..] Element, inputs: [] string, outputs: [] strin
 
 // `dc_mode`: build the DC-equivalent circuit instead. Capacitors are open
 // circuits at DC, so CAPACITOR/RC_SERIES are dropped entirely; RC_PARALLEL
-// still conducts through its resistor half. INDUCTOR DC (short circuit)
-// isn't implemented yet. (@TODO)
+// still conducts through its resistor half. INDUCTORs are short circuits at
+// DC -- handled by a dedicated merge pass below, same idea as an ideal
+// op-amp's virtual short.
 generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, Expr_Pool, []Element {
     // Op-amp handling below (substitute_node) mutates terminals in place.
     // Callers reuse the same Element array across an AC-mode call and a
@@ -598,7 +599,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         if nonlinear_device_spec(el.type).kcl_terms.count > 0  continue;
         if dc_mode {
             if el.type == .CAPACITOR || el.type == .RC_SERIES  continue; // open circuit at DC -- excluded entirely, not left as a free symbol
-            assert(el.type != .INDUCTOR, "generate_kcl_equations(dc_mode=true): INDUCTOR DC handling (short circuit) is not implemented");
+            if el.type == .INDUCTOR  continue; // short circuit at DC -- handled by the merge pass below, not here
         }
 
         pos_node := el.terminals[0];
@@ -793,6 +794,40 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
             array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *pool));
             pin_node_equation(pos_node, target);
             if vos_symbol == NO_EXPR  substitute_node(pos_node, neg_node);
+        }
+    }
+
+    // INDUCTOR DC (short circuit): merge its two terminals into one node,
+    // same as an ideal op-amp's virtual short.
+    if dc_mode {
+        for el : elements {
+            if el.type != .INDUCTOR continue;
+            pos_node := el.terminals[0];
+            neg_node := el.terminals[1];
+            current_symbol := expr_symbol(tprint("i%", el.name), *pool);
+
+            for node, idx : eqn_nodes {
+                if node == pos_node equations[idx] = combine(equations[idx], current_symbol, .SUB, *pool); // current leaving this node
+                if node == neg_node equations[idx] = combine(equations[idx], current_symbol, .ADD, *pool); // current entering this node
+            }
+            array_add(*solve_vars, current_symbol);
+
+            if pos_node == "0" {
+                array_add(*voltages, .{ expr_symbol(neg_node, *pool), expr_const(0, *pool) });
+                array_unordered_remove_by_value(*solve_vars, expr_symbol(neg_node, *pool));
+                pin_node_equation(neg_node, expr_const(0, *pool));
+                substitute_node(neg_node, "0");
+            } else if neg_node == "0" {
+                array_add(*voltages, .{ expr_symbol(pos_node, *pool), expr_const(0, *pool) });
+                array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *pool));
+                pin_node_equation(pos_node, expr_const(0, *pool));
+                substitute_node(pos_node, "0");
+            } else {
+                array_add(*voltages, .{ expr_symbol(pos_node, *pool), expr_symbol(neg_node, *pool) });
+                array_unordered_remove_by_value(*solve_vars, expr_symbol(pos_node, *pool));
+                pin_node_equation(pos_node, expr_symbol(neg_node, *pool));
+                substitute_node(pos_node, neg_node);
+            }
         }
     }
 
