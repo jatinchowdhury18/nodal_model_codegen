@@ -34,13 +34,15 @@ Expr_Kind :: enum {
     MUL;
     DIV;
     EXP; // unary; operand is `left`. exp(left)
+    LOG; // unary; operand is `left`. natural log(left)
+    POW; // binary. left^right (right need not be a literal/integer -- see differentiate())
 }
 
 // Kinds whose node has a single operand (in `left`), rather than the usual
 // binary `left`/`right` pair. Tree-walkers that generically recurse over
 // `left`/`right` need to check this to avoid reading a bogus `right` child.
 is_unary :: (kind: Expr_Kind) -> bool {
-    return kind == .NEG || kind == .EXP;
+    return kind == .NEG || kind == .EXP || kind == .LOG;
 }
 
 Expr_ID :: s64;
@@ -87,6 +89,14 @@ expr_exp :: (a: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
     array_add(*pool.exprs, Expr.{ kind = .EXP, left = a });
     return id;
 }
+
+expr_log :: (a: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    id := pool.exprs.count;
+    array_add(*pool.exprs, Expr.{ kind = .LOG, left = a });
+    return id;
+}
+
+expr_pow :: (a: $T1, b: $T2, pool: *Expr_Pool) -> Expr_ID { return expr_bin(.POW, expr_symbol(a, pool), expr_symbol(b, pool), pool); }
 
 // Rebuild a unary (NEG/EXP) node with the given operand. Used by passes
 // (cse_pass, licm_walk) that hoist a node into a fresh temporary and need
@@ -269,6 +279,12 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, pool: *Expr_Pool) -> Linear {
             // EXP is transcendental, never linear. Nonlinear device I-V laws
             // must be kept out of the KCL system that gets linearize()'d/solve()'d.
             assert(false, "Expression is not linear! (contains EXP; nonlinear device equations must not reach the linear MNA solve)");
+
+        case .LOG;
+            assert(false, "Expression is not linear! (contains LOG; nonlinear device equations must not reach the linear MNA solve)");
+
+        case .POW;
+            assert(false, "Expression is not linear! (contains POW; nonlinear device equations must not reach the linear MNA solve)");
     }
 
     return result;
@@ -327,6 +343,30 @@ differentiate :: (e: Expr_ID, var: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
             // Chain rule: d(exp(u)) = exp(u) * u'
             du := differentiate(expr.left, var, pool);
             return expr_mul(e, du, pool); // reuse `e` itself as exp(u)
+
+        case .LOG;
+            // Chain rule: d(log(u)) = u'/u
+            du := differentiate(expr.left, var, pool);
+            return expr_div(du, expr.left, pool);
+
+        case .POW;
+            // For constant integer v, use the simple power rule:
+            //   d(u^v) = v * u^(v-1) * u'
+            // Otherwise use:
+            //   d(u^v) = u^v * (v'*log(u) + v*u'/u),
+            // Although these are equal when v'=0, the second formula
+            // divides by u, which can be numerically problematic.
+            du := differentiate(expr.left,  var, pool);
+            dv := differentiate(expr.right, var, pool);
+            fold(dv, pool);
+            if pool.exprs[dv].kind == .CONST && pool.exprs[dv].value == 0 {
+                v_minus_1 := expr_sub(expr.right, expr_const(1, pool), pool);
+                return expr_mul(expr.right, expr_mul(expr_pow(expr.left, v_minus_1, pool), du, pool), pool);
+            }
+            // General fallback for a genuinely variable exponent.
+            term1 := expr_mul(dv, expr_log(expr.left, pool), pool);
+            term2 := expr_mul(expr.right, expr_div(du, expr.left, pool), pool);
+            return expr_mul(e, expr_add(term1, term2, pool), pool); // reuse `e` itself as u^v
     }
 
     assert(false, "differentiate: unhandled Expr_Kind");
@@ -387,6 +427,14 @@ fold_impl :: (e: Expr_ID, pool: *Expr_Pool, visited: *Table(Expr_ID, bool), $mem
 
         case .EXP;
             recurse(expr.left); // no further constant-folding for a transcendental of a non-literal operand
+
+        case .LOG;
+            recurse(expr.left); // no further constant-folding for a transcendental of a non-literal operand
+
+        case .POW;
+            // For now, we don't attempt to do any constant-folding here.
+            recurse(expr.left);
+            recurse(expr.right);
 
         case; // ADD, SUB, MUL, DIV
             recurse(expr.left);
@@ -1044,6 +1092,18 @@ print_expr :: (e: Expr_ID, exprs: [] Expr) -> string {
             case .EXP;
                 append(builder, "exp(");
                 expr_to_builder(builder, exprs[e].left, exprs);
+                append(builder, ")");
+
+            case .LOG;
+                append(builder, "log(");
+                expr_to_builder(builder, exprs[e].left, exprs);
+                append(builder, ")");
+
+            case .POW;
+                append(builder, "pow(");
+                expr_to_builder(builder, exprs[e].left, exprs);
+                append(builder, ", ");
+                expr_to_builder(builder, exprs[e].right, exprs);
                 append(builder, ")");
 
             case;

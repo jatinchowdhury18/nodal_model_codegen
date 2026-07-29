@@ -13,7 +13,7 @@ Ccomp_lm vbw 0 0.031830989 ; netlist_skip
 Eclip vclip 0 value={max(min(V(vbw),13.5),-13.5)} ; netlist_skip
 Rout_lm vclip vo 75 ; netlist_skip
 
-* nodal_model: COMPLETE OPAMP (Aol=200k GBW=1Meg Rin=2Meg Rout=75 Vsat+=13.5 Vsat-=-13.5 Vos=2m Ios=20n Ibias=80n)
+.model COMPLETE OPAMP (Aol=200k GBW=1Meg Rin=2Meg Rout=75 Vsat+=13.5 Vsat-=-13.5 Vos=2m Ios=20n Ibias=80n)
 
 Escaled vo_scaled 0 value = {V(vo)*0.05} ; netlist_skip
 

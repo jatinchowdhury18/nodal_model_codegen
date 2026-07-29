@@ -93,6 +93,49 @@ main :: () {
         for c : clusters  print_cluster(c, pool.exprs);
     }
 
+    // 2b. Lone TRIODE: common-cathode-shaped stage -- plate through Rp to a
+    //     supply node vp (fixed voltage), grid through Rg to vi, cathode
+    //     through Rk to ground. Mirrors the lone-BJT case above: two free
+    //     branch currents (iPX1, iGX1, from the plate/grid kcl_terms), and
+    //     junction voltages vPKX1 = vpl - vk, vGKX1 = vg - vk, jointly solved
+    //     in one cluster (both unknowns depend on both terminals via Ik/Ig).
+    {
+        print("--- lone TRIODE ---\n");
+        circuit: [..] Element;
+        array_add(*circuit, Element.{ name = "Rp", type = .RESISTOR, terminals = make_arr(string.["vp", "vpl"]) });
+        array_add(*circuit, Element.{ name = "Rg", type = .RESISTOR, terminals = make_arr(string.["vg", "vi"]) });
+        array_add(*circuit, Element.{ name = "Rk", type = .RESISTOR, terminals = make_arr(string.["vk", "0"]) });
+        array_add(*circuit, Element.{ name = "VP", type = .FIXED_VOLTAGE, terminals = make_arr(string.["vp"]) });
+        array_add(*circuit, Element.{ name = "X1", type = .TRIODE, terminals = make_arr(string.["vpl", "vg", "vk"]),
+                                       nonlinear = .{ gk_name = "X1_Gk", mu_name = "X1_Mu", gamma_name = "X1_Gamma",
+                                                       ck_name = "X1_Ck", gg_name = "X1_Gg", xi_name = "X1_Xi",
+                                                       cg_name = "X1_Cg", ig0_name = "X1_Ig0" } });
+
+        solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
+        print("solve_vars count: %\n", solve_vars.count); // expect 4 (vpl, vg, vk, vp) -- iPX1/iGX1 are NOT MNA unknowns
+
+        solutions := solve(equations, solve_vars, *pool);
+        junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *pool);
+        for j : junctions  print("%: %\n", j.name, print_expr(j.expr_id, pool.exprs));
+
+        clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *pool);
+        check_bool("one cluster (vPK/vGK jointly coupled)", clusters.count == 1, true);
+        check_bool("two joint unknowns", clusters[0].unknowns.count == 2, true);
+        u0 := clusters[0].unknowns[0];
+        u1 := clusters[0].unknowns[1];
+        check_bool("unknowns named vPKX1/vGKX1", (u0.name == "vPKX1" && u1.name == "vGKX1") || (u0.name == "vGKX1" && u1.name == "vPKX1"), true);
+        check_bool("no step limiter (Dempwolf I-V law is smooth everywhere)", u0.limiter_kind == .NONE && u1.limiter_kind == .NONE, true);
+
+        // The Jacobian/residual construction must actually reference the
+        // model's own params (Gk/Gamma/Gg/Xi), not just pass them through
+        // untouched -- otherwise the I-V law substitution silently no-opped.
+        references_model := false;
+        for gv : clusters[0].invariant_items  if String.contains(print_expr(gv.expr_id, pool.exprs), "X1_Gk")  references_model = true;
+        for gv : clusters[0].iteration_items  if String.contains(print_expr(gv.expr_id, pool.exprs), "X1_Gk")  references_model = true;
+        check_bool("Newton system references the triode's model params", references_model, true);
+        print_cluster(clusters[0], pool.exprs);
+    }
+
     // 3. Coupled devices: a diode D1 sharing a node with a BJT Q1's base,
     //    so their branch currents must interact in the closed-form linear
     //    system and get merged into ONE joint cluster (2 devices, 3

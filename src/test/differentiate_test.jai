@@ -123,4 +123,61 @@ main :: () {
         simplify(d_be, *pool);
         print("diC_dvBE: %\n", print_expr(d_be, pool.exprs));
     }
+
+    // 9. LOG chain rule: d/dx(log(x/c)) = 1/x  (c a symbol unrelated to x)
+    {
+        pool: Expr_Pool;
+        x := expr_symbol("x", *pool);
+        c := expr_symbol("c", *pool);
+        e := expr_log(expr_div(x, c, *pool), *pool);
+        d := differentiate(e, x, *pool);
+        simplify(d, *pool);
+        check("d_log_chain", d, "(1.0 / x)", pool.exprs);
+    }
+
+    // 10. POW with a constant exponent (the common case -- e.g. the
+    //     Dempwolff triode's gamma/xi): d/dx(x^n) = n*x^(n-1), via the
+    //     numerically-stable simple power rule, NOT the general
+    //     u^v*(v'*log(u)+v*u'/u) formula (which would divide by x -- see the
+    //     comment on differentiate()'s POW case for why that's a real
+    //     problem, not just an inefficiency, when x can be exactly 0).
+    {
+        pool: Expr_Pool;
+        x := expr_symbol("x", *pool);
+        n := expr_symbol("n", *pool);
+        e := expr_pow(x, n, *pool);
+        d := differentiate(e, x, *pool);
+        simplify(d, *pool);
+        check("d_pow_const_exponent", d, "(n * pow(x, (n - 1.0)))", pool.exprs);
+    }
+
+    // 11. POW with a variable exponent (general fallback -- not used by any
+    //     device model in this codebase today, but the code path exists and
+    //     should stay correct): d/dx(x^x) = x^x*(log(x)+1).
+    {
+        pool: Expr_Pool;
+        x := expr_symbol("x", *pool);
+        e := expr_pow(x, x, *pool);
+        d := differentiate(e, x, *pool);
+        simplify(d, *pool);
+        print("d_pow_var_exponent: %\n", print_expr(d, pool.exprs));
+    }
+
+    // 12. Dempwolff triode Hk shape: d/dv(log(1+exp(c*v))^gamma), the actual
+    //     building block of the plate/grid-current Jacobian -- printed (not
+    //     string-checked, same reasoning as case 6) to eyeball that it's
+    //     algebraically sane and, critically, does NOT contain a bare
+    //     "/ log(...)" or "/ Hk" division that would underflow to 0/0 deep
+    //     in cutoff (see case 10's comment).
+    {
+        pool: Expr_Pool;
+        v     := expr_symbol("v",     *pool);
+        c     := expr_symbol("c",     *pool);
+        gamma := expr_symbol("gamma", *pool);
+        hk := expr_log(expr_add(expr_const(1, *pool), expr_exp(expr_mul(c, v, *pool), *pool), *pool), *pool);
+        ik := expr_pow(hk, gamma, *pool);
+        d  := differentiate(ik, v, *pool);
+        simplify(d, *pool);
+        print("d_triode_Hk_pow_gamma: %\n", print_expr(d, pool.exprs));
+    }
 }

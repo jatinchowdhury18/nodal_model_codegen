@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9dbaf85.
+// Auto-generated with netlist_codegen version a65dc78.
 // Command: netlist_codegen opamp_complete.net opamp_complete.h
 
 #pragma once

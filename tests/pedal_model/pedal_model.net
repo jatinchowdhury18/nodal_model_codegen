@@ -24,7 +24,7 @@ C4 vpos    0 1n
 * that combination has a real bug (not a convergence/iteration-count issue
 * -- max_iter=500 gives byte-identical output to max_iter=20). Flagged as
 * a known issue, not fixed here.
-* nodal_model: LM308 OPAMP (Aol=300k Ccomp=30p Rin=40Meg Rout=200 Vos=2m Ios=1n Ibias=7n)
+.model LM308 OPAMP (Aol=300k Ccomp=30p Rin=40Meg Rout=200 Vos=2m Ios=1n Ibias=7n)
 Eamp v2 0 vpos vneg 1e6 ; nodal_model: LM308
 
 * Feedback network

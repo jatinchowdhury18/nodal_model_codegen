@@ -32,6 +32,7 @@ test diode_circuit
 test diode_clipper
 test common_emitter
 test common_drain
+test common_cathode
 
 # guitar pedal circuits
 test pedal_tone

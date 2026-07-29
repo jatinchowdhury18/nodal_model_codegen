@@ -38,11 +38,10 @@ find_value :: (values: [] Element_Value, name: string) -> float32, bool {
 }
 
 // Op-amp parsing tests: op-amp non-idealities opt in via a
-// `* nodal_model: <name> OPAMP (...)` comment defining a named model, plus a
-// `; nodal_model: <name>` trailing comment on ANY element line (E, X, ...)
-// referencing it -- this is what LTspice-safe (comment-only) means: neither
-// line requires SPICE to understand anything new, so the same netlist can
-// run standalone in LTspice too.
+// `.model <name> OPAMP (...)` card, plus a `; nodal_model: <name>` trailing
+// comment on ANY element line (E, X, ...) referencing it by name, The trailing
+// comment is needed because an op-amp instance line has no fixed-position
+// model-name token of its own (see find_nodal_model_ref's comment).
 test_opamp_parsing :: () {
     print("--- opamp parsing ---\n");
 
@@ -59,7 +58,7 @@ END);
     // this line's own tokens[1]/[3]/[4] (no override needed).
     {
         info := parse_netlist(#string END
-* nodal_model: NONIDEAL OPAMP (Aol=2e5 Rin=1Meg Rout=75 Vsat+=14.5 Vsat-=-14.5 slew=0.5Meg Vos=1m Ios=20n Ibias=80n)
+.model NONIDEAL OPAMP (Aol=2e5 Rin=1Meg Rout=75 Vsat+=14.5 Vsat-=-14.5 slew=0.5Meg Vos=1m Ios=20n Ibias=80n)
 Eop vo 0 n2 n3 1e6 ; nodal_model: NONIDEAL
 END);
         eop := find_element(info.elements, "Eop");
@@ -85,7 +84,7 @@ END);
     // source, which has no positional control pins at all.
     {
         info := parse_netlist(#string END
-* nodal_model: BEHAV OPAMP (Aol=1e5 Vsat+=4.5 Vsat-=-4.5)
+.model BEHAV OPAMP (Aol=1e5 Vsat+=4.5 Vsat-=-4.5)
 Eop vo 0 value={max(min(1e5*(0-V(n1)),4.5),-4.5)} ; nodal_model: BEHAV pos=0 neg=n1
 END);
         eop := find_element(info.elements, "Eop");
@@ -97,7 +96,7 @@ END);
     // Partial params: only Vsat+ set, Vsat- left off.
     {
         info := parse_netlist(#string END
-* nodal_model: ASYM OPAMP (Aol=1e5 Vsat+=5)
+.model ASYM OPAMP (Aol=1e5 Vsat+=5)
 Eop vo 0 n2 n3 1e6 ; nodal_model: ASYM
 END);
         eop := find_element(info.elements, "Eop");
@@ -108,7 +107,7 @@ END);
     // Validation: Rout set without Aol falls back to ideal.
     {
         info := parse_netlist(#string END
-* nodal_model: BAD OPAMP (Rout=75)
+.model BAD OPAMP (Rout=75)
 Eop vo 0 n2 n3 1e6 ; nodal_model: BAD
 END);
         eop := find_element(info.elements, "Eop");
@@ -118,7 +117,7 @@ END);
     // Validation: Rin set without Aol also falls back to ideal.
     {
         info := parse_netlist(#string END
-* nodal_model: BAD2 OPAMP (Rin=1Meg)
+.model BAD2 OPAMP (Rin=1Meg)
 Eop vo 0 n2 n3 1e6 ; nodal_model: BAD2
 END);
         eop := find_element(info.elements, "Eop");
@@ -129,7 +128,7 @@ END);
     // doesn't need the explicit-VCVS path, so no Aol requirement.
     {
         info := parse_netlist(#string END
-* nodal_model: OFFSETONLY OPAMP (Vos=1m Ibias=80n)
+.model OFFSETONLY OPAMP (Vos=1m Ibias=80n)
 Eop vo 0 n2 n3 1e6 ; nodal_model: OFFSETONLY
 END);
         eop := find_element(info.elements, "Eop");
@@ -146,7 +145,7 @@ END);
     // stayed false for a slew-only model and left the rail args empty).
     {
         info := parse_netlist(#string END
-* nodal_model: SLEWONLY OPAMP (Aol=1e5 slew=500k)
+.model SLEWONLY OPAMP (Aol=1e5 slew=500k)
 Eop vo 0 n2 n3 1e6 ; nodal_model: SLEWONLY
 END);
         eop := find_element(info.elements, "Eop");
@@ -163,7 +162,7 @@ END);
     // Slew without Aol falls back to ideal too (needs_aol includes has_slew).
     {
         info := parse_netlist(#string END
-* nodal_model: BAD3 OPAMP (slew=500k)
+.model BAD3 OPAMP (slew=500k)
 Eop vo 0 n2 n3 1e6 ; nodal_model: BAD3
 END);
         eop := find_element(info.elements, "Eop");
@@ -173,7 +172,7 @@ END);
     // Engineering suffixes (Meg/k/m/u/n/p) must be parsed, not truncated.
     {
         info := parse_netlist(#string END
-* nodal_model: SUFFIXED OPAMP (Aol=1e5 GBW=1Meg Rin=1Meg Rout=75)
+.model SUFFIXED OPAMP (Aol=1e5 GBW=1Meg Rin=1Meg Rout=75)
 Eop vo 0 n2 n3 1e6 ; nodal_model: SUFFIXED
 END);
         rin_val, _ := find_value(info.values, "Eop_Rin");
@@ -184,7 +183,7 @@ END);
     // deriving it from Aol/GBW.
     {
         info := parse_netlist(#string END
-* nodal_model: EXPLICIT_C OPAMP (Aol=1e5 Ccomp=15.9m)
+.model EXPLICIT_C OPAMP (Aol=1e5 Ccomp=15.9m)
 Eop vo 0 n2 n3 1e6 ; nodal_model: EXPLICIT_C
 END);
         eop := find_element(info.elements, "Eop");
@@ -198,7 +197,7 @@ END);
     // KCL branch -- verify they actually show up in info.elements.
     {
         info := parse_netlist(#string END
-* nodal_model: SYNTH OPAMP (Aol=1e5 GBW=1Meg Rin=1Meg Rout=75)
+.model SYNTH OPAMP (Aol=1e5 GBW=1Meg Rin=1Meg Rout=75)
 Eop vo 0 n2 n3 1e6 ; nodal_model: SYNTH
 END);
         rin_el := find_element(info.elements, "Eop_Rin");
@@ -220,7 +219,7 @@ END);
     // regardless of which line it's attached to.
     {
         info := parse_netlist(#string END
-* nodal_model: SHARED OPAMP (Aol=1e5)
+.model SHARED OPAMP (Aol=1e5)
 Eop1 vo1 0 n2 n3 1e6 ; nodal_model: SHARED
 Eop2 vo2 0 n4 n5 1e6 ; nodal_model: SHARED
 END);
@@ -235,10 +234,112 @@ END);
     }
 }
 
+// Triode parsing: netlist_codegen triode parameters from a `.model <name> TRIODE (...)` card
+test_triode_parsing :: () {
+    print("--- triode parsing ---\n");
+
+    // Full .model TRIODE card + X-line, with a .SUBCKT/.ENDS block whose
+    // internal E/G/R/C body lines must NOT leak into info.elements (an "E"
+    // line would otherwise be parsed as an ideal op-amp, a "G" line as a VCCS).
+    {
+        info := parse_netlist(#string END
+.model 12AX7 TRIODE (GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40 GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8)
+X1 vpl vg vk 12AX7
+
+.SUBCKT 12AX7 1 2 3
++ PARAMS: GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40 GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8
+Ehk 4 0 VALUE={log(1+exp(CK*(V(1,3)/MU+V(2,3))))/CK}
+Gp 1 3 VALUE={0}
+.ENDS 12AX7
+END);
+        x1 := find_element(info.elements, "X1");
+        check_bool("X-line parses to a TRIODE element", x1.type == .TRIODE, true);
+        check_bool("terminals: plate/grid/cathode", x1.terminals[0] == "vpl" && x1.terminals[1] == "vg" && x1.terminals[2] == "vk", true);
+        // "12AX7" starts with a digit -- ident_safe_name() prefixes it with "_"
+        // for Params field names, same as D/Q/J (e.g. common_drain's "2N5485").
+        check_str("gk_name", x1.nonlinear.gk_name, "_12AX7_Gk");
+
+        gk_val, gk_found := find_value(info.values, "_12AX7_Gk");
+        check_bool("Gk value parsed", gk_found && gk_val == 2.242e-3, true);
+        mu_val, mu_found := find_value(info.values, "_12AX7_Mu");
+        check_bool("Mu value parsed", mu_found && mu_val == 103.2, true);
+
+        // .SUBCKT body lines must not become top-level elements.
+        for el : info.elements {
+            check_bool(tprint("subckt body line '%' not leaked as a top-level element", el.name),
+                       el.name == "Ehk" || el.name == "Gp", false);
+        }
+    }
+
+    // No .model card at all, or a .model card of the wrong kind: like Q/J
+    // (which switch on model.kind == "NPN"/"NJF"), find_model()'s fallback
+    // default has an empty kind, so the switch matches nothing and the
+    // element is silently dropped -- no crash, no element, no values. (D is
+    // the odd one out here: it doesn't gate on kind at all, so it always
+    // gets a diode with default-Is/N. Triode intentionally mirrors Q/J, not D.)
+    {
+        info := parse_netlist(#string END
+X1 vpl vg vk UNKNOWN_TUBE
+END);
+        check_bool("unrecognized model: no TRIODE element created", info.elements.count == 0, true);
+        _, found := find_value(info.values, "UNKNOWN_TUBE_Gamma");
+        check_bool("unrecognized model: no values registered either", found, false);
+    }
+
+    // A .model card that exists but is the wrong kind (e.g. a JFET model
+    // accidentally referenced from an X-line) is likewise silently dropped,
+    // same as Q/J would drop it.
+    {
+        info := parse_netlist(#string END
+.model 2N5485 NJF(BETA=2m VTO=-1)
+X1 vpl vg vk 2N5485
+END);
+        check_bool("wrong-kind model: no TRIODE element created", info.elements.count == 0, true);
+    }
+
+    // Model name starting with a digit (e.g. a real part number like
+    // "12AX7") needs ident_safe_name()'s "_" prefix for Params field names,
+    // same as D/Q/J.
+    {
+        info := parse_netlist(#string END
+.model 12AX7 TRIODE (MU=100)
+X1 vpl vg vk 12AX7
+END);
+        x1 := find_element(info.elements, "X1");
+        check_str("digit-leading model name gets a safe Params field prefix", x1.nonlinear.mu_name, "_12AX7_Mu");
+    }
+
+    // The model name is looked up from the LAST token, not a fixed index --
+    // so an X-line with a different terminal count than TRIODE's 3 (e.g. a
+    // future PENTODE with 4) still finds the right .model card. Exercised
+    // here with an unrecognized kind (nothing implements a 4-terminal device
+    // yet), just to confirm the lookup/slicing itself doesn't assume arity
+    // 3 and silently misfires or crashes.
+    {
+        info := parse_netlist(#string END
+.model FUTURE_TUBE PENTODE (MU=100)
+X1 vpl vscreen vg vk FUTURE_TUBE
+END);
+        check_bool("unimplemented kind at a different arity: no crash, no element", info.elements.count == 0, true);
+    }
+
+    // A TRIODE .model card referenced from an X-line with the wrong number
+    // of terminals is rejected (not silently misread) rather than crashing
+    // or wiring up bogus terminals.
+    {
+        info := parse_netlist(#string END
+.model 12AX7 TRIODE (MU=100)
+X1 vpl vscreen vg vk 12AX7
+END);
+        check_bool("TRIODE with wrong terminal count: no element created", info.elements.count == 0, true);
+    }
+}
+
 main :: () {
     code := netlist_codegen(test_netlist);
     print("----------------------------------\n");
     print(code);
 
     test_opamp_parsing();
+    test_triode_parsing();
 }

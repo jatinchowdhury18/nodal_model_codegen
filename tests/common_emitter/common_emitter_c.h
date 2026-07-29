@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9dbaf85.
+// Auto-generated with netlist_codegen version a65dc78.
 // Command: netlist_codegen common_emitter.net common_emitter_c.h -lang c -type_name double
 
 #pragma once

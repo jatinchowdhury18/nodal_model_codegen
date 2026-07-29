@@ -14,6 +14,7 @@ Element_Type :: enum {
                  // to one junction-voltage unknown via a closed-form sinh I-V law.
     BJT;         // 3-terminal: [collector, base, emitter]. Ebers-Moll I-V law.
     JFET;        // 3-terminal: [drain, gate, source]. Square-law I-V law.
+    TRIODE;      // 3-terminal: [plate, grid, cathode]. Dempwolf & Zolzer physically-motivated I-V law.
     VCCS;            // 4-terminal: [pos, neg, ctrl_pos, ctrl_neg]. Linear: I = gm*(V(ctrl_pos)-V(ctrl_neg)), sourced at pos/sunk at neg.
     CURRENT_SOURCE;  // 2-terminal: [pos, neg]. Constant current, sourced at pos/sunk at neg.
 }
@@ -52,6 +53,16 @@ Nonlinear_Model :: struct {
     betar_name: string; // BJT only; empty string for DIODE / DIODE_PAIR
     vp_name:    string; // JFET only; pinch-off voltage
     beta_name:  string; // JFET only; transconductance coefficient
+
+    // TRIODE only (Dempwolf & Zolzer model) -- empty string for other types.
+    gk_name:    string; // cathode-current perveance
+    mu_name:    string; // amplification factor
+    gamma_name: string; // cathode-current exponent
+    ck_name:    string; // cathode-current softplus adaption factor
+    gg_name:    string; // grid-current perveance
+    xi_name:    string; // grid-current exponent
+    cg_name:    string; // grid-current softplus adaption factor
+    ig0_name:   string; // grid-current stability offset
 }
 
 // -----------------------------------------------------------------------
@@ -133,6 +144,23 @@ nonlinear_device_spec :: (type: Element_Type) -> Nonlinear_Device_Spec {
                     .{ terminal_idx = 2, branch_suffix = "", entering = true },  // source += iD
                 ],
             };
+        case .TRIODE;
+            // Ik (cathode current) is a joint function of vPK and vGK, so
+            // both need their own Newton unknown. We don't apply any step-limiting
+            // here: the Dempwolf model's softplus-based I-V law is smooth and bounded
+            // over the whole real line, so a plain Newton step suffices.
+            return .{
+                unknowns  = Device_Unknown.[
+                    .{ name_prefix = "vPK", pos_terminal = 0, neg_terminal = 2, limiter = .NONE },
+                    .{ name_prefix = "vGK", pos_terminal = 1, neg_terminal = 2, limiter = .NONE },
+                ],
+                kcl_terms = Device_Kcl_Term.[
+                    .{ terminal_idx = 0, branch_suffix = "P", entering = false }, // plate   -= iP (=Ia=Ik-Ig)
+                    .{ terminal_idx = 1, branch_suffix = "G", entering = false }, // grid    -= iG (=Ig)
+                    .{ terminal_idx = 2, branch_suffix = "P", entering = true },  // cathode += iP
+                    .{ terminal_idx = 2, branch_suffix = "G", entering = true },  // cathode += iG
+                ],
+            };
     }
     empty: Nonlinear_Device_Spec;
     return empty;
@@ -161,6 +189,9 @@ device_model_param_names :: (type: Element_Type, m: Nonlinear_Model) -> [..] str
             array_add(*names, m.is_name, m.vt_name, m.betaf_name, m.betar_name);
         case .JFET;
             array_add(*names, m.beta_name, m.vp_name);
+        case .TRIODE;
+            array_add(*names, m.gk_name, m.mu_name, m.gamma_name, m.ck_name,
+                              m.gg_name, m.xi_name, m.cg_name, m.ig0_name);
     }
     return names;
 }

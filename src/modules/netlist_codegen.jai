@@ -13,18 +13,57 @@ Math :: #import "Math";
 // used anywhere else.
 VT_ROOM :: 0.02585;
 
+// The SPICE-side device kind on a `.model <name> <kind> [(key=val ...)]`
+// card. D/NPN/PNP/NJF/PJF are real SPICE device types; OPAMP and TRIODE
+// aren't. UNKNOWN covers any other kind we don't parse (e.g. a real SPICE
+// resistor/capacitor tolerance model).
+Model_Kind :: enum {
+    UNKNOWN;
+    D;
+    NPN;
+    PNP;
+    NJF;
+    PJF;
+    TRIODE;
+    OPAMP;
+}
+
+parse_model_kind :: (s: string) -> Model_Kind {
+    upper := String.to_upper_copy(s);
+    if upper == {
+        case "D";      return .D;
+        case "NPN";    return .NPN;
+        case "PNP";    return .PNP;
+        case "NJF";    return .NJF;
+        case "PJF";    return .PJF;
+        case "TRIODE"; return .TRIODE;
+        case "OPAMP";  return .OPAMP;
+    }
+    return .UNKNOWN;
+}
+
 // A parsed SPICE `.model <name> <kind> [(key=val ...)]` card. Referenced by
-// name from `D`/`Q` element lines. Unset parameters fall back to standard
-// SPICE defaults (see parse_model_line / find_model).
+// name from `D`/`Q`/`J`/`X` element lines. Unset parameters fall back to
+// standard SPICE defaults.
 Model_Def :: struct {
     name:      string;
-    kind:      string; // "D", "NPN", "PNP" -- kept for diagnostics; PNP is not yet handled specially
+    kind:      Model_Kind; // PNP/PJF are not yet handled specially
     is_val:    float32; // diode/BJT saturation current
     n_val:     float32; // diode-only; folded into vt_val at parse time
     betaf_val: float32;
     betar_val: float32;
     vp_val:    float32; // JFET-only pinch-off voltage (VTO)
     beta_val:  float32; // JFET-only transconductance coefficient (BETA).
+
+    // TRIODE only (Dempwolf & Zolzer model) -- see triode_iv_laws() (nonlinear_solve.jai).
+    gk_val:    float32; // cathode-current perveance
+    mu_val:    float32; // amplification factor
+    gamma_val: float32; // cathode-current exponent
+    ck_val:    float32; // cathode-current softplus adaption factor
+    gg_val:    float32; // grid-current perveance
+    xi_val:    float32; // grid-current exponent
+    cg_val:    float32; // grid-current softplus adaption factor
+    ig0_val:   float32; // grid-current stability offset
 }
 
 // Standard SPICE default model parameters.
@@ -36,6 +75,16 @@ default_model :: () -> Model_Def {
     model.betar_val = 1.0;
     model.vp_val    = -2.0;
     model.beta_val  = 1.0e-4;
+
+    // TRIODE defaults are the "RSD-1" 12AX7 fit from Table 1 of Dempwolf & Zolzer (DAFx-11).
+    model.gk_val    = 2.242e-3;
+    model.mu_val    = 103.2;
+    model.gamma_val = 1.26;
+    model.ck_val    = 3.40;
+    model.gg_val    = 6.177e-4;
+    model.xi_val    = 1.314;
+    model.cg_val    = 9.901;
+    model.ig0_val   = 8.025e-8;
     return model;
 }
 
@@ -77,7 +126,7 @@ parse_model_line :: (line: string) -> Model_Def {
     if tokens.count < 3  return model; // malformed .model line; caller gets an empty-named model
 
     model.name = tokens[1];
-    model.kind = String.to_upper_copy(tokens[2]);
+    model.kind = parse_model_kind(tokens[2]);
 
     if tokens.count > 3 {
         joined := String.join(..array_view(tokens, 3, tokens.count - 3), separator = " ");
@@ -99,6 +148,14 @@ parse_model_line :: (line: string) -> Model_Def {
                 case "BR"; model.betar_val = val;
                 case "VTO"; model.vp_val = val;
                 case "BETA"; model.beta_val = val;
+                case "GK";    model.gk_val = val;
+                case "MU";    model.mu_val = val;
+                case "GAMMA"; model.gamma_val = val;
+                case "CK";    model.ck_val = val;
+                case "GG";    model.gg_val = val;
+                case "XI";    model.xi_val = val;
+                case "CG";    model.cg_val = val;
+                case "IG0";   model.ig0_val = val;
             }
         }
     }
@@ -120,6 +177,17 @@ find_model :: (model_defs: [] Model_Def, name: string) -> Model_Def {
     model := default_model();
     model.name = name;
     return model;
+}
+
+// Peek at a `.model <name> <kind> ...` line's kind token (leading "."
+// already stripped/trimmed by the caller) without fully parsing it -- used
+// to route a `.model` line to parse_model_line() or parse_opamp_model_line().
+peek_model_kind :: (line: string) -> Model_Kind {
+    tokens_raw := String.split(line, #char " ");
+    tokens: [..] string;
+    for t : tokens_raw  if t.count > 0  array_add(*tokens, t);
+    if tokens.count < 3  return .UNKNOWN;
+    return parse_model_kind(tokens[2]);
 }
 
 // A parsed SPICE-style `.model <name> OPAMP (Aol=.. GBW=.. Ccomp=.. Rin=..
@@ -234,8 +302,10 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
 
     // A trailing "; nodal_model: <name> [out=..] [pos=..] [neg=..]" reference
     // on an element line -- names an op-amp model defined by a
-    // `* nodal_model: <name> OPAMP (...)` comment elsewhere in the file.
-    // Only needs overriding when the real SPICE part's pin order doesn't match.
+    // `.model <name> OPAMP (...)` card elsewhere in the file. Needed because,
+    // unlike D/Q/J/X, an op-amp instance has no dedicated element line of its
+    // own that already carries a model-name token in a fixed position. Only
+    // needs overriding when the real SPICE part's pin order doesn't match.
     Nodal_Model_Ref :: struct {
         name: string;
         out_override: string;
@@ -266,31 +336,47 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
         return result;
     }
 
-    // First pass: collect .model cards (D/NPN/PNP/JFET) and comment-embedded
-    // `nodal_model: <name> OPAMP (...)` op-amp model definitions. OPAMP
-    // models live in a comment, not a real `.model` line.
+    // First pass: collect .model cards (D/NPN/PNP/JFET/TRIODE/OPAMP). SPICE
+    // has no native op-amp or triode primitive, but (like TRIODE) an OPAMP
+    // .model card is still just an ordinary line. A `.SUBCKT ... .ENDS` block
+    // is skipped entirely here.
     model_defs: [..] Model_Def;
     opamp_model_defs: [..] Opamp_Model_Def;
-    for line_raw : lines {
-        line := String.trim(line_raw);
-        if line.count == 0  continue;
+    {
+        in_subckt := false;
+        for line_raw : lines {
+            line := String.trim(line_raw);
+            if line.count == 0  continue;
+            if line[0] != #char "."  continue;
+            line = String.trim(String.slice(line, 1, line.count - 1));
 
-        if line[0] == #char "*" {
-            rest := String.trim(String.slice(line, 1, line.count - 1));
-            if String.begins_with(rest, "nodal_model:")  array_add(*opamp_model_defs, parse_opamp_model_line(strip_comment(rest)));
-            continue;
+            if String.begins_with_nocase(line, "subckt") { in_subckt = true;  continue; }
+            if String.begins_with_nocase(line, "ends")   { in_subckt = false; continue; }
+            if in_subckt  continue; // skip any internal .model/.ic/etc. cards inside the subckt body
+
+            if !String.begins_with(line, "model")  continue;
+            line = strip_comment(line);
+            if peek_model_kind(line) == .OPAMP {
+                array_add(*opamp_model_defs, parse_opamp_model_line(line));
+            } else {
+                array_add(*model_defs, parse_model_line(line));
+            }
         }
-
-        if line[0] != #char "."  continue;
-        line = String.trim(String.slice(line, 1, line.count - 1));
-        if !String.begins_with(line, "model")  continue;
-        array_add(*model_defs, parse_model_line(strip_comment(line)));
     }
 
+    in_subckt := false;
     for line_raw : lines {
         line := String.trim(line_raw);
 
         if line.count == 0  continue;
+
+        if line[0] == #char "." {
+            body := String.trim(String.slice(line, 1, line.count - 1));
+            if String.begins_with_nocase(body, "subckt") { in_subckt = true;  continue; }
+            if String.begins_with_nocase(body, "ends")   { in_subckt = false; continue; }
+        }
+        if in_subckt  continue; // skip the triode subckt's internal E/G/R/C/.model body lines
+
         if line[0] == #char "*" || line[0] == #char "." {
             // trim comment start char
             line = String.trim(String.slice(line, 1, line.count - 1));
@@ -486,7 +572,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 emitter    := tokens[3];
                 model      := find_model(model_defs, tokens[4]);
                 if model.kind == {
-                    case "NPN"; // @TODO: handle PNP here also
+                    case .NPN; // @TODO: handle PNP here also
                         is_name    := tprint("%_Is", ident_safe_name(model.name));
                         vt_name    := tprint("%_vt", ident_safe_name(model.name));
                         betaf_name := tprint("%_BetaF", ident_safe_name(model.name));
@@ -509,7 +595,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 source := tokens[3];
                 model  := find_model(model_defs, tokens[4]);
                 if model.kind == {
-                    case "NJF"; // @TODO: handle PJF here also
+                    case .NJF; // @TODO: handle PJF here also
                         beta_name := tprint("%_Beta", ident_safe_name(model.name));
                         vp_name   := tprint("%_vp", ident_safe_name(model.name));
                         add_value_once(*values, beta_name, model.beta_val);
@@ -541,6 +627,52 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 // I<name> n+ n- value (constant current, sourced at n+/sunk at n-).
                 // The generic `value` parse above (tokens[3]) already registered it.
                 add_element(name, .CURRENT_SOURCE, .[n1, n2], has_no_combine);
+                continue;
+            case "X";
+                // X<name> <term1> <term2> ... <termN> <model> -- generic
+                // subcircuit instantiation. Real SPICE always puts the
+                // subckt/model name *last*, regardless of terminal count, so
+                // we look it up positionally from the end.
+                if tokens.count < 3 {
+                    log("Warning: malformed X-line '%'; ignoring.\n", name);
+                    continue;
+                }
+                model     := find_model(model_defs, tokens[tokens.count - 1]);
+                terminals := array_view(tokens, 1, tokens.count - 2);
+                if model.kind == {
+                    case .TRIODE;
+                        if terminals.count != 3 {
+                            log("Warning: TRIODE model '%' on '%' expects 3 terminals (plate/grid/cathode), got %; ignoring.\n",
+                                model.name, name, terminals.count);
+                            continue;
+                        }
+                        gk_name    := tprint("%_Gk", ident_safe_name(model.name));
+                        mu_name    := tprint("%_Mu", ident_safe_name(model.name));
+                        gamma_name := tprint("%_Gamma", ident_safe_name(model.name));
+                        ck_name    := tprint("%_Ck", ident_safe_name(model.name));
+                        gg_name    := tprint("%_Gg", ident_safe_name(model.name));
+                        xi_name    := tprint("%_Xi", ident_safe_name(model.name));
+                        cg_name    := tprint("%_Cg", ident_safe_name(model.name));
+                        ig0_name   := tprint("%_Ig0", ident_safe_name(model.name));
+                        add_value_once(*values, gk_name,    model.gk_val);
+                        add_value_once(*values, mu_name,    model.mu_val);
+                        add_value_once(*values, gamma_name, model.gamma_val);
+                        add_value_once(*values, ck_name,    model.ck_val);
+                        add_value_once(*values, gg_name,    model.gg_val);
+                        add_value_once(*values, xi_name,    model.xi_val);
+                        add_value_once(*values, cg_name,    model.cg_val);
+                        add_value_once(*values, ig0_name,   model.ig0_val);
+
+                        element := Element.{ name = name, type = .TRIODE };
+                        array_add(*element.terminals, terminals[0]); // plate
+                        array_add(*element.terminals, terminals[1]); // grid
+                        array_add(*element.terminals, terminals[2]); // cathode
+                        element.nonlinear = .{
+                            gk_name = gk_name, mu_name = mu_name, gamma_name = gamma_name, ck_name = ck_name,
+                            gg_name = gg_name, xi_name = xi_name, cg_name = cg_name, ig0_name = ig0_name,
+                        };
+                        array_add(*elements, element);
+                }
                 continue;
             case;
                 log("Warning: unsupported element '%' (prefix '%'); ignoring.\n", name, prefix);
@@ -580,12 +712,12 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         if f.muls > 0 { append(*b, sep); print_to_builder(*b, "% mul", f.muls); sep = ", "; }
         if f.divs > 0 { append(*b, sep); print_to_builder(*b, "% div", f.divs); sep = ", "; }
         if f.adds > 0 { append(*b, sep); print_to_builder(*b, "% add", f.adds); sep = ", "; }
-        if f.exps > 0 { append(*b, sep); print_to_builder(*b, "% exp", f.exps); sep = ", "; }
-        total := f.muls + f.divs + f.adds + f.exps;
+        if f.transcendentals > 0 { append(*b, sep); print_to_builder(*b, "% transcendental", f.transcendentals); sep = ", "; }
+        total := f.muls + f.divs + f.adds + f.transcendentals;
         if total == 0  return "0 ops";
         return tprint("% ops (%)", total, builder_to_string(*b));
     }
-    flop_total :: (f: Flop_Count) -> int #expand { return f.muls + f.divs + f.adds + f.exps; }
+    flop_total :: (f: Flop_Count) -> int #expand { return f.muls + f.divs + f.adds + f.transcendentals; }
 
     if has_nonlinear {
         log("Nonlinear system: resolving with Newton-Raphson (tol²=%, max_iter=%)\n", net.newton_tol_sq, net.newton_max_iter);

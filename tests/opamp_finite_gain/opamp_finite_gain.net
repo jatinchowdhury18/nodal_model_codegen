@@ -6,7 +6,7 @@ RF n1 vo 10k
 
 * Finite open-loop gain (noise gain here is 11, so Aol=200 gives a clearly
 * visible ~5% closed-loop gain error vs the ideal case).
-* nodal_model: FINITEGAIN OPAMP (Aol=200)
+.model FINITEGAIN OPAMP (Aol=200)
 Eop vo 0 0 n1 200 ; nodal_model: FINITEGAIN
 
 

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9dbaf85.
+// Auto-generated with netlist_codegen version a65dc78.
 // Command: netlist_codegen eq_filter.net eq_filter.h -namespace nodal::eq_filter
 
 #pragma once
@@ -115,7 +115,7 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto _t1 = (_t2 - _t6);
             const auto vo = (-(((gR37 * (((_t0 * _t1) - (_t9 * _t10)) + (gR42C17C16 * _t12))) + (_t13 * _t14)) * _t20));
             const auto vn9 = ((((gR37 * (gR40 * _t12)) + (gR35 * (((_t0 * _t21) - (gR66 * _t12)) + (_t9 * _t18)))) + (_t13 * _t27)) * _t20);
-            const auto v36 = (((gR35 * (((_t0 * ((zR45C20 * _t17) - (_t3 * _t24))) - (gR42C17C16 * (zR45C20 * _t19))) + (_t9 * _t25))) + (_t13 * _t28)) * _t20);
+            const auto v36 = (-(((gR35 * (((gR42C17C16 * (zR45C20 * _t19)) - (_t0 * ((zR45C20 * _t17) - (_t3 * _t24)))) - (_t9 * _t25))) - (_t13 * _t28)) * _t20));
             const auto v33 = (-((((gR37 * (gR40 * _t1)) - (gR35 * (((gR66 * _t1) - (_t9 * _t15)) + (gR42C17C16 * _t21)))) + (_t13 * _t29)) * _t20));
             const auto vR42C17C16 = (vn9 - v33);
             const auto _t26 = (vn9 - v36);

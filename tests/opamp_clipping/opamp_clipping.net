@@ -8,7 +8,7 @@ RF n1 vo 10k
 * rails, so most of the waveform should sit clipped. The rise/fall time
 * above is deliberately much slower than the other op-amp fixtures use
 * (1ms, not 1us).
-* nodal_model: CLIPPED OPAMP (Aol=1e5 Vsat+=4.5 Vsat-=-4.5)
+.model CLIPPED OPAMP (Aol=1e5 Vsat+=4.5 Vsat-=-4.5)
 Eop vo 0 value={max(min(1e5*(0-V(n1)),4.5),-4.5)} ; nodal_model: CLIPPED pos=0 neg=n1
 
 

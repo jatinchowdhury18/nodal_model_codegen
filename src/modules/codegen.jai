@@ -97,7 +97,7 @@ Flop_Count :: struct {
     muls: int;
     divs: int;
     adds: int; // ADD, SUB, and NEG all counted here
-    exps: int; // transcendental ops (currently just EXP)
+    transcendentals: int; // EXP, LOG, POW
 }
 
 // Recursively walk an expression tree and accumulate op counts into `result`.
@@ -109,12 +109,12 @@ count_flops_expr :: (e: Expr_ID, exprs: [] Expr, result: *Flop_Count) {
     if      kind == .MUL                                    result.muls += 1;
     else if kind == .DIV                                    result.divs += 1;
     else if kind == .ADD || kind == .SUB || kind == .NEG    result.adds += 1;
-    else if kind == .EXP                                    result.exps += 1;
+    else if kind == .EXP || kind == .LOG || kind == .POW    result.transcendentals += 1;
 
-    if kind == .ADD || kind == .SUB || kind == .MUL || kind == .DIV {
+    if kind == .ADD || kind == .SUB || kind == .MUL || kind == .DIV || kind == .POW {
         count_flops_expr(exprs[e].left,  exprs, result);
         count_flops_expr(exprs[e].right, exprs, result);
-    } else if kind == .NEG || kind == .EXP {
+    } else if kind == .NEG || kind == .EXP || kind == .LOG {
         count_flops_expr(exprs[e].left, exprs, result);
     }
 }
@@ -214,7 +214,8 @@ generate_params_struct :: (elements: [] Element,
             case .DIODE; #through;
             case .DIODE_PAIR; #through;
             case .BJT; #through;
-            case .JFET;
+            case .JFET; #through;
+            case .TRIODE;
                 for pname : device_model_param_names(el.type, el.nonlinear)  emit_nonlinear_param(pname);
             case .AMP;
                 // Rin/Rout/GBW have no fields of their own here -- they're

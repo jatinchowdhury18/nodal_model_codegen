@@ -1,0 +1,45 @@
+* Common-cathode triode amplifier with 12AX7
+* Circuit and drive level follow the demo from Dempwolf & Zolzer (DAFx-11)
+
+* Supply voltage
+VCC vp  0 DC 250
+V1  vi  0 SIN(0 4 500)
+
+* Input coupling capacitor
+Cin vi vg 0.02u
+
+* Grid leak resistor
+Rg vg 0 1Meg
+
+* Cathode resistor (self-bias) with bypass cap
+Rk vk 0 1.5k
+Ck vk 0 25u
+
+* Plate resistor
+Rp vp vpl 100k
+
+* Triode
+X1 vpl vg vk 12AX7_DEMPWOLF ; P G C
+
+* Output coupling capacitor
+Cout vpl vo 0.02u
+RL vo 0 1Meg
+
+* 12AX7 model (Dempwolf & Zolzer physically-motivated triode model, DAFx-11)
+* Ik = Gk * (Hk)^gamma,          Hk = log(1+exp(Ck*(Va/mu + Vg))) / Ck
+* Ig = Gg * (Hg)^xi + Ig0,       Hg = log(1+exp(Cg*Vg)) / Cg
+* Ia = Ik - Ig
+* Parameters below are the "RSD-1" 12AX7 fit from Table 1 of the paper.
+* The same parameters are used in the 12AX7.lib SPICE model
+.model 12AX7_DEMPWOLF TRIODE(GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40 GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8)
+.lib 12AX7.lib
+
+Escale1 vi_scaled 0 value = {V(vi)*0.2} ; netlist_skip
+Escale2 vo_scaled 0 value = {V(vo)*0.004} ; netlist_skip
+
+.tran 0 20m 0 20.0u
+.wav "vin.wav" 32 48k V(vi_scaled)
+.wav "vout.wav" 32 48k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end

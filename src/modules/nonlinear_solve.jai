@@ -147,6 +147,33 @@ jfet_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, pool: *Ex
     return expr_mul(beta, expr_mul(diff, diff, pool), pool);
 }
 
+// Dempwolf & Zolzer triode model (DAFx-11):
+//   Hk = log(1+exp(Ck*(vPK/mu + vGK))) / Ck,   Ik = Gk*Hk^gamma
+//   Hg = log(1+exp(Cg*vGK)) / Cg,              Ig = Gg*Hg^xi + Ig0
+//   Ia = Ik - Ig  (anode/plate current)
+triode_iv_laws :: (vpk_name: string, vgk_name: string, model: Nonlinear_Model, pool: *Expr_Pool) -> (ip: Expr_ID, ig: Expr_ID) {
+    vpk := expr_symbol(vpk_name, pool);
+    vgk := expr_symbol(vgk_name, pool);
+    gk    := expr_symbol(model.gk_name,    pool);
+    mu    := expr_symbol(model.mu_name,    pool);
+    gamma := expr_symbol(model.gamma_name, pool);
+    ck    := expr_symbol(model.ck_name,    pool);
+    gg    := expr_symbol(model.gg_name,    pool);
+    xi    := expr_symbol(model.xi_name,    pool);
+    cg    := expr_symbol(model.cg_name,    pool);
+    ig0   := expr_symbol(model.ig0_name,   pool);
+
+    x_k := expr_add(expr_div(vpk, mu, pool), vgk, pool);
+    hk  := expr_div(expr_log(expr_add(expr_const(1, pool), expr_exp(expr_mul(ck, x_k, pool), pool), pool), pool), ck, pool);
+    ik  := expr_mul(gk, expr_pow(hk, gamma, pool), pool);
+
+    hg  := expr_div(expr_log(expr_add(expr_const(1, pool), expr_exp(expr_mul(cg, vgk, pool), pool), pool), pool), cg, pool);
+    ig  := expr_add(expr_mul(gg, expr_pow(hg, xi, pool), pool), ig0, pool);
+
+    ip := expr_sub(ik, ig, pool);
+    return ip, ig;
+}
+
 // One device current, in terms of its junction-voltage unknown(s): the
 // branch-current symbol `i<suffix><el.name>` (see Device_Kcl_Term) gets
 // substituted with `expr`.
@@ -179,6 +206,15 @@ device_iv_law :: (el: Element, unknown_names: [] string, pool: *Expr_Pool) -> []
         case .JFET;
             iv := jfet_iv_law(unknown_names[0], el.nonlinear, pool);
             array_add(*result, .{ suffix = "", expr = iv });
+        case .TRIODE;
+            vpk_name := ""; vgk_name := "";
+            for n : unknown_names {
+                if String.begins_with(n, "vPK")  vpk_name = n;
+                if String.begins_with(n, "vGK")  vgk_name = n;
+            }
+            ip, ig := triode_iv_laws(vpk_name, vgk_name, el.nonlinear, pool);
+            array_add(*result, .{ suffix = "P", expr = ip });
+            array_add(*result, .{ suffix = "G", expr = ig });
     }
     return result;
 }

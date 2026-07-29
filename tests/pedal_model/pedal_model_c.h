@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9dbaf85.
+// Auto-generated with netlist_codegen version a65dc78.
 // Command: netlist_codegen pedal_model.net pedal_model_c.h -lang c -type_name double
 
 #pragma once
