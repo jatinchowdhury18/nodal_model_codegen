@@ -21,7 +21,7 @@ skip = 0
 error = (cpp_vout[skip:] - vout[skip:])
 max_err = np.max(np.abs(error))
 print(f"Max Error: {max_err}")
-# assert max_err < 0.02
+assert max_err < 0.02
 
 # Plot
 if "plot" in sys.argv:

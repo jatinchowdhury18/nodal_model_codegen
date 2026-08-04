@@ -1,0 +1,55 @@
+* Two-stage triode feedback compressor based loosely on the Altec 436c
+* https://funkwerkes.com/web/wp-content/techdocs/Altec_Lansing/Altec-436C-CompAmp.pdf
+
+* Supply
+VCC vp 0 DC 250
+
+* Input
+V1 vi 0 SIN(0 1 500)
+Cin vi vg1 0.1u
+Rg1 vg1 0 470k
+
+* Stage 1: gain stage. Sidechain feedback sums into the cathode bias
+Rk1 vk1 0 2.2k
+Ck1 vk1 0 10u
+Rp1 vp vpl1 100k
+X1 vpl1 vg1 vk1 12AX7_DEMPWOLF ; P G C
+
+* Interstage coupling
+Cc12 vpl1 vg2 0.047u
+Rg2 vg2 0 220k
+
+* Stage 2: driver stage
+Rk2 vk2 0 1.5k
+Ck2 vk2 0 10u
+Rp2 vp vpl2 47k
+X2 vpl2 vg2 vk2 12AX7_DEMPWOLF ; P G C
+
+* Output
+Cout vpl2 vo 0.1u
+RL vo 0 100k
+
+* Sidechain
+Csc vo vsc 0.1u
+D1 vsc venvA D1N914
+Ratt venvA venv 10k
+Cenv venv 0 1u
+Rrel venv 0 330k
+Rfb venv vk1 47k
+
+* Diode model
+.model D1N914 D (IS=2.52E-9 N=1.752)
+
+* Triode model
+.model 12AX7_DEMPWOLF TRIODE(GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40 GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8)
+.lib 12AX7.lib
+
+Escale1 vi_scaled 0 value = {V(vi)*0.2} ; netlist_skip
+Escale2 vo_scaled 0 value = {V(vo)*0.004} ; netlist_skip
+
+.tran 0 20m 0 20.0u
+.wav "vin.wav" 32 48k V(vi_scaled)
+.wav "vout.wav" 32 48k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end
