@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen common_drain.net common_drain.h -type_name double
 
 #pragma once
@@ -142,7 +142,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     // --- Newton-Raphson solve: J1
     const auto _J1_t4 = (1.0 / 1000.0);
     const auto _J1_t5 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _J1_t3 = (vGSJ1 - _2N5485_vp);
         const auto _J1_t2 = (_J1_t3 + _J1_t4);

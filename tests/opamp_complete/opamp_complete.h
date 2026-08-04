@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen opamp_complete.net opamp_complete.h
 
 #pragma once
@@ -185,7 +185,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto _Eraw_t14 = (_Eraw_t4 * (_Eraw_t8 * _Eraw_t1));
     const auto _Eraw_t15 = (((Eraw_Ibias - (Eraw_Ios / 2.0)) - (gR1 * vi)) * (_Eraw_t8 * _Eraw_t3));
     const auto _Eraw_t16 = (1.0 / _Eraw_t10);
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _Eraw_t0 = ((((gRF * (_Eraw_t13 + ((gEraw_Rout * vclip_Eraw) * _Eraw_t3))) - _Eraw_t14) - _Eraw_t15) * _Eraw_t16);
         const auto res_vclip_Eraw = (_Eraw_t0 - vclip_Eraw);

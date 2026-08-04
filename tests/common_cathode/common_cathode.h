@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen common_cathode.net common_cathode.h -type_name double
 
 #pragma once
@@ -264,7 +264,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto _X1_t24 = (1.0 / (_X1_t25 + _X1_t21));
     const auto _X1_t54 = (gRp * VCC);
     const auto _X1_t55 = (_12AX7_DEMPWOLF_Gg * _12AX7_DEMPWOLF_Xi);
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _X1_t11 = (vPKX1 / _12AX7_DEMPWOLF_Mu);
         const auto _X1_t19 = (_12AX7_DEMPWOLF_Cg * vGKX1);

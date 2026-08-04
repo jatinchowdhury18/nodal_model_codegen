@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen common_emitter.net common_emitter.h
 
 #pragma once
@@ -245,7 +245,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto _Q1_t37 = (1.0 / (Q2N5089_vt * Q2N5089_BetaR));
     const auto _Q1_t14 = (1.0 / (_Q1_t15 + _Q1_t16));
     const auto _Q1_t43 = (VCC * gRC);
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _Q1_t9 = (vBEQ1 / Q2N5089_vt);
         const auto _Q1_t13 = (vBCQ1 / Q2N5089_vt);

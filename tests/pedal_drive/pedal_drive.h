@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen pedal_drive.net pedal_drive.h -type_name double
 
 #pragma once
@@ -482,7 +482,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto _Q1_D3D4_t4 = (_Q1_D3D4_t5 * _Q1_D3D4_t7);
     const auto _Q1_D3D4_t39 = (1.0 / (_Q1_D3D4_t40 + _Q1_D3D4_t43));
     const auto _Q1_D3D4_t3 = (gR18 * _Q1_D3D4_t4);
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _Q1_D3D4_t20 = (vBEQ1 / Q2N5089_vt);
         const auto _Q1_D3D4_t22 = (vBCQ1 / Q2N5089_vt);

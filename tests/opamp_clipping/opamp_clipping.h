@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h
 
 #pragma once
@@ -117,7 +117,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto _Eop_t3 = (1.0 / (((gRF * Eop_Aol) / _Eop_t2) + 1.0));
     const auto _Eop_t4 = ((gR1 * vi) * Eop_Aol);
     const auto _Eop_t5 = (1.0 / _Eop_t2);
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _Eop_t1 = (((gRF * (vclip_Eop * Eop_Aol)) + _Eop_t4) * _Eop_t5);
         const auto _Eop_t0 = (_Eop_t1 + vclip_Eop);

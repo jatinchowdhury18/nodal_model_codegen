@@ -571,7 +571,7 @@ generate_amp_clip_active_set_step :: (cluster: Nonlinear_Cluster, builder: *Stri
 }
 
 // Newton-Raphson solve for one cluster, to be inserted inside the per-sample loop.
-generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend, apply_slew := true) -> string {
+generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend, apply_slew := true, max_iter := "newton_max_iter") -> string {
     builder: String_Builder;
     print_to_builder(*builder, "// --- Newton-Raphson solve: %\n", cluster.name);
 
@@ -581,7 +581,7 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
         emit_topological_order(cluster.lo_invariant_items, exprs, *builder, backend);
     }
 
-    append(*builder, "for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)\n{\n");
+    print_to_builder(*builder, "for (int newton_iter = 0; newton_iter < %; ++newton_iter)\n{\n", max_iter);
     inner_builder: String_Builder;
     emit_topological_order(cluster.iteration_items, exprs, *inner_builder, backend);
     if cluster.amp_clip_idx >= 0 {
@@ -683,8 +683,11 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, backend: Ba
     for c : dc_clusters  for u : c.unknowns  print_to_builder(*builder, "    %1 %2 = 0;\n", backend.type_name, u.name);
     if dc_clusters.count > 0  append(*builder, "\n");
 
+    // DC solve runs once before processing starts and needs to converge
+    // reliably on the first try, so it gets a much higher iteration cap
+    // than the per-sample solve, still bounded to avoid an infinite loop.
     for c : dc_clusters {
-        newton_code := generate_cluster_newton_code(c, dc_pool.exprs, backend, apply_slew = false);
+        newton_code := generate_cluster_newton_code(c, dc_pool.exprs, backend, apply_slew = false, max_iter = "10000");
         append(*builder, indent(newton_code));
     }
 

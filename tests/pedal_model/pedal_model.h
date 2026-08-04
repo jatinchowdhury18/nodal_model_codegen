@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen pedal_model.net pedal_model.h -type_name double
 
 #pragma once
@@ -974,7 +974,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     // --- Newton-Raphson solve: J1
     const auto _J1_t4 = (1.0 / 1000.0);
     const auto _J1_t5 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _J1_t3 = (vGSJ1 - _2N5485_vp);
         const auto _J1_t2 = (_J1_t3 + _J1_t4);
@@ -1021,7 +1021,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto _D1D2_t24 = (1.0 / ((gEamp_Rin * ((_D1D2_t2 * (gEamp_Rin * _D1D2_t25)) + (gEamp_Rout * ((gEamp_Rin * _D1D2_t29) - _D1D2_t30)))) - (_D1D2_t20 * (((_D1D2_t2 * (_D1D2_t21 * _D1D2_t25)) + ((_D1D2_t25 / Rd) / Rd)) + (gEamp_Rout * ((_D1D2_t21 * _D1D2_t29) - _D1D2_t30))))));
     const auto _D1D2_t46 = ((_D1D2_t7 * _D1D2_t10) * D1N914_Is);
     const auto _D1D2_t47 = (1.0 / (Rd * Rd));
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _D1D2_t14 = (vD1D2 / D1N914_vt);
         const auto _D1D2_t13 = exp(_D1D2_t14);

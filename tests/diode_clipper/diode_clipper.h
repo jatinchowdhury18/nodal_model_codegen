@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version a65dc78.
+// Auto-generated with netlist_codegen version ea0eac5.
 // Command: netlist_codegen diode_clipper.net diode_clipper.h
 
 #pragma once
@@ -132,7 +132,7 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto _D1D2_t4 = (1.0 / (gR1 + (1.0 / 1000000000.0)));
     const auto _D1D2_t5 = (1.0 / D1N914_vt);
     const auto _D1D2_t6 = (gR1 * vi);
-    for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
+    for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _D1D2_t3 = (vD1D2 / D1N914_vt);
         const auto _D1D2_t2 = exp(_D1D2_t3);
