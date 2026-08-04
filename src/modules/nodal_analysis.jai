@@ -12,8 +12,10 @@ Element_Type :: enum {
     DIODE;       // 2-terminal: [anode, cathode]. Shockley I-V law.
     DIODE_PAIR;  // 2-terminal: [anode, cathode]. Antiparallel diode pair collapsed
                  // to one junction-voltage unknown via a closed-form sinh I-V law.
-    BJT;         // 3-terminal: [collector, base, emitter]. Ebers-Moll I-V law.
-    JFET;        // 3-terminal: [drain, gate, source]. Square-law I-V law.
+    NPN;         // 3-terminal: [collector, base, emitter]. Ebers-Moll I-V law.
+    PNP;         // 3-terminal: [collector, base, emitter]. Mirrors NPN: vCB/vEB unknowns, reversed KCL terms.
+    NJF;         // 3-terminal: [drain, gate, source]. Square-law I-V law.
+    PJF;         // 3-terminal: [drain, gate, source]. Mirrors NJF: vSG unknown, reversed KCL terms.
     TRIODE;      // 3-terminal: [plate, grid, cathode]. Dempwolf & Zolzer physically-motivated I-V law.
     VCCS;            // 4-terminal: [pos, neg, ctrl_pos, ctrl_neg]. Linear: I = gm*(V(ctrl_pos)-V(ctrl_neg)), sourced at pos/sunk at neg.
     CURRENT_SOURCE;  // 2-terminal: [pos, neg]. Constant current, sourced at pos/sunk at neg.
@@ -123,7 +125,7 @@ nonlinear_device_spec :: (type: Element_Type) -> Nonlinear_Device_Spec {
                     .{ terminal_idx = 1, branch_suffix = "", entering = true },  // cathode += i
                 ],
             };
-        case .BJT;
+        case .NPN;
             return .{
                 unknowns  = Device_Unknown.[
                     .{ name_prefix = "vBC", pos_terminal = 1, neg_terminal = 0, limiter = .EXP_JUNCTION },
@@ -136,12 +138,37 @@ nonlinear_device_spec :: (type: Element_Type) -> Nonlinear_Device_Spec {
                     .{ terminal_idx = 2, branch_suffix = "C", entering = true },  // emitter += iC
                 ],
             };
-        case .JFET;
+        case .PNP;
+            // Mirrors NPN: vCB/vEB in place of vBC/vBE (both reversed relative to
+            // base), and current direction reversed (out of base/collector, into emitter).
+            return .{
+                unknowns  = Device_Unknown.[
+                    .{ name_prefix = "vCB", pos_terminal = 0, neg_terminal = 1, limiter = .EXP_JUNCTION },
+                    .{ name_prefix = "vEB", pos_terminal = 2, neg_terminal = 1, limiter = .EXP_JUNCTION },
+                ],
+                kcl_terms = Device_Kcl_Term.[
+                    .{ terminal_idx = 0, branch_suffix = "C", entering = true },  // collector += iC
+                    .{ terminal_idx = 1, branch_suffix = "B", entering = true },  // base += iB
+                    .{ terminal_idx = 2, branch_suffix = "B", entering = false }, // emitter -= iB
+                    .{ terminal_idx = 2, branch_suffix = "C", entering = false }, // emitter -= iC
+                ],
+            };
+        case .NJF;
             return .{
                 unknowns  = Device_Unknown.[ .{ name_prefix = "vGS", pos_terminal = 1, neg_terminal = 2, limiter = .JFET_PINCHOFF } ],
                 kcl_terms = Device_Kcl_Term.[
                     .{ terminal_idx = 0, branch_suffix = "", entering = false }, // drain -= iD
                     .{ terminal_idx = 2, branch_suffix = "", entering = true },  // source += iD
+                ],
+            };
+        case .PJF;
+            // Mirrors NJF: vSG in place of vGS, current direction reversed
+            // (source to drain, instead of drain to source).
+            return .{
+                unknowns  = Device_Unknown.[ .{ name_prefix = "vSG", pos_terminal = 2, neg_terminal = 1, limiter = .JFET_PINCHOFF } ],
+                kcl_terms = Device_Kcl_Term.[
+                    .{ terminal_idx = 0, branch_suffix = "", entering = true },  // drain += iD
+                    .{ terminal_idx = 2, branch_suffix = "", entering = false }, // source -= iD
                 ],
             };
         case .TRIODE;
@@ -185,9 +212,11 @@ device_model_param_names :: (type: Element_Type, m: Nonlinear_Model) -> [..] str
         case .DIODE; #through;
         case .DIODE_PAIR;
             array_add(*names, m.is_name, m.vt_name);
-        case .BJT;
+        case .NPN; #through;
+        case .PNP;
             array_add(*names, m.is_name, m.vt_name, m.betaf_name, m.betar_name);
-        case .JFET;
+        case .NJF; #through;
+        case .PJF;
             array_add(*names, m.beta_name, m.vp_name);
         case .TRIODE;
             array_add(*names, m.gk_name, m.mu_name, m.gamma_name, m.ck_name,

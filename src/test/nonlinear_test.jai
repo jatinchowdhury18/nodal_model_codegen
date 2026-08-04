@@ -78,7 +78,7 @@ main :: () {
         array_add(*circuit, Element.{ name = "R1", type = .RESISTOR, terminals = make_arr(string.["vb", "vi"]) });
         array_add(*circuit, Element.{ name = "R2", type = .RESISTOR, terminals = make_arr(string.["ve", "0"]) });
         array_add(*circuit, Element.{ name = "VCC", type = .FIXED_VOLTAGE, terminals = make_arr(string.["vcc"]) });
-        array_add(*circuit, Element.{ name = "Q1", type = .BJT, terminals = make_arr(string.["vcc", "vb", "ve"]),
+        array_add(*circuit, Element.{ name = "Q1", type = .NPN, terminals = make_arr(string.["vcc", "vb", "ve"]),
                                        nonlinear = .{ is_name = "Q1_Is", vt_name = "Q1_vt", betaf_name = "Q1_BetaF", betar_name = "Q1_BetaR" } });
 
         solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
@@ -147,7 +147,7 @@ main :: () {
         array_add(*circuit, Element.{ name = "R1", type = .RESISTOR, terminals = make_arr(string.["vb", "vi"]) });
         array_add(*circuit, Element.{ name = "R2", type = .RESISTOR, terminals = make_arr(string.["ve", "0"]) });
         array_add(*circuit, Element.{ name = "VCC", type = .FIXED_VOLTAGE, terminals = make_arr(string.["vcc"]) });
-        array_add(*circuit, Element.{ name = "Q1", type = .BJT, terminals = make_arr(string.["vcc", "vb", "ve"]),
+        array_add(*circuit, Element.{ name = "Q1", type = .NPN, terminals = make_arr(string.["vcc", "vb", "ve"]),
                                        nonlinear = .{ is_name = "Q1_Is", vt_name = "Q1_vt", betaf_name = "Q1_BetaF", betar_name = "Q1_BetaR" } });
         // D1 shares node "vb" (the BJT's base) with its anode -- couples the two devices.
         array_add(*circuit, Element.{ name = "D1", type = .DIODE, terminals = make_arr(string.["vb", "0"]),
@@ -193,7 +193,7 @@ main :: () {
         array_add(*circuit, Element.{ name = "RE", type = .RESISTOR, terminals = make_arr(string.["ve", "0"]) });
         array_add(*circuit, Element.{ name = "RC", type = .RESISTOR, terminals = make_arr(string.["vp", "vc"]) });
         array_add(*circuit, Element.{ name = "VCC", type = .FIXED_VOLTAGE, terminals = make_arr(string.["vp"]) });
-        array_add(*circuit, Element.{ name = "Q1", type = .BJT, terminals = make_arr(string.["vc", "vb", "ve"]),
+        array_add(*circuit, Element.{ name = "Q1", type = .NPN, terminals = make_arr(string.["vc", "vb", "ve"]),
                                        nonlinear = .{ is_name = "Q1_Is", vt_name = "Q1_vt", betaf_name = "Q1_BetaF", betar_name = "Q1_BetaR" } });
         array_add(*circuit, Element.{ name = "C1", type = .CAPACITOR, terminals = make_arr(string.["vi", "vb"]) });
 

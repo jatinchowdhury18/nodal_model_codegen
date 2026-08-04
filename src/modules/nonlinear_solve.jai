@@ -194,7 +194,7 @@ device_iv_law :: (el: Element, unknown_names: [] string, pool: *Expr_Pool) -> []
         case .DIODE_PAIR;
             iv := diode_pair_iv_law(unknown_names[0], el.nonlinear, pool);
             array_add(*result, .{ suffix = "", expr = iv });
-        case .BJT;
+        case .NPN;
             vbc_name := ""; vbe_name := "";
             for n : unknown_names {
                 if String.begins_with(n, "vBC")  vbc_name = n;
@@ -203,7 +203,19 @@ device_iv_law :: (el: Element, unknown_names: [] string, pool: *Expr_Pool) -> []
             ib, ic := bjt_iv_laws(vbc_name, vbe_name, el.nonlinear, pool);
             array_add(*result, .{ suffix = "B", expr = ib });
             array_add(*result, .{ suffix = "C", expr = ic });
-        case .JFET;
+        case .PNP;
+            vcb_name := ""; veb_name := "";
+            for n : unknown_names {
+                if String.begins_with(n, "vCB")  vcb_name = n;
+                if String.begins_with(n, "vEB")  veb_name = n;
+            }
+            ib, ic := bjt_iv_laws(vcb_name, veb_name, el.nonlinear, pool);
+            array_add(*result, .{ suffix = "B", expr = ib });
+            array_add(*result, .{ suffix = "C", expr = ic });
+        case .NJF;
+            iv := jfet_iv_law(unknown_names[0], el.nonlinear, pool);
+            array_add(*result, .{ suffix = "", expr = iv });
+        case .PJF;
             iv := jfet_iv_law(unknown_names[0], el.nonlinear, pool);
             array_add(*result, .{ suffix = "", expr = iv });
         case .TRIODE;

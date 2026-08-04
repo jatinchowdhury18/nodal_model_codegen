@@ -47,7 +47,7 @@ parse_model_kind :: (s: string) -> Model_Kind {
 // standard SPICE defaults.
 Model_Def :: struct {
     name:      string;
-    kind:      Model_Kind; // PNP/PJF are not yet handled specially
+    kind:      Model_Kind;
     is_val:    float32; // diode/BJT saturation current
     n_val:     float32; // diode-only; folded into vt_val at parse time
     betaf_val: float32;
@@ -572,7 +572,8 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 emitter    := tokens[3];
                 model      := find_model(model_defs, tokens[4]);
                 if model.kind == {
-                    case .NPN; // @TODO: handle PNP here also
+                    case .NPN; #through;
+                    case .PNP;
                         is_name    := tprint("%_Is", ident_safe_name(model.name));
                         vt_name    := tprint("%_vt", ident_safe_name(model.name));
                         betaf_name := tprint("%_BetaF", ident_safe_name(model.name));
@@ -582,7 +583,8 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                         add_value_once(*values, betaf_name, model.betaf_val);
                         add_value_once(*values, betar_name, model.betar_val);
 
-                        element := Element.{ name = name, type = .BJT };
+                        bjt_type := ifx model.kind == .PNP then Element_Type.PNP else Element_Type.NPN;
+                        element := Element.{ name = name, type = bjt_type };
                         array_add(*element.terminals, n1);      // collector
                         array_add(*element.terminals, n2);      // base
                         array_add(*element.terminals, emitter); // emitter
@@ -591,17 +593,21 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 }
                 continue;
             case "J";
-                // J<name> <drain> <gate> <source> <model>.
+                // J<name> <drain> <gate> <source> <model>. PJF mirrors NJF
+                // (see nonlinear_device_spec's .PJF case) -- only the element
+                // type differs.
                 source := tokens[3];
                 model  := find_model(model_defs, tokens[4]);
                 if model.kind == {
-                    case .NJF; // @TODO: handle PJF here also
+                    case .NJF; #through;
+                    case .PJF;
                         beta_name := tprint("%_Beta", ident_safe_name(model.name));
                         vp_name   := tprint("%_vp", ident_safe_name(model.name));
                         add_value_once(*values, beta_name, model.beta_val);
                         add_value_once(*values, vp_name, model.vp_val);
 
-                        element := Element.{ name = name, type = .JFET };
+                        jfet_type := ifx model.kind == .PJF then Element_Type.PJF else Element_Type.NJF;
+                        element := Element.{ name = name, type = jfet_type };
                         array_add(*element.terminals, n1);     // drain
                         array_add(*element.terminals, n2);     // gate
                         array_add(*element.terminals, source); // source

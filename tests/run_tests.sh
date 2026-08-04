@@ -31,7 +31,9 @@ test multi_svf
 test diode_circuit
 test diode_clipper
 test common_emitter
+test common_emitter_pnp
 test common_drain
+test common_drain_pjf
 test common_cathode
 
 # guitar pedal circuits

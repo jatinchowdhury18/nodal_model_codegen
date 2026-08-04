@@ -213,8 +213,10 @@ generate_params_struct :: (elements: [] Element,
                 append(*builder, write_value(el.name));
             case .DIODE; #through;
             case .DIODE_PAIR; #through;
-            case .BJT; #through;
-            case .JFET; #through;
+            case .NPN; #through;
+            case .PNP; #through;
+            case .NJF; #through;
+            case .PJF; #through;
             case .TRIODE;
                 for pname : device_model_param_names(el.type, el.nonlinear)  emit_nonlinear_param(pname);
             case .AMP;
