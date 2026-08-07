@@ -31,7 +31,7 @@ compile_run_c("common_emitter_c")
 c_vout = read_bin("output.bin")
 
 error_c = (c_vout[skip:] - vout[skip:])
-max_err_c = np.max(np.abs(error))
+max_err_c = np.max(np.abs(error_c))
 print(f"Max Error (C): {max_err_c}")
 assert max_err_c < 0.02
 

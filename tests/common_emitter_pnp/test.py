@@ -17,10 +17,7 @@ netlist_codegen("common_emitter_pnp.net", "common_emitter_pnp.h")
 compile_run_cpp("common_emitter_pnp")
 cpp_vout = read_bin("output.bin")
 
-# Our initialization is a little bit different from SPICE's
-# so we skip a few samples at the beginning
-skip = 3000
-error = (cpp_vout[skip:] - vout[skip:])
+error = (cpp_vout - vout)
 max_err = np.max(np.abs(error))
 print(f"Max Error: {max_err}")
 assert max_err < 0.02
@@ -30,8 +27,8 @@ netlist_codegen("common_emitter_pnp.net", "common_emitter_pnp_c.h", lang="c", dt
 compile_run_c("common_emitter_pnp_c")
 c_vout = read_bin("output.bin")
 
-error_c = (c_vout[skip:] - vout[skip:])
-max_err_c = np.max(np.abs(error))
+error_c = (c_vout - vout)
+max_err_c = np.max(np.abs(error_c))
 print(f"Max Error (C): {max_err_c}")
 assert max_err_c < 0.02
 
@@ -46,8 +43,8 @@ if "plot" in sys.argv:
     plt.grid()
 
     plt.figure()
-    plt.plot(cpp_vout[skip:] - vout[skip:])
-    plt.plot(c_vout[skip:] - vout[skip:])
+    plt.plot(cpp_vout - vout)
+    plt.plot(c_vout - vout)
     plt.grid()
 
     plt.show()

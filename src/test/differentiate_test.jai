@@ -95,8 +95,7 @@ main :: () {
 
     // 8. Ebers-Moll BJT collector current, differentiated w.r.t. both
     //    junction voltages -- exercises product rule + chain rule together
-    //    with two independent EXP subexpressions, same shape as the
-    //    fdBCdvBC / fdBCdvBE entries in korg-pedal-modelling's big_muff.cpp.
+    //    with two independent EXP subexpressions.
     //    iC = Is*((exp(vBE/vt) - exp(vBC/vt)) - (exp(vBC/vt)-1)/BetaR)
     {
         pool: Expr_Pool;

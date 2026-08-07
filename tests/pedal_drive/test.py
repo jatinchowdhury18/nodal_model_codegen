@@ -17,10 +17,7 @@ netlist_codegen("pedal_drive.net", "pedal_drive.h", dtype="double")
 compile_run_cpp("pedal_drive")
 cpp_vout = read_bin("output.bin")
 
-# Our initialization is a little bit different from SPICE's
-# so we skip a few samples at the beginning
-skip = 100
-error = (cpp_vout[skip:] - vout[skip:])
+error = (cpp_vout - vout)
 max_err = np.max(np.abs(error))
 print(f"Max Error: {max_err}")
 assert max_err < 0.02
@@ -35,7 +32,7 @@ if "plot" in sys.argv:
     plt.grid()
 
     plt.figure()
-    plt.plot(cpp_vout[skip:] - vout[skip:])
+    plt.plot(cpp_vout - vout)
     plt.grid()
 
     plt.show()

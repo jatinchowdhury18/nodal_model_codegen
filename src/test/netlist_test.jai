@@ -335,6 +335,102 @@ END);
     }
 }
 
+// Malformed / adversarial `.model` input: unlike D/Q/J/TRIODE above (all
+// exercised via a well-formed X-line), these hit parse_model_line() /
+// parse_opamp_model_line() directly with garbage, since a netlist that will
+// go public should degrade gracefully on hand-edited or truncated SPICE
+// cards rather than crash -- the realistic failure mode once other people
+// are feeding this their own netlists.
+test_malformed_model_parsing :: () {
+    print("--- malformed .model parsing ---\n");
+
+    // Bare "model NAME" with no kind token at all: too few tokens, caller
+    // gets an untouched default model back (name/kind never get set).
+    {
+        model := parse_model_line("model LONE");
+        d := default_model();
+        check_bool("no kind token: falls back to an untouched default model", model.is_val == d.is_val && model.kind == .UNKNOWN, true);
+    }
+
+    // Unrecognized kind string: parse_model_kind() returns UNKNOWN, but
+    // any key=val params that follow are still parsed normally -- the
+    // param block doesn't gate on kind.
+    {
+        model := parse_model_line("model FUTURE_DEVICE PENTODE (Is=5e-13)");
+        check_bool("unrecognized kind still parses as UNKNOWN, not a crash", model.kind == .UNKNOWN, true);
+        check_bool("params after an unrecognized kind are still read", model.is_val == 5.0e-13, true);
+    }
+
+    // Garbage (non-numeric) value: parse_spice_value() returns NaN,
+    // is_nan_is_inf() guards against writing it into the field.
+    {
+        model := parse_model_line("model BADVAL D (Is=notanumber)");
+        d := default_model();
+        check_bool("non-numeric value leaves the field at its default", model.is_val == d.is_val, true);
+    }
+
+    // key with no '=' at all: dropped, not misread as a bare flag.
+    {
+        model := parse_model_line("model NOEQ D (Is)");
+        d := default_model();
+        check_bool("key with no '=' leaves the field at its default", model.is_val == d.is_val, true);
+    }
+
+    // Duplicate key: last one wins (plain left-to-right overwrite, no
+    // merge/error).
+    {
+        model := parse_model_line("model DUPE D (Is=1e-14 Is=9e-9)");
+        check_bool("duplicate key: last occurrence wins", model.is_val == 9.0e-9, true);
+    }
+
+    // Missing closing paren: '(' / ')' / ',' are all just replaced with
+    // spaces before splitting, so an unbalanced paren doesn't misparse or
+    // swallow the rest of the line -- it degrades to "one fewer space".
+    {
+        model := parse_model_line("model UNBALANCED D (Is=2e-14 Bf=150");
+        check_bool("missing ')' still parses the params before it", model.is_val == 2.0e-14 && model.betaf_val == 150.0, true);
+    }
+
+    // Empty parameter list ("()"): no key=val tokens at all, model stays
+    // at defaults, no crash on the empty split.
+    {
+        model := parse_model_line("model EMPTY D ()");
+        d := default_model();
+        check_bool("empty parens: stays fully default", model.is_val == d.is_val && model.betaf_val == d.betaf_val, true);
+    }
+
+    // No parens/params at all ("model NAME D"): tokens.count == 3, the
+    // tokens.count > 3 param-parsing block is skipped entirely, but
+    // name/kind still get set from tokens[1]/[2].
+    {
+        model := parse_model_line("model BARE D");
+        d := default_model();
+        check_str("bare model still gets its name", model.name, "BARE");
+        check_bool("bare model: kind still parses", model.kind == .D, true);
+        check_bool("bare model: no param block to parse, stays default", model.is_val == d.is_val, true);
+    }
+
+    // OPAMP side: same garbage-value and missing-'=' resilience, checked
+    // via the has_* flags instead of a defaults comparison, since
+    // Opamp_Model_Def has no SPICE default to fall back to.
+    {
+        model := parse_opamp_model_line("model BADOPAMP OPAMP (Aol=notanumber Rin)");
+        check_bool("OPAMP: non-numeric Aol doesn't set has_aol", model.has_aol, false);
+        check_bool("OPAMP: key with no '=' doesn't set has_rin", model.has_rin, false);
+    }
+
+    // Routed through parse_netlist(): a garbage .model card that nothing
+    // references shouldn't register any Params values or affect the
+    // element list -- find_model()'s fallback only kicks in when an
+    // element line actually looks the name up.
+    {
+        info := parse_netlist(#string END
+.model GARBAGE NOTAKIND (Is=notanumber Bf)
+END);
+        check_bool("unreferenced garbage .model card: no elements, no values", info.elements.count == 0 && info.values.count == 0, true);
+    }
+}
+
 main :: () {
     code := netlist_codegen(test_netlist);
     print("----------------------------------\n");
@@ -342,4 +438,5 @@ main :: () {
 
     test_opamp_parsing();
     test_triode_parsing();
+    test_malformed_model_parsing();
 }

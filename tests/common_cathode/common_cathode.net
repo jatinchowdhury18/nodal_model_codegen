@@ -30,9 +30,24 @@ RL vo 0 1Meg
 * Ig = Gg * (Hg)^xi + Ig0,       Hg = log(1+exp(Cg*Vg)) / Cg
 * Ia = Ik - Ig
 * Parameters below are the "RSD-1" 12AX7 fit from Table 1 of the paper.
-* The same parameters are used in the 12AX7.lib SPICE model
+* The same parameters are used in the inline .SUBCKT (see below) used by LTSpice.
 .model 12AX7_DEMPWOLF TRIODE(GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40 GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8)
-.lib 12AX7.lib
+
+.SUBCKT 12AX7_DEMPWOLF 1 2 3 ; P G C
++ PARAMS: GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40
++ GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8
++ CGK=2.3p CPG=2.4p CPK=0.9p
+Ehk 4 0 VALUE={log(1+exp(CK*(V(1,3)/MU+V(2,3))))/CK}
+Ehg 5 0 VALUE={log(1+exp(CG*V(2,3)))/CG}
+Rhk 4 0 1G
+Rhg 5 0 1G
+Gp  1 3 VALUE={GK*pwr(V(4),GAMMA) - (GG*pwr(V(5),XI)+IG0)}
+Ggr 2 3 VALUE={GG*pwr(V(5),XI)+IG0}
+Rleak 1 3 1G
+Cgk 2 3 {CGK}
+Cpg 1 2 {CPG}
+Cpk 1 3 {CPK}
+.ENDS 12AX7_DEMPWOLF
 
 Escale1 vi_scaled 0 value = {V(vi)*0.2} ; netlist_skip
 Escale2 vo_scaled 0 value = {V(vo)*0.004} ; netlist_skip
