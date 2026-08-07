@@ -1075,53 +1075,55 @@ simplify :: (e: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
 
 
 //==================================================
-print_expr :: (e: Expr_ID, exprs: [] Expr) -> string {
-    expr_to_builder :: (builder: *String_Builder, e: Expr_ID, exprs: [] Expr) {
+// `suffix` is the target type's literal suffix (e.g. "f" for float, "" for double).
+print_expr :: (e: Expr_ID, exprs: [] Expr, suffix: string = "") -> string {
+    expr_to_builder :: (builder: *String_Builder, e: Expr_ID, exprs: [] Expr, suffix: string) {
         if exprs[e].kind == {
             case .CONST;
                 print_to_builder(builder, "%.0", exprs[e].value);
+                append(builder, suffix);
 
             case .SYMBOL;
                 append(builder, exprs[e].name);
 
             case .NEG;
                 append(builder, "(-");
-                expr_to_builder(builder, exprs[e].left, exprs);
+                expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 append(builder, ")");
 
             case .EXP;
                 append(builder, "exp(");
-                expr_to_builder(builder, exprs[e].left, exprs);
+                expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 append(builder, ")");
 
             case .LOG;
                 append(builder, "log(");
-                expr_to_builder(builder, exprs[e].left, exprs);
+                expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 append(builder, ")");
 
             case .POW;
                 append(builder, "pow(");
-                expr_to_builder(builder, exprs[e].left, exprs);
+                expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 append(builder, ", ");
-                expr_to_builder(builder, exprs[e].right, exprs);
+                expr_to_builder(builder, exprs[e].right, exprs, suffix);
                 append(builder, ")");
 
             case;
                 append(builder, "(");
-                expr_to_builder(builder, exprs[e].left, exprs);
+                expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 if exprs[e].kind == {
                     case .ADD; append(builder, " + ");
                     case .SUB; append(builder, " - ");
                     case .MUL; append(builder, " * ");
                     case .DIV; append(builder, " / ");
                 }
-                expr_to_builder(builder, exprs[e].right, exprs);
+                expr_to_builder(builder, exprs[e].right, exprs, suffix);
                 append(builder, ")");
         }
     }
 
     builder: String_Builder;
-    expr_to_builder(*builder, e, exprs);
+    expr_to_builder(*builder, e, exprs, suffix);
     return builder_to_string(*builder);
 }
 

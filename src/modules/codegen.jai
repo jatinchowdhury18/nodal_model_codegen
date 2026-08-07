@@ -691,8 +691,9 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, backend: Ba
         append(*builder, indent(newton_code));
     }
 
+    reset_suffix := ifx backend.type_name == "float" then "f" else "";
     for zv : z_init_vars {
-        print_to_builder(*builder, "    const %1 %2 = %3;\n", backend.decl_type, zv.name, print_expr(zv.expr_id, dc_pool.exprs));
+        print_to_builder(*builder, "    const %1 %2 = %3;\n", backend.decl_type, zv.name, print_expr(zv.expr_id, dc_pool.exprs, reset_suffix));
     }
     if z_init_vars.count > 0  append(*builder, "\n");
 
@@ -791,6 +792,7 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
 // references have already been written.
 emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder, backend: Backend = .{}) {
     decl_type := backend.decl_type;
+    literal_suffix := ifx backend.type_name == "float" then "f" else "";
     emitted: [..] bool;
     for _ : 0..items.count-1  array_add(*emitted, false);
 
@@ -816,7 +818,7 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
                 remaining  -= 1;
                 made_progress = true;
                 print_to_builder(builder, "const % % = %;\n",
-                                 decl_type, items[i].name, print_expr(items[i].expr_id, exprs));
+                                 decl_type, items[i].name, print_expr(items[i].expr_id, exprs, literal_suffix));
             }
         }
         if !made_progress  break;  // Cycle guard.
