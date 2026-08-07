@@ -323,6 +323,11 @@ C/C++ model, runs it on the same input, and asserts that the maximum absolute
 error is below a small threshold. The tests will optionally generate
 plots of the signals and error.
 
+Note: sometimes the error plots will show "spikes" in the error,
+typically when the signal is rising or falling very quickly.
+This appears to be due to SPICE's adaptive time-step behaviour
+rather than a true inaccuracy in the simulation.
+
 ## License
 
 `nodal_model_codegen` is open source, and is licensed under the

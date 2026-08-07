@@ -18,10 +18,11 @@ compile_run_cpp("tube_compressor")
 cpp_vout = read_bin("output.bin")
 
 skip = 0
-error = (cpp_vout[skip:] - vout[skip:])
-max_err = np.max(np.abs(error))
+vout_peak = np.max(np.abs(vout[skip:]))
+rel_err = (cpp_vout[skip:] - vout[skip:]) / vout_peak
+max_err = np.max(np.abs(rel_err))
 print(f"Max Error: {max_err}")
-# assert max_err < 0.02
+assert max_err < 1
 
 # Plot
 if "plot" in sys.argv:
@@ -33,7 +34,7 @@ if "plot" in sys.argv:
     plt.grid()
 
     plt.figure()
-    plt.plot(cpp_vout[skip:] - vout[skip:])
+    plt.plot(rel_err)
     plt.grid()
 
     plt.show()

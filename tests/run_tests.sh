@@ -36,10 +36,11 @@ test common_drain
 test common_drain_pjf
 test common_cathode
 
-# guitar pedal circuits
+# "real world" nonlinear circuits
 test pedal_tone
 test pedal_drive
 test pedal_model
+test tube_compressor
 
 # op-amp non-idealities
 test opamp_finite_gain
