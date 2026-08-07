@@ -4,6 +4,11 @@
 from [LTspice](https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html)
 netlists, using [Modified Nodal Analysis (MNA)](https://en.wikipedia.org/wiki/Modified_nodal_analysis) and "equivalent currents".
 
+_This work is currently intended for research purposes only.
+There are plans to publish an executable "release build"
+after the system has stabilized and undergone further
+testing._
+
 ## What it does
 
 Given an LTspice netlist (`.net` file) describing a circuit, `netlist_codegen` will:
