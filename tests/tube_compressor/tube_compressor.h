@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version c3bd1c6.
+// Auto-generated with netlist_codegen version 9b9cfe2.
 // Command: netlist_codegen tube_compressor.net tube_compressor.h -type_name double
 
 #pragma once

@@ -1,0 +1,34 @@
+* Cascaded passive RC ladder -- many stages of small conductance (MOhm/pF)
+* chained together. Regression fixture for automatic det(A) row scaling:
+* each stage's admittance is small enough that an N-stage system like this
+* underflows float32's denormal floor in det(A) without row scaling (see
+* sym_algebra.jai's Magnitude_Check / scratch/STABILITY_PLAN.md).
+
+V1 vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+R1 vi n1 1MEG
+C1 n1 0 10p IC=0
+R2 n1 n2 1MEG
+C2 n2 0 10p IC=0
+R3 n2 n3 1MEG
+C3 n3 0 10p IC=0
+R4 n3 n4 1MEG
+C4 n4 0 10p IC=0
+R5 n4 n5 1MEG
+C5 n5 0 10p IC=0
+R6 n5 n6 1MEG
+C6 n6 0 10p IC=0
+R7 n6 n7 1MEG
+C7 n7 0 10p IC=0
+R8 n7 n8 1MEG
+C8 n8 0 10p IC=0
+R9 n8 n9 1MEG
+C9 n9 0 10p IC=0
+R10 n9 vo 1MEG
+C10 vo 0 10p IC=0
+
+.tran 0 80m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end

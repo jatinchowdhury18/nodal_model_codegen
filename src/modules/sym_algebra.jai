@@ -23,6 +23,7 @@
 #import "Basic";
 #import "Hash_Table";
 Hash :: #import "Hash";
+Math :: #import "Math";
 
 Expr_Kind :: enum {
     NULL;
@@ -651,12 +652,102 @@ symbolic_det :: (M: [] Expr_ID, n: int,
     return det;
 }
 
+// Pessimistic worst-case *minimum* magnitude of `expr`, given a symbol name
+// -> magnitude lookup. Symbols missing from the table fall back to
+// `default_magnitude` (1.0 is a safe no-op: an unknown factor won't shrink
+// a product estimate).
+//
+// Rules (all worst-case, not typical-case -- this only needs to catch
+// "could plausibly be too small", false positives are fine):
+//   CONST        -> abs(value), or 1 if zero
+//   SYMBOL       -> magnitudes[name], else default_magnitude
+//   NEG          -> magnitude(operand)
+//   ADD, SUB     -> pessimistic: assume no cancellation, so use the larger child's magnitude
+//   MUL          -> magnitude(left) * magnitude(right)
+//   DIV          -> magnitude(left) / magnitude(right)
+//   EXP, LOG, POW -> not expected in a linear det(A) tree; fall back to default_magnitude
+estimate_min_magnitude :: (expr: Expr_ID, pool: *Expr_Pool,
+                           magnitudes: Table(string, float64),
+                           default_magnitude: float64 = 1.0) -> float64 {
+    if expr == NO_EXPR  return 0;
+    ex := pool.exprs[expr];
+
+    if ex.kind == {
+        case .CONST;
+            v := cast(float64) ex.value;
+            if v < 0  v = -v;
+            return ifx v == 0 then 1.0 else v;
+        case .SYMBOL;
+            found, mag := table_find(*magnitudes, ex.name);
+            return ifx found then mag else default_magnitude;
+        case .NEG;
+            return estimate_min_magnitude(ex.left, pool, magnitudes, default_magnitude);
+        case .ADD; #through;
+        case .SUB;
+            l := estimate_min_magnitude(ex.left,  pool, magnitudes, default_magnitude);
+            r := estimate_min_magnitude(ex.right, pool, magnitudes, default_magnitude);
+            return ifx l > r then l else r;
+        case .MUL;
+            l := estimate_min_magnitude(ex.left,  pool, magnitudes, default_magnitude);
+            r := estimate_min_magnitude(ex.right, pool, magnitudes, default_magnitude);
+            return l * r;
+        case .DIV;
+            l := estimate_min_magnitude(ex.left,  pool, magnitudes, default_magnitude);
+            r := estimate_min_magnitude(ex.right, pool, magnitudes, default_magnitude);
+            return ifx r == 0 then l else l / r;
+        case;
+            return default_magnitude;
+    }
+}
+
+// Caller-supplied policy for the det(A) magnitude-underflow warning.
+// When enabled, the solver will use row scaling to try to avoid underflow,
+// and will emit a warning is this is not possible.
+Magnitude_Check :: struct {
+    enabled:    bool;
+    threshold:  float64;
+    magnitudes: Table(string, float64);
+    label:      string; // free-form, only used in the printed warning
+}
+
+// Largest estimate_min_magnitude() among a row's nonzero entries -- the
+// "dominant" term, used to pick that row's power-of-two scale factor.
+estimate_row_magnitude :: (entries: [] Expr_ID, pool: *Expr_Pool, magnitudes: Table(string, float64)) -> float64 {
+    mag: float64 = 0.0;
+    for e : entries {
+        if e == NO_EXPR  continue;
+        m := estimate_min_magnitude(e, pool, magnitudes);
+        if m > mag  mag = m;
+    }
+    return ifx mag > 0 then mag else 1.0;
+}
+
+// Power-of-two exponent that brings `magnitude` closest to 1 (round(-log2(magnitude))).
+// Clamped well within CONST's s64 range -- no real component magnitude needs more.
+row_scale_exponent :: (magnitude: float64) -> int {
+    if magnitude <= 0  return 0;
+    LOG2E :: 1.4426950408889634; // 1/ln(2)
+    k := cast(int) Math.floor(-Math.log(magnitude) * LOG2E + 0.5);
+    if k >  48  k =  48;
+    if k < -48  k = -48;
+    return k;
+}
+
+// Multiply/divide `id` by 2^k (exact in floating point either way -- only
+// the exponent field changes). k > 0 grows magnitude, k < 0 shrinks it.
+scale_pow2 :: (id: Expr_ID, k: int, pool: *Expr_Pool) -> Expr_ID {
+    if id == NO_EXPR || k == 0  return id;
+    if k > 0  return expr_mul(id, expr_const(cast(s64)1 << k, pool), pool);
+    return expr_div(id, expr_const(cast(s64)1 << (-k), pool), pool);
+}
+
 // Solve a square linear system A*x = b using Cramer's rule.
 // Every solution x[i] = det(A_i) / det(A), where A_i is A with column i
 // replaced by b. All solutions share the same det(A), so CSE extracts it as
 // one shared temporary and recip_hoist turns it into a single precomputed
 // reciprocal.
-solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..] Expr_ID {
+solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
+         check := Magnitude_Check.{}) -> [..] Expr_ID {
     n := equations.count;
     assert(n == solve_for.count, "Need one equation per unknown!");
     assert(n <= 62, "System too large for bitmask Cramer solver (n > 62)");
@@ -672,6 +763,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..
 
     for i: 0..n-1 {
         lin := linearize(equations[i], solve_for, pool);
+        row_start := A.count;
         for j: 0..n-1 {
             a_ij := lin.coeffs[j];
             if a_ij != NO_EXPR  fold(a_ij, pool);
@@ -679,6 +771,27 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..
         }
         rhs_i := ifx lin.constant != NO_EXPR then expr_neg(lin.constant, pool) else NO_EXPR;
         if rhs_i != NO_EXPR  fold(rhs_i, pool);
+
+        // Step 1b: if this row's coefficients are small enough to plausibly
+        // contribute to det(A) underflow, scale the whole row up by a power
+        // of two so its dominant term lands near magnitude 1.
+        if check.enabled {
+            mag := estimate_row_magnitude(array_view(A, row_start, n), pool, check.magnitudes);
+            k := row_scale_exponent(mag);
+            if k > 0 {
+                for j: 0..n-1 {
+                    idx := row_start + j;
+                    if A[idx] == NO_EXPR  continue;
+                    A[idx] = scale_pow2(A[idx], k, pool);
+                    fold(A[idx], pool);
+                }
+                if rhs_i != NO_EXPR {
+                    rhs_i = scale_pow2(rhs_i, k, pool);
+                    fold(rhs_i, pool);
+                }
+            }
+        }
+
         array_add(*b, rhs_i);
     }
 
@@ -694,6 +807,15 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool) -> [..
     assert(!(pool.exprs[det_A].kind == .CONST && pool.exprs[det_A].value == 0),
            "System matrix is singular!");
     fold_dag(det_A, pool);
+
+    if check.enabled {
+        est := estimate_min_magnitude(det_A, pool, check.magnitudes);
+        if est < check.threshold {
+            label_suffix := ifx check.label.count > 0 then tprint(" for \"%\"", check.label) else "";
+            log("Warning: det(A)% could plausibly underflow -- estimated worst-case minimum magnitude % is below threshold %. See sym_algebra.jai's Cramer's-rule comment for background; consider splitting the circuit (e.g. a `split_here` directive) if this shows up as actual instability.\n",
+                label_suffix, formatFloat(est, mode = .SCIENTIFIC), formatFloat(check.threshold, mode = .SCIENTIFIC));
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Step 3: For each variable x[i], build A_i and compute det(A_i).

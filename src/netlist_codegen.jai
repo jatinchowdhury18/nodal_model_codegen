@@ -49,7 +49,7 @@ main :: () {
     netlist_file_str, fread_success := File.read_entire_file(netlist_file);
     assert(fread_success, "Unable to open file!");
 
-    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace);
+    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file);
 
     // Prepend auto-generated header comment with version and full CLI invocation.
     cli_args := get_command_line_arguments();

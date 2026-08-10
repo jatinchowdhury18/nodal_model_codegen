@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ea0eac5.
+// Auto-generated with netlist_codegen version 9b9cfe2.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h
 
 #pragma once
@@ -51,12 +51,12 @@ static void compute (const float* const* input, float** output, int num_channels
 
             // --- Newton-Raphson solve: Eop
             const auto _Eop_t2 = (gR1 + gRF);
-            const auto _Eop_t3 = (1.0 / (((gRF * Eop_Aol) / _Eop_t2) + 1.0));
+            const auto _Eop_t3 = (1.0f / (((gRF * Eop_Aol) / _Eop_t2) + 1.0f));
             const auto _Eop_t4 = ((gR1 * vi) * Eop_Aol);
-            const auto _Eop_t5 = (1.0 / _Eop_t2);
+            const auto _Eop_t5 = (1.0f / _Eop_t2);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const auto _Eop_t1 = (((gRF * (vclip_Eop * Eop_Aol)) + _Eop_t4) * _Eop_t5);
+                const auto _Eop_t1 = ((((gRF * vclip_Eop) * Eop_Aol) + _Eop_t4) * _Eop_t5);
                 const auto _Eop_t0 = (_Eop_t1 + vclip_Eop);
                 const auto res_vclip_Eop = (-_Eop_t0);
                 const auto delta_vclip_Eop = (-(_Eop_t0 * _Eop_t3));
@@ -113,10 +113,10 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     float vclip_Eop = 0;
 
     // --- Newton-Raphson solve: Eop
-    const auto _Eop_t2 = ((gR1 + gRF) + (1.0 / 1000000000.0));
-    const auto _Eop_t3 = (1.0 / (((gRF * Eop_Aol) / _Eop_t2) + 1.0));
+    const auto _Eop_t2 = ((gR1 + gRF) + (1.0f / 1000000000.0f));
+    const auto _Eop_t3 = (1.0f / (((gRF * Eop_Aol) / _Eop_t2) + 1.0f));
     const auto _Eop_t4 = ((gR1 * vi) * Eop_Aol);
-    const auto _Eop_t5 = (1.0 / _Eop_t2);
+    const auto _Eop_t5 = (1.0f / _Eop_t2);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _Eop_t1 = (((gRF * (vclip_Eop * Eop_Aol)) + _Eop_t4) * _Eop_t5);

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ea0eac5.
+// Auto-generated with netlist_codegen version 9b9cfe2.
 // Command: netlist_codegen sk_lpf.net sk_lpf.h
 
 #pragma once
@@ -37,12 +37,15 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto gRload = 1.0f / params.Rload;
     
-    const auto _t0 = ((gR1 + gR2) + gC2);
-    const auto _t2 = (gRf + gRg);
-    const auto _t4 = (gR2 * _t2);
-    const auto _t6 = ((gR2 + gC1) * gRf);
-    const auto _t7 = (gR2 * gRf);
-    const auto _t5 = (1.0 / (((_t0 * _t6) - (gC2 * _t4)) - (gR2 * _t7)));
+    const auto _t0 = (((gR1 + gR2) + gC2) * 128.0f);
+    const auto _t3 = ((gRf + gRg) * 8192.0f);
+    const auto _t6 = (gR2 * 128.0f);
+    const auto _t9 = (gRf * 8192.0f);
+    const auto _t10 = (gC2 * 128.0f);
+    const auto _t11 = (_t6 * _t9);
+    const auto _t5 = (_t6 * _t3);
+    const auto _t8 = (((gR2 + gC1) * 128.0f) * _t9);
+    const auto _t7 = (1.0f / (((_t0 * _t8) - (_t10 * _t5)) - (_t6 * _t11)));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC1 = state[ch].zC1;
@@ -51,13 +54,14 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto _t3 = (zC2 - (gR1 * vi));
-            const auto _t8 = (zC1 * gRf);
-            const auto _t1 = (zC1 * _t2);
-            const auto vo = (((_t0 * _t1) - (_t3 * _t4)) * _t5);
-            const auto n3 = (((_t0 * _t8) - (_t3 * _t7)) * _t5);
+            const auto _t2 = (zC1 * 128.0f);
+            const auto _t4 = ((zC2 - (gR1 * vi)) * 128.0f);
+            const auto _t12 = (_t2 * _t9);
+            const auto _t1 = (_t2 * _t3);
+            const auto vo = (((_t0 * _t1) - (_t4 * _t5)) * _t7);
+            const auto n3 = (((_t0 * _t12) - (_t4 * _t11)) * _t7);
             const auto tC1 = (gC1 * (n3 - 0));
-            const auto n1 = ((((gC2 * _t1) - (_t3 * _t6)) + (gR2 * _t8)) * _t5);
+            const auto n1 = ((((_t10 * _t1) - (_t4 * _t8)) + (_t6 * _t12)) * _t7);
             const auto tC2 = (gC2 * (vo - n1));
             
             zC1 = 2 * tC1 - zC1;

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ea0eac5.
+// Auto-generated with netlist_codegen version 9b9cfe2.
 // Command: netlist_codegen pedal_tone.net pedal_tone.h
 
 #pragma once
@@ -34,13 +34,17 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto gRtm = 1.0f / params.Rtm;
     
-    const auto _t0 = ((gR8 + gC8) + gRtm);
-    const auto _t5 = ((gC9 + gR5) + gRtp);
-    const auto _t8 = (gRtp + gRtm);
-    const auto _t4 = (_t5 * gRtm);
-    const auto _t7 = ((_t5 * _t8) - (gRtp * gRtp));
-    const auto _t6 = (1.0 / ((gRtm * _t4) - (_t0 * _t7)));
-    const auto _t9 = (gRtp * gRtm);
+    const auto _t0 = (((gR8 + gC8) + gRtm) * 1024.0f);
+    const auto _t3 = (gRtp * 32768.0f);
+    const auto _t6 = (((gC9 + gR5) + gRtp) * 2048.0f);
+    const auto _t7 = (gRtm * 32768.0f);
+    const auto _t9 = (gRtm * 1024.0f);
+    const auto _t11 = ((gRtp + gRtm) * 32768.0f);
+    const auto _t12 = (gRtp * 2048.0f);
+    const auto _t5 = (_t6 * _t7);
+    const auto _t10 = ((_t6 * _t11) - (_t12 * _t3));
+    const auto _t8 = (1.0f / ((_t9 * _t5) - (_t0 * _t10)));
+    const auto _t13 = (_t12 * _t7);
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC8 = state[ch].zC8;
@@ -49,13 +53,13 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto _t2 = (zC9 - (gC9 * vi));
-            const auto _t3 = ((gR8 * vi) + zC8);
-            const auto _t1 = (_t2 * gRtp);
-            const auto vo = (((_t0 * _t1) - (_t3 * _t4)) * _t6);
-            const auto n1 = (((gRtm * _t1) - (_t3 * _t7)) * _t6);
+            const auto _t2 = ((zC9 - (gC9 * vi)) * 2048.0f);
+            const auto _t4 = (((gR8 * vi) + zC8) * 1024.0f);
+            const auto _t1 = (_t2 * _t3);
+            const auto vo = (((_t0 * _t1) - (_t4 * _t5)) * _t8);
+            const auto n1 = (((_t9 * _t1) - (_t4 * _t10)) * _t8);
             const auto tC8 = (gC8 * (n1 - 0));
-            const auto n2 = ((((_t0 * (_t2 * _t8)) - (_t3 * _t9)) - (gRtm * (_t2 * gRtm))) * _t6);
+            const auto n2 = ((((_t0 * (_t2 * _t11)) - (_t4 * _t13)) - (_t9 * (_t2 * _t7))) * _t8);
             const auto tC9 = (gC9 * (vi - n2));
             
             zC8 = 2 * tC8 - zC8;

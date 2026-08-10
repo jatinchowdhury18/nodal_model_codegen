@@ -22,10 +22,13 @@ test sk_lpf
 test summing_amp
 
 # linear circuits
-test reductions
 test eq_filter
 test eq_filter2
 test multi_svf
+
+# pathological test circuits
+test reductions
+test rc_cascade_stability
 
 # simple nonlinear
 test diode_circuit

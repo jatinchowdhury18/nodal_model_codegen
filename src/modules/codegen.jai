@@ -9,6 +9,7 @@
 // consumes Nonlinear_Cluster etc. but nothing below it depends on codegen.
 
 #import "Basic";
+#import "Hash_Table";
 
 #import "sym_algebra";
 #import "nodal_analysis";
@@ -361,6 +362,95 @@ generate_impedance_defs :: (elements: [] Element, backend: Backend = .{}) -> str
     }
 
     return builder_to_string(*builder);
+}
+
+// ===========================================================================
+// det(A) magnitude-underflow check (see sym_algebra.jai's Magnitude_Check).
+// ===========================================================================
+
+// Conservative standalone-component defaults, used only when a component's
+// value can't be found in `values` directly. Picked to bias toward the
+// SMALL-magnitude side of typical audio component ranges.
+DET_A_CHECK_DEFAULT_R :: 1.0e6;     // 1 Mohm  -> small conductance
+DET_A_CHECK_DEFAULT_C :: 100.0e-12; // 100 pF  -> small conductance
+DET_A_CHECK_DEFAULT_L :: 10.0;      // 10 H    -> small conductance
+
+// Sample rate isn't known at codegen time, so we'll use 48k as a plausible example.
+DET_A_CHECK_NOMINAL_SAMPLE_RATE :: 48000.0;
+
+// Threshold for the active precision. float32's true denormal floor is
+// ~1.4e-45; this leaves real margin above that. @TUNE_ME
+DET_A_CHECK_THRESHOLD_FLOAT32 :: 1.0e-25;
+
+find_element_value :: (values: [] Element_Value, name: string) -> (found: bool, value: float64) {
+    for v : values  if v.name == name  return true, cast(float64) v.value;
+    return false, 0;
+}
+
+// Build the symbol -> magnitude lookup table the det(A) underflow check
+// needs. `elements` must be the POST-reduce_circuit element list (RC_SERIES/
+// RC_PARALLEL merges, combo_expr assignment already applied) since that's
+// what determines which symbol names actually appear in det(A).
+build_det_a_magnitude_table :: (elements: [] Element, values: [] Element_Value) -> Table(string, float64) {
+    table: Table(string, float64);
+
+    // Direct pass-through: covers nonlinear/op-amp model params by their bare
+    // Params-field name (no fallback needed). Also covers CURRENT_SOURCE/FIXED_VOLTAGE,
+    // whose symbols are their bare element name.
+    for v : values  table_set(*table, v.name, cast(float64) v.value);
+
+    lookup_or_default :: (name: string, default_value: float64) -> float64 #expand {
+        found, v := find_element_value(values, name);
+        return ifx found then v else default_value;
+    }
+
+    // R/L/C (and RC_SERIES/RC_PARALLEL, VCCS) don't appear in det(A) under
+    // their own name -- solve() sees the derived admittance symbol
+    // ("g" + name), computed here with the same formulas generate_impedance_defs()
+    // emits as code, so this overrides/extends the pass-through above.
+    for el : elements {
+        if el.type == {
+            case .RESISTOR;
+                r := lookup_or_default(el.name, DET_A_CHECK_DEFAULT_R);
+                table_set(*table, tprint("g%", el.name), 1.0 / r);
+            case .CAPACITOR;
+                c := lookup_or_default(el.name, DET_A_CHECK_DEFAULT_C);
+                table_set(*table, tprint("g%", el.name), 2.0 * DET_A_CHECK_NOMINAL_SAMPLE_RATE * c);
+            case .INDUCTOR;
+                l := lookup_or_default(el.name, DET_A_CHECK_DEFAULT_L);
+                table_set(*table, tprint("g%", el.name), 1.0 / (2.0 * DET_A_CHECK_NOMINAL_SAMPLE_RATE * l));
+            case .RC_SERIES;
+                r  := lookup_or_default(el.rc_internal.res_name, DET_A_CHECK_DEFAULT_R);
+                c  := lookup_or_default(el.rc_internal.cap_name, DET_A_CHECK_DEFAULT_C);
+                sr := DET_A_CHECK_NOMINAL_SAMPLE_RATE;
+                table_set(*table, tprint("g%", el.name), (2.0 * sr * c) / (1.0 + 2.0 * sr * r * c));
+                // gn (state-decay coefficient) is a ratio near 1, not a
+                // shrinking factor -- left at the default_magnitude fallback.
+            case .RC_PARALLEL;
+                r  := lookup_or_default(el.rc_internal.res_name, DET_A_CHECK_DEFAULT_R);
+                c  := lookup_or_default(el.rc_internal.cap_name, DET_A_CHECK_DEFAULT_C);
+                sr := DET_A_CHECK_NOMINAL_SAMPLE_RATE;
+                table_set(*table, tprint("g%", el.name), 2.0 * sr * c + 1.0 / r);
+            case .VCCS;
+                gm := lookup_or_default(el.name, 1.0); // no standard "conservative" default for transconductance -- neutral fallback
+                table_set(*table, tprint("g%", el.name), gm);
+        }
+    }
+
+    return table;
+}
+
+// Builds the Magnitude_Check to pass into solve() for the det(A) underflow
+// warning: disabled entirely for non-float32 backends or when there's
+// no component data to estimate from.
+build_magnitude_check :: (elements: [] Element, values: [] Element_Value, backend: Backend, label: string) -> Magnitude_Check {
+    if backend.type_name != "float" || values.count == 0  return .{};
+    return .{
+        enabled    = true,
+        threshold  = DET_A_CHECK_THRESHOLD_FLOAT32,
+        magnitudes = build_det_a_magnitude_table(elements, values),
+        label      = label,
+    };
 }
 
 // Junction-voltage step limiter (like ngspice's DEVpnjlim): caps the
@@ -911,12 +1001,14 @@ codegen :: (elements: [] Element, inputs: [] string,
     return builder_to_string(*outer_builder), builder_to_string(*inner_builder), outer_flops, inner_flops, outer_temp_count, inner_temp_count;
 }
 
-solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, backend: Backend = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count, outer_temp_count: int, inner_temp_count: int) {
+solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string,
+                      values: [] Element_Value = .[], backend: Backend = .{}, label: string = "") -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count, outer_temp_count: int, inner_temp_count: int) {
     reduce_circuit(elements, inputs, outputs);
 
     solve_vars, equations, pool, kcl_elements := generate_kcl_equations(elements.*, inputs);
 
-    solutions := solve(equations, solve_vars, *pool);
+    check := build_magnitude_check(elements.*, values, backend, label);
+    solutions := solve(equations, solve_vars, *pool, check);
 
     // kcl_elements (not elements.*): op-amp-merged nodes (e.g. vpos -> vneg)
     // only have their aliased terminal there.

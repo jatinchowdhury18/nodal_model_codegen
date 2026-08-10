@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ea0eac5.
+// Auto-generated with netlist_codegen version 9b9cfe2.
 // Command: netlist_codegen rc_lowpass.net rc_lowpass_c.h -lang c
 
 #pragma once
@@ -21,7 +21,7 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const float gC1 = 2.0f * sample_rate * params.C1;
     
-    const float _t0 = (1.0 / (gR1 + gC1));
+    const float _t0 = (1.0f / (gR1 + gC1));
     for (int ch = 0; ch < num_channels; ++ch)
     {
         float zC1 = state[ch].zC1;

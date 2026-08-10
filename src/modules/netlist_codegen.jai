@@ -690,7 +690,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
     return netlist_info;
 }
 
-netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "") -> string {
+netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "") -> string {
     backend := make_backend(lang, type_name);
     net := parse_netlist(netlist_str);
 
@@ -734,7 +734,8 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         // nonlinear_solve.jai for why the ordering matters.
         reduce_circuit(*net.elements, net.inputs, net.outputs);
         solve_vars, equations, pool, kcl_elements := generate_kcl_equations(net.elements, net.inputs);
-        solutions := solve(equations, solve_vars, *pool);
+        check := build_magnitude_check(net.elements, net.values, backend, label);
+        solutions := solve(equations, solve_vars, *pool, check);
 
         clusters = build_nonlinear_clusters(kcl_elements, solve_vars, solutions, *pool);
 
@@ -772,7 +773,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         cluster_exprs = pool.exprs;
     } else {
         outer_code, loop_code, outer_flops, inner_flops, outer_temp_count, inner_temp_count =
-            solve_and_codegen(*net.elements, net.inputs, net.outputs, backend);
+            solve_and_codegen(*net.elements, net.inputs, net.outputs, net.values, backend, label);
     }
 
     log("  Outer loop: %\n  Inner loop: %\n", flop_str(outer_flops), flop_str(inner_flops));

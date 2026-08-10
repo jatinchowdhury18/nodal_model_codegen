@@ -1,0 +1,282 @@
+// Auto-generated with netlist_codegen version 9b9cfe2.
+// Command: netlist_codegen rc_cascade_stability.net rc_cascade_stability_c.h -lang c
+
+#pragma once
+
+typedef struct {
+    float R1; // = 1.0e+06
+    float C1; // = 1.0e-11
+    float R2; // = 1.0e+06
+    float C2; // = 1.0e-11
+    float R3; // = 1.0e+06
+    float C3; // = 1.0e-11
+    float R4; // = 1.0e+06
+    float C4; // = 1.0e-11
+    float R5; // = 1.0e+06
+    float C5; // = 1.0e-11
+    float R6; // = 1.0e+06
+    float C6; // = 1.0e-11
+    float R7; // = 1.0e+06
+    float C7; // = 1.0e-11
+    float R8; // = 1.0e+06
+    float C8; // = 1.0e-11
+    float R9; // = 1.0e+06
+    float C9; // = 1.0e-11
+    float R10; // = 1.0e+06
+    float C10; // = 1.0e-11
+} Params;
+
+typedef struct {
+    float zC1;
+    float zC2;
+    float zC3;
+    float zC4;
+    float zC5;
+    float zC6;
+    float zC7;
+    float zC8;
+    float zC9;
+    float zC10;
+} State;
+
+static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
+{
+    #define sum(a, b) ((a) + (b))
+    #define recip_sum(a, b) ((a) * (b) / ((a) + (b)))
+    
+    const float gR1 = 1.0f / params.R1;
+    
+    const float gC1 = 2.0f * sample_rate * params.C1;
+    
+    const float gR2 = 1.0f / params.R2;
+    
+    const float gC2 = 2.0f * sample_rate * params.C2;
+    
+    const float gR3 = 1.0f / params.R3;
+    
+    const float gC3 = 2.0f * sample_rate * params.C3;
+    
+    const float gR4 = 1.0f / params.R4;
+    
+    const float gC4 = 2.0f * sample_rate * params.C4;
+    
+    const float gR5 = 1.0f / params.R5;
+    
+    const float gC5 = 2.0f * sample_rate * params.C5;
+    
+    const float gR6 = 1.0f / params.R6;
+    
+    const float gC6 = 2.0f * sample_rate * params.C6;
+    
+    const float gR7 = 1.0f / params.R7;
+    
+    const float gC7 = 2.0f * sample_rate * params.C7;
+    
+    const float gR8 = 1.0f / params.R8;
+    
+    const float gC8 = 2.0f * sample_rate * params.C8;
+    
+    const float gR9 = 1.0f / params.R9;
+    
+    const float gC9 = 2.0f * sample_rate * params.C9;
+    
+    const float gR10 = 1.0f / params.R10;
+    
+    const float gC10 = 2.0f * sample_rate * params.C10;
+    
+    const float _t0 = (((gR1 + gC1) + gR2) * 1048576.0f);
+    const float _t1 = (((gR2 + gC2) + gR3) * 1048576.0f);
+    const float _t5 = (gR4 * 1048576.0f);
+    const float _t7 = (gR5 * 1048576.0f);
+    const float _t9 = (gR6 * 1048576.0f);
+    const float _t11 = (gR7 * 1048576.0f);
+    const float _t13 = (gR8 * 1048576.0f);
+    const float _t15 = (gR9 * 1048576.0f);
+    const float _t16 = (gR10 * 1048576.0f);
+    const float _t17 = (((gR3 + gC3) + gR4) * 1048576.0f);
+    const float _t20 = (((gR6 + gC6) + gR7) * 1048576.0f);
+    const float _t23 = (((gR7 + gC7) + gR8) * 1048576.0f);
+    const float _t26 = (((gR8 + gC8) + gR9) * 1048576.0f);
+    const float _t28 = (((gR9 + gC9) + gR10) * 1048576.0f);
+    const float _t32 = (((gR4 + gC4) + gR5) * 1048576.0f);
+    const float _t34 = (((gR5 + gC5) + gR6) * 1048576.0f);
+    const float _t37 = (gR3 * 1048576.0f);
+    const float _t40 = (gR2 * 1048576.0f);
+    const float _t51 = ((gR10 + gC10) * 1048576.0f);
+    const float _t52 = ((_t28 * _t51) - (_t16 * _t16));
+    const float _t53 = (_t13 * _t52);
+    const float _t108 = (_t11 * _t53);
+    const float _t14 = (_t15 * _t16);
+    const float _t50 = (_t15 * _t51);
+    const float _t107 = (_t9 * _t108);
+    const float _t119 = (_t13 * _t50);
+    const float _t12 = (_t13 * _t14);
+    const float _t49 = ((_t15 * _t50) - (_t26 * _t52));
+    const float _t55 = (_t11 * _t49);
+    const float _t99 = (_t9 * _t55);
+    const float _t106 = (_t7 * _t107);
+    const float _t118 = (_t11 * _t119);
+    const float _t10 = (_t11 * _t12);
+    const float _t48 = ((_t23 * _t49) + (_t13 * _t53));
+    const float _t54 = ((_t20 * _t48) - (_t11 * _t55));
+    const float _t56 = (_t7 * _t54);
+    const float _t87 = (_t5 * _t56);
+    const float _t98 = (_t7 * _t99);
+    const float _t105 = (_t5 * _t106);
+    const float _t117 = (_t9 * _t118);
+    const float _t8 = (_t9 * _t10);
+    const float _t47 = (_t9 * _t48);
+    const float _t86 = (_t37 * _t87);
+    const float _t92 = (_t7 * _t47);
+    const float _t97 = (_t5 * _t98);
+    const float _t104 = (_t37 * _t105);
+    const float _t116 = (_t7 * _t117);
+    const float _t6 = (_t7 * _t8);
+    const float _t46 = ((_t9 * _t47) - (_t34 * _t54));
+    const float _t58 = (_t5 * _t46);
+    const float _t85 = (_t37 * _t58);
+    const float _t91 = (_t5 * _t92);
+    const float _t96 = (_t37 * _t97);
+    const float _t115 = (_t5 * _t116);
+    const float _t4 = (_t5 * _t6);
+    const float _t39 = (_t37 * _t4);
+    const float _t45 = ((_t32 * _t46) + (_t7 * _t56));
+    const float _t57 = ((_t17 * _t45) - (_t5 * _t58));
+    const float _t59 = (_t40 * _t57);
+    const float _t90 = (_t37 * _t91);
+    const float _t114 = (_t37 * _t115);
+    const float _t44 = (_t37 * _t45);
+    const float _t43 = ((_t37 * _t44) - (_t1 * _t57));
+    const float _t42 = (1.0f / ((_t0 * _t43) + (_t40 * _t59)));
+    const float _t126 = (_t40 * _t39);
+    const float _t127 = (_t40 * _t44);
+    const float _t128 = (_t40 * _t85);
+    const float _t129 = (_t40 * _t86);
+    const float _t130 = (_t40 * _t90);
+    const float _t131 = (_t40 * _t96);
+    const float _t132 = (_t40 * _t104);
+    const float _t133 = (_t40 * _t114);
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        float zC1 = state[ch].zC1;
+        float zC2 = state[ch].zC2;
+        float zC3 = state[ch].zC3;
+        float zC4 = state[ch].zC4;
+        float zC5 = state[ch].zC5;
+        float zC6 = state[ch].zC6;
+        float zC7 = state[ch].zC7;
+        float zC8 = state[ch].zC8;
+        float zC9 = state[ch].zC9;
+        float zC10 = state[ch].zC10;
+        for (int n = 0; n < num_samples; ++n)
+        {
+            const float vi = input[ch][n];
+
+            const float _t3 = (zC3 * 1048576.0f);
+            const float _t22 = (zC7 * 1048576.0f);
+            const float _t25 = (zC10 * 1048576.0f);
+            const float _t29 = (zC9 * 1048576.0f);
+            const float _t30 = (zC8 * 1048576.0f);
+            const float _t31 = (zC6 * 1048576.0f);
+            const float _t35 = (zC5 * 1048576.0f);
+            const float _t36 = (zC4 * 1048576.0f);
+            const float _t38 = (zC2 * 1048576.0f);
+            const float _t41 = (((gR1 * vi) + zC1) * 1048576.0f);
+            const float _t77 = (_t30 * _t52);
+            const float _t80 = (_t29 * _t51);
+            const float _t81 = (_t16 * _t25);
+            const float _t27 = ((_t28 * _t25) + (_t29 * _t16));
+            const float _t79 = (_t80 + _t81);
+            const float _t123 = ((_t26 * _t79) + (_t30 * _t50));
+            const float _t124 = (((_t23 * _t123) - (_t13 * (_t13 * _t79))) + (_t22 * _t119));
+            const float _t24 = (((_t15 * (_t15 * _t25)) - (_t26 * _t27)) - (_t30 * _t14));
+            const float _t78 = (_t15 * _t79);
+            const float _t82 = (_t22 * _t49);
+            const float _t122 = (((_t11 * (_t11 * _t123)) - (_t20 * _t124)) - (_t31 * _t118));
+            const float _t21 = ((_t22 * _t12) - ((_t23 * _t24) + (_t13 * (_t13 * _t27))));
+            const float _t69 = (_t35 * _t54);
+            const float _t72 = (_t31 * _t48);
+            const float _t76 = (_t77 + _t78);
+            const float _t112 = ((_t23 * _t76) + (_t22 * _t53));
+            const float _t121 = ((_t35 * _t117) - ((_t34 * _t122) + (_t9 * (_t9 * _t124))));
+            const float _t19 = (((_t20 * _t21) + (_t11 * (_t11 * _t24))) + (_t31 * _t10));
+            const float _t33 = (((_t34 * _t19) - (_t9 * (_t9 * _t21))) + (_t35 * _t8));
+            const float _t75 = (_t13 * _t76);
+            const float _t111 = (((_t11 * (_t11 * _t76)) - (_t20 * _t112)) - (_t31 * _t108));
+            const float _t120 = (((_t32 * _t121) + (_t7 * (_t7 * _t122))) + (_t36 * _t116));
+            const float _t18 = (((_t7 * (_t7 * _t19)) - (_t32 * _t33)) - (_t36 * _t6));
+            const float _t74 = (_t75 - _t82);
+            const float _t83 = (_t36 * _t46);
+            const float _t102 = ((_t31 * _t55) - (_t20 * _t74));
+            const float _t110 = ((_t35 * _t107) - ((_t34 * _t111) + (_t9 * (_t9 * _t112))));
+            const float _t125 = (((_t17 * _t120) - (_t5 * (_t5 * _t121))) + (_t3 * _t115));
+            const float _t61 = (_t38 * _t57);
+            const float _t64 = (_t3 * _t45);
+            const float _t73 = (_t11 * _t74);
+            const float _t101 = (((_t34 * _t102) + (_t9 * (_t9 * _t74))) + (_t35 * _t99));
+            const float _t103 = (((_t32 * _t101) - (_t7 * (_t7 * _t102))) + (_t36 * _t98));
+            const float _t109 = (((_t32 * _t110) + (_t7 * (_t7 * _t111))) + (_t36 * _t106));
+            const float _t113 = (((_t17 * _t109) - (_t5 * (_t5 * _t110))) + (_t3 * _t105));
+            const float _t2 = ((_t3 * _t4) - ((_t17 * _t18) + (_t5 * (_t5 * _t33))));
+            const float _t71 = (_t72 - _t73);
+            const float _t94 = ((_t34 * _t71) + (_t35 * _t47));
+            const float _t95 = (((_t32 * _t94) - (_t7 * (_t7 * _t71))) + (_t36 * _t92));
+            const float _t100 = (((_t5 * (_t5 * _t101)) - (_t17 * _t103)) - (_t3 * _t97));
+            const float _t70 = (_t9 * _t71);
+            const float _t93 = (((_t5 * (_t5 * _t94)) - (_t17 * _t95)) - (_t3 * _t91));
+            const float _t68 = (_t69 + _t70);
+            const float _t89 = ((_t32 * _t68) + (_t36 * _t56));
+            const float _t67 = (_t7 * _t68);
+            const float _t88 = (((_t5 * (_t5 * _t68)) - (_t17 * _t89)) - (_t3 * _t87));
+            const float _t66 = (_t67 - _t83);
+            const float _t84 = ((_t3 * _t58) - (_t17 * _t66));
+            const float _t65 = (_t5 * _t66);
+            const float _t63 = (_t64 - _t65);
+            const float _t62 = (_t37 * _t63);
+            const float _t60 = (_t61 + _t62);
+            const float vo = (-((((_t0 * (((_t1 * _t2) + (_t37 * (_t37 * _t18))) + (_t38 * _t39))) - (_t40 * (_t40 * _t2))) + (_t41 * _t126)) * _t42));
+            const float n1 = (-(((_t40 * _t60) - (_t41 * _t43)) * _t42));
+            const float tC1 = (gC1 * (n1 - 0));
+            const float n2 = (-(((_t0 * _t60) + (_t41 * _t59)) * _t42));
+            const float tC2 = (gC2 * (n2 - 0));
+            const float n3 = (-((((_t0 * ((_t1 * _t63) + (_t38 * _t44))) - (_t40 * (_t40 * _t63))) + (_t41 * _t127)) * _t42));
+            const float tC3 = (gC3 * (n3 - 0));
+            const float n4 = (-((((_t0 * (((_t1 * _t84) + (_t37 * (_t37 * _t66))) + (_t38 * _t85))) - (_t40 * (_t40 * _t84))) + (_t41 * _t128)) * _t42));
+            const float tC4 = (gC4 * (n4 - 0));
+            const float n5 = ((((_t0 * ((_t38 * _t86) - ((_t1 * _t88) + (_t37 * (_t37 * _t89))))) + (_t40 * (_t40 * _t88))) + (_t41 * _t129)) * _t42);
+            const float tC5 = (gC5 * (n5 - 0));
+            const float n6 = ((((_t0 * ((_t38 * _t90) - ((_t1 * _t93) + (_t37 * (_t37 * _t95))))) + (_t40 * (_t40 * _t93))) + (_t41 * _t130)) * _t42);
+            const float tC6 = (gC6 * (n6 - 0));
+            const float n7 = ((((_t0 * ((_t38 * _t96) - ((_t1 * _t100) + (_t37 * (_t37 * _t103))))) + (_t40 * (_t40 * _t100))) + (_t41 * _t131)) * _t42);
+            const float tC7 = (gC7 * (n7 - 0));
+            const float n8 = (-(((_t41 * _t132) - ((_t0 * (((_t37 * (_t37 * _t109)) - (_t1 * _t113)) - (_t38 * _t104))) + (_t40 * (_t40 * _t113)))) * _t42));
+            const float tC8 = (gC8 * (n8 - 0));
+            const float n9 = (-(((_t41 * _t133) - ((_t0 * (((_t37 * (_t37 * _t120)) - (_t1 * _t125)) - (_t38 * _t114))) + (_t40 * (_t40 * _t125)))) * _t42));
+            const float tC9 = (gC9 * (n9 - 0));
+            const float tC10 = (gC10 * (vo - 0));
+            
+            zC1 = 2 * tC1 - zC1;
+            zC2 = 2 * tC2 - zC2;
+            zC3 = 2 * tC3 - zC3;
+            zC4 = 2 * tC4 - zC4;
+            zC5 = 2 * tC5 - zC5;
+            zC6 = 2 * tC6 - zC6;
+            zC7 = 2 * tC7 - zC7;
+            zC8 = 2 * tC8 - zC8;
+            zC9 = 2 * tC9 - zC9;
+            zC10 = 2 * tC10 - zC10;
+
+            output[ch][n] = vo;
+        }
+        state[ch].zC1 = zC1;
+        state[ch].zC2 = zC2;
+        state[ch].zC3 = zC3;
+        state[ch].zC4 = zC4;
+        state[ch].zC5 = zC5;
+        state[ch].zC6 = zC6;
+        state[ch].zC7 = zC7;
+        state[ch].zC8 = zC8;
+        state[ch].zC9 = zC9;
+        state[ch].zC10 = zC10;
+    }
+}
