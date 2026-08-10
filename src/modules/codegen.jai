@@ -836,7 +836,7 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
 codegen :: (elements: [] Element, inputs: [] string,
             gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,
             exprs: [] Expr, backend: Backend = .{},
-            extra_variant_names: [] string = .[]) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
+            extra_variant_names: [] string = .[]) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count, outer_temp_count: int, inner_temp_count: int) {
 
     variant_base := build_variant_base(elements, inputs);
     // Gen_vars are computed inside the per-sample loop; treat their names as
@@ -866,6 +866,11 @@ codegen :: (elements: [] Element, inputs: [] string,
             array_add(*outer_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
         }
     }
+
+    // Temp count: gen_vars aren't temporaries, so grab the
+    // counts before appending them to inner_items below.
+    outer_temp_count := outer_items.count;
+    inner_temp_count := inner_items.count;
 
     for gv : gen_vars {
         array_add(*inner_items, gv);
@@ -903,10 +908,10 @@ codegen :: (elements: [] Element, inputs: [] string,
         }
     }
 
-    return builder_to_string(*outer_builder), builder_to_string(*inner_builder), outer_flops, inner_flops;
+    return builder_to_string(*outer_builder), builder_to_string(*inner_builder), outer_flops, inner_flops, outer_temp_count, inner_temp_count;
 }
 
-solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, backend: Backend = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count) {
+solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] string, backend: Backend = .{}) -> (outer_code: string, inner_code: string, outer_flops: Flop_Count, inner_flops: Flop_Count, outer_temp_count: int, inner_temp_count: int) {
     reduce_circuit(elements, inputs, outputs);
 
     solve_vars, equations, pool, kcl_elements := generate_kcl_equations(elements.*, inputs);
@@ -930,6 +935,6 @@ solve_and_codegen :: (elements: *[..] Element, inputs: [] string, outputs: [] st
     licm(gen_var_ids, *cse_vars, *pool, licm_variant_base);
     recip_hoist(gen_var_ids, *cse_vars, *pool, licm_variant_base);
 
-    outer_code, inner_code, outer_flops, inner_flops := codegen(kcl_elements, inputs, gen_vars, cse_vars, pool.exprs, backend);
-    return outer_code, inner_code, outer_flops, inner_flops;
+    outer_code, inner_code, outer_flops, inner_flops, outer_temp_count, inner_temp_count := codegen(kcl_elements, inputs, gen_vars, cse_vars, pool.exprs, backend);
+    return outer_code, inner_code, outer_flops, inner_flops, outer_temp_count, inner_temp_count;
 }

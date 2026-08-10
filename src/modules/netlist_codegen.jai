@@ -709,6 +709,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
     outer_code: string;
     loop_code:  string;
     outer_flops, inner_flops: Flop_Count;
+    outer_temp_count, inner_temp_count: int;
     clusters: [] Nonlinear_Cluster;
     cluster_exprs: [] Expr; // only valid/used when has_nonlinear
 
@@ -766,15 +767,17 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         licm(gen_var_ids, *cse_vars, *pool, licm_variant_base);
         recip_hoist(gen_var_ids, *cse_vars, *pool, licm_variant_base);
 
-        outer_code, loop_code, outer_flops, inner_flops =
+        outer_code, loop_code, outer_flops, inner_flops, outer_temp_count, inner_temp_count =
             codegen(kcl_elements, net.inputs, gen_vars, cse_vars, pool.exprs, backend, cluster_variant_names);
         cluster_exprs = pool.exprs;
     } else {
-        outer_code, loop_code, outer_flops, inner_flops =
+        outer_code, loop_code, outer_flops, inner_flops, outer_temp_count, inner_temp_count =
             solve_and_codegen(*net.elements, net.inputs, net.outputs, backend);
     }
 
     log("  Outer loop: %\n  Inner loop: %\n", flop_str(outer_flops), flop_str(inner_flops));
+    log("  Temp vars: % outer, % inner, % total\n",
+        outer_temp_count, inner_temp_count, outer_temp_count + inner_temp_count);
 
     newton_worst_case := 0;
     if has_nonlinear {
