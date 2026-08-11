@@ -1,0 +1,37 @@
+* Common-emitter amplifier with 2N5089
+
+* Supply voltage
+VCC vp  0 DC 9
+V1  vi  0 SIN(0 0.1 50)
+
+* Input coupling capacitor
+C1 vi vb 0.1u
+
+* Bias network (voltage divider)
+R1 vp vb 470k     ; from VCC to base
+R2 vb  0 100k     ; from base to ground
+
+* Emitter resistor
+RE ve  0 2.7k
+
+* Collector resistor
+RC vp vc 12k
+
+* Transistor
+Q1 vc vb ve Q2N5089 ; C B E
+
+* Output
+C2 vc vo 0.1u
+RL vo  0 100k
+
+* 2N5089 model
+.model Q2N5089 NPN (IS=5E-14 BF=600 BR=50)
+
+* iter_solve(method=broyden)
+
+.tran 0 200m 0 20.0u
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo)
+.options plotwinsize=0
+.backanno
+.end

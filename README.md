@@ -152,16 +152,55 @@ circuits to scale the output signals before `.wav` export.
 Escale1 vi_scaled 0 value = {V(vi)*0.2} ; netlist_skip
 ```
 
-### `nr_solve(...)`
+### `iter_solve(...)`
 
-A `* nr_solve(max_iter=<int>, tol=<val>)` comment line overrides the
-Newton-Raphson solver's default iteration count and squared-error
-tolerance for nonlinear elements in that netlist. The default
-configuration is:
+A `* iter_solve(method=<name>, max_iter=<int>, tol=<val>, alpha=<val>)`
+comment line selects which iterative method resolves nonlinear elements in
+that netlist, and overrides its default iteration count and squared-error
+tolerance. The default configuration is:
 
 ```
-* nr_solve(max_iter=20, tol=1.0e-5)
+* iter_solve(method=newton, max_iter=20, tol=1.0e-5)
 ```
+
+Supported `method` values:
+
+| Method | Notes |
+|---|---|
+| `newton` (default) | Newton-Raphson. The Jacobian is derived symbolically at codegen time and the linear system `J*delta = -f` is solved in closed form, so each iteration is a single direct step. Fastest per-iteration and the best-tested path; the DC operating-point solve in `reset()` always uses this, regardless of the netlist's `iter_solve` setting. |
+| `fixed_point` | Damped Picard iteration: `x += alpha*(closed_form(x) - x)`. No Jacobian at all. `alpha` (default `0.5`) is the damping factor -- lower is more stable but converges more slowly; `alpha=1.0` is plain (undamped) fixed-point iteration. |
+| `broyden` | Quasi-Newton: maintains a running inverse-Jacobian estimate, seeded from one real (symbolic) Newton step and then updated every iteration via a Sherman-Morrison rank-1 (Broyden) update plus a backtracking line search, entirely at runtime. For a single-unknown cluster this is exactly the secant method. |
+
+**`fixed_point` and `broyden` only run for single-unknown clusters** (one
+device, e.g. a lone diode/JFET/triode not sharing a node with another
+nonlinear device). For a multi-device cluster -- a BJT's coupled vBC/vBE, a
+triode's vPK/vGK, two diodes sharing a node -- they silently fall back to
+`newton` for that cluster (logged as a warning during codegen). This isn't
+a hard theoretical limit, just where testing landed: verified against the
+test suite, both converge identically to Newton on a single unknown, but
+on a multi-unknown stiff/exponential cluster, the true Jacobian's entries
+can differ by many orders of magnitude (e.g. a diode's `Is ~ 1e-14`), and
+neither an identity-seeded Broyden update nor damped Picard iteration
+tracked that curvature well enough to reliably converge -- Broyden was
+observed wandering between several non-converged residual plateaus rather
+than diverging outright, even with the line search in place. Making either
+one robust there would need real preconditioning or a trust-region
+strategy, which is out of scope for now; `newton` (or restructuring the
+circuit so the devices don't end up in one cluster, if that's an option)
+is the reliable choice for those.
+
+`fixed_point` and `broyden` also don't implement the active-set
+rail-clamping Newton uses for a clipping op-amp's output stage
+(`nodal_model:` with `Vsat+`/`Vsat-`); they fall back to a plain post-step
+clamp for that unknown instead.
+
+@TODO
+
+Some of the internal naming needs changes (e.g. `generate_newton_constants()` should be something like `generate_iter_solve_constants()`). Same with the variable names in the generated code (e.g. `newton_tol_sq`).
+
+I think all the solvers should have a "damping factor", but probably have it default to 1 for Newton and Broyden?
+
+I don't like that we're still generating all the Newton vars, even without using them [@codegen.jai (776:780)]. What are some ways around it?
 
 ### `sub-circuit`
 
@@ -277,13 +316,13 @@ meaningfully reduce the number of arithmetic operations in the generated code.
 
 ### Nonlinear Circuit Elements
 
-Nonlinear elements are solved with Newton-Raphson iteration, layered on top of
+Nonlinear elements are solved with an iterative solver (Newton-Raphson by
+default -- see [`iter_solve(...)`](#iter_solve) above), layered on top of
 the same symbolic MNA core used for the linear elements: `netlist_codegen`
 leaves each device's branch current as a free symbol, so the linear solve
 still gives closed-form node voltages parametrized by those currents. From
-there, the device's real I-V law is substituted in as an expression, and the
-Jacobian is derived automatically via symbolic differentiation. The following
-device types are currently supported:
+there, the device's real I-V law is substituted in as an expression. The
+following device types are currently supported:
 
 - **Diode / antiparallel diode pair**: Shockley exponential I-V law
 - **BJT**: Ebers-Moll, with independent base-collector/base-emitter unknowns
@@ -294,10 +333,11 @@ device types are currently supported:
 
 Devices whose branch currents depend on each other's junction voltages (e.g.
 a BJT's vBC/vBE, or two diodes sharing a node) are grouped into "clusters"
-and solved jointly, one Newton loop per cluster. Each unknown also gets a
+and solved jointly, one iterative loop per cluster. Each unknown also gets a
 per-iteration step limiter, so a bad step doesn't wander into a region the I-V
-law approximates badly. Solver tolerance and iteration count are tunable per
-netlist via a `nr_solve(max_iter=.. tol=..)` comment directive.
+law approximates badly. The solver method, tolerance, and iteration count are
+tunable per netlist via an `iter_solve(method=.. max_iter=.. tol=..)` comment
+directive.
 
 ### Code-generation optimizations
 

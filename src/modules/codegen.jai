@@ -593,12 +593,46 @@ generate_vcrit_defs :: (clusters: [] Nonlinear_Cluster, backend: Backend) -> str
     return builder_to_string(*builder);
 }
 
-// Newton-Raphson convergence tolerance (volts^2) and max iteration count,
-// defined once and referenced by every cluster's solve below.
-generate_newton_constants :: (newton_tol_sq: float, newton_max_iter: int, backend: Backend) -> string {
+// Which iterative method resolves each nonlinear cluster's unknowns every
+// sample, selected netlist-wide via `iter_solve(method=..., ...)`.
+Iter_Solve_Method :: enum {
+    NEWTON;      // closed-form Newton-Raphson step, Jacobian derived symbolically at codegen time
+    FIXED_POINT; // damped Picard iteration x += alpha*(closed_form(x) - x), no Jacobian
+    BROYDEN;     // quasi-Newton, identity-seeded inverse-Jacobian rank-1 (Sherman-Morrison) updates; reduces to the secant method for 1-unknown clusters
+}
+
+// Everything `iter_solve(...)` can override, bundled for passing down to
+// generate_unit()/generate_cluster_*_code().
+Iter_Solve_Config :: struct {
+    method:  Iter_Solve_Method = .NEWTON;
+    tol_sq:  float64 = 1.0e-5;
+    max_iter: int = 20;
+    alpha:   float64 = 0.5; // FIXED_POINT damping factor
+}
+
+iter_solve_method_from_string :: (s: string) -> (method: Iter_Solve_Method, success: bool) {
+    upper := String.to_upper_copy(s);
+    if upper == {
+        case "NEWTON";                        return .NEWTON, true;
+        case "FIXED_POINT"; #through;
+        case "FIXEDPOINT";                     return .FIXED_POINT, true;
+        case "BROYDEN"; #through;
+        case "SECANT";                         return .BROYDEN, true;
+    }
+    return .NEWTON, false;
+}
+
+// Convergence tolerance (volts^2) and max iteration count for the chosen
+// iter_solve() method, defined once and referenced by every cluster's solve
+// below. FIXED_POINT also gets its damping factor emitted here.
+generate_newton_constants :: (iter_solve: Iter_Solve_Config, backend: Backend) -> string {
     builder: String_Builder;
-    print_to_builder(*builder, "%1 %2 newton_tol_sq = %3;\n", backend.const_kw, backend.decl_type, newton_tol_sq);
-    print_to_builder(*builder, "%1 int newton_max_iter = %2;\n\n", backend.const_kw, newton_max_iter);
+    print_to_builder(*builder, "%1 %2 newton_tol_sq = %3;\n", backend.const_kw, backend.decl_type, iter_solve.tol_sq);
+    print_to_builder(*builder, "%1 int newton_max_iter = %2;\n", backend.const_kw, iter_solve.max_iter);
+    if iter_solve.method == .FIXED_POINT {
+        print_to_builder(*builder, "%1 %2 fixed_point_alpha = %3;\n", backend.const_kw, backend.decl_type, iter_solve.alpha);
+    }
+    append(*builder, "\n");
     return builder_to_string(*builder);
 }
 
@@ -714,6 +748,282 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
     append(*builder, "    ");
     append(*builder, indented);
     append(*builder, "\n}\n");
+
+    return builder_to_string(*builder);
+}
+
+// Hard cap (volts) on a single fixed_point/broyden step,
+// applied *before* the physical per-unknown limiter
+// (limit_junction_voltage, etc). The physical limiters
+// are helpful for large finite inputs, but don't help
+// with Inf/Nan values. So we clamp by this max step first.
+//
+// Newton's method doesn't need this the step comes
+// from a (hopefully) well-conditioned Jacobian solve.
+MAX_ITER_SOLVE_STEP :: "1.0e3";
+emit_clamped_step :: (builder: *String_Builder, name: string, raw_expr: string, backend: Backend) -> string {
+    clamped_name := tprint("_clamped_%", name);
+    print_to_builder(builder, "const %1 %2 = (%3) > %4 ? %4 : ((%3) < -%4 ? -%4 : (%3));\n",
+                      backend.decl_type, clamped_name, raw_expr, MAX_ITER_SOLVE_STEP);
+    return clamped_name;
+}
+
+// Damped fixed-point (Picard) solve for one cluster:
+// Given residual = f(x) - x
+// Then, x_new = x + alpha * residual
+// Or, x + alpha * residual = (1-alpha) * x + alpha * f(x)
+//
+// Reuses the same residual Gen_Vars as
+// Newton (cluster.invariant_items/iteration_items are method-agnostic); this
+// also means Newton's unused symbolic delta_<name> locals still get emitted
+// and computed here (dead code, wasted flops) -- accepted for now to keep
+// this path simple and independent of the Newton one.
+//
+// AMP_CLIP unknowns don't get the active-set rail treatment here (that's
+// Newton-specific machinery in generate_amp_clip_active_set_step) -- just a
+// plain post-step rail/slew clamp, same fallback Newton itself uses when it
+// can't use the active-set path.
+//
+// Restricted to single-unknown clusters (falls back to Newton otherwise) --
+// see the module comment by generate_cluster_broyden_code for why: verified
+// against the test suite, damped fixed-point iteration converges reliably
+// for a lone diode/JFET/etc., but not for the tightly-coupled exponential
+// systems a multi-device cluster (BJT, triode, coupled diodes) produces.
+generate_cluster_fixed_point_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend, apply_slew := true, max_iter := "newton_max_iter") -> string {
+    if cluster.unknowns.count > 1 {
+        log("Warning: cluster \"%\" has % joint unknowns. Falling back to Newton's method.\n", cluster.name, cluster.unknowns.count);
+        return generate_cluster_newton_code(cluster, exprs, backend, apply_slew, max_iter);
+    }
+    if cluster.amp_clip_idx >= 0 {
+        log("Warning: cluster \"%\" has an active-set AMP_CLIP unknown. fixed_point does not support active-set rails. Falling back to post-step clamp.\n", cluster.name);
+    }
+
+    builder: String_Builder;
+    print_to_builder(*builder, "// --- Fixed-point solve: %\n", cluster.name);
+
+    emit_topological_order(cluster.invariant_items, exprs, *builder, backend);
+
+    print_to_builder(*builder, "for (int newton_iter = 0; newton_iter < %; ++newton_iter)\n{\n", max_iter);
+    inner_builder: String_Builder;
+    emit_topological_order(cluster.iteration_items, exprs, *inner_builder, backend);
+
+    print_to_builder(*inner_builder, "\n%1 residual_norm_sq = 0.0;\n", backend.decl_type);
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
+    append(*inner_builder, "\n");
+
+    clamped_deltas: [..] string;
+    for u : cluster.unknowns {
+        raw_delta := tprint("fixed_point_alpha * %", u.residual_name);
+        clamped := emit_clamped_step(*inner_builder, u.name, raw_delta, backend);
+        array_add(*clamped_deltas, clamped);
+    }
+    print_to_builder(*inner_builder, "%1 step_norm_sq = 0.0;\n", backend.decl_type);
+    for cd : clamped_deltas  print_to_builder(*inner_builder, "step_norm_sq += %1 * %1;\n", cd);
+    append(*inner_builder, "\n");
+
+    for u, i : cluster.unknowns {
+        fp_delta := clamped_deltas[i];
+        if u.limiter_kind == .AMP_CLIP {
+            v_prev := ifx u.has_slew && apply_slew then u.zslew_name else "_v";
+            slew_max_step := ifx u.has_slew && apply_slew then tprint("(%/sample_rate)", u.slew_name) else "1.0e30";
+            print_to_builder(*inner_builder, "const %8 _v = (%5)(%1 + (%2));\n%1 = clamp_opamp_output(_v, %6, %7, %3, %4);\n",
+                             u.name, fp_delta, u.vsat_n_name, u.vsat_p_name, backend.type_name, v_prev, slew_max_step, backend.decl_type);
+        } else {
+            emit_unknown_update(*inner_builder, u, fp_delta);
+        }
+    }
+    append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");
+
+    inner_text := builder_to_string(*inner_builder);
+    indented := String.replace(inner_text, "\n", "\n    ");
+    indented, _ = String.replace(indented, "\n    \n", "\n\n"); // don't indent blank lines
+    append(*builder, "    ");
+    append(*builder, indented);
+    append(*builder, "\n}\n");
+
+    return builder_to_string(*builder);
+}
+
+// Quasi-Newton (Broyden's "good" method) solve for one cluster: maintains a
+// running inverse-Jacobian estimate Hinv (identity-seeded, since this path
+// deliberately avoids the symbolic Jacobian machinery Newton uses -- see
+// module comment), updated every iteration via the Sherman-Morrison rank-1
+// formula:
+//   Hinv_new = Hinv + ((s - Hinv*y) * (s^T * Hinv)) / (s^T * Hinv * y)
+// where s is the previous step and y is the change in residual. For a
+// 1-unknown cluster this is exactly the secant method (h_new = s/y).
+// Iteration 0 is a plain -f step (Hinv0 = I); the Hinv update and iterations
+// 1.. run inside the runtime for-loop, using entirely runtime (not
+// symbolic/CSE'd) scalar locals -- k (cluster.unknowns.count) is small
+// (1-4 in every circuit here), so this is unrolled at codegen time into
+// named scalars rather than an actual k*k array.
+//
+// AMP_CLIP unknowns get the same plain post-step clamp fallback as
+// generate_cluster_fixed_point_code (no active-set rail handling).
+//
+// Restricted to single-unknown clusters (falls back to Newton otherwise).
+// Verified against the test suite: for a lone diode/JFET/etc., the
+// identity-seeded Hinv plus the backtracking line search below converges
+// identically to Newton. For a multi-device cluster (BJT's coupled vBC/vBE,
+// a triode's vPK/vGK, two diodes sharing a node), the true Jacobian's
+// entries differ from each other by many orders of magnitude (e.g. a
+// diode's Is ~ 1e-14), and an identity-seeded rank-1 update does not track
+// that curvature well enough -- even with the line search preventing an
+// outright NaN/overflow, it was observed to wander between several
+// non-converged residual plateaus instead of reaching the root. Getting
+// that genuinely robust needs real preconditioning or a trust-region
+// strategy, which is out of scope here; Newton (or a single-device
+// decomposition of the circuit, if possible) is the reliable choice for
+// those clusters today.
+generate_cluster_broyden_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend, apply_slew := true, max_iter := "newton_max_iter") -> string {
+    // if cluster.unknowns.count > 1 {
+    //     log("Warning: cluster \"%\" has % joint unknowns -- broyden is only verified stable for single-unknown clusters, falling back to newton for this cluster.\n", cluster.name, cluster.unknowns.count);
+    //     return generate_cluster_newton_code(cluster, exprs, backend, apply_slew, max_iter);
+    // }
+    if cluster.amp_clip_idx >= 0 {
+        log("Warning: cluster \"%\" has an active-set AMP_CLIP unknown -- broyden falls back to a plain post-step clamp for it (no active-set rail handling).\n", cluster.name);
+    }
+
+    T := backend.decl_type;
+    builder: String_Builder;
+    print_to_builder(*builder, "// --- Broyden solve: %\n", cluster.name);
+
+    emit_topological_order(cluster.invariant_items, exprs, *builder, backend);
+
+    apply_update :: (b: *String_Builder, u: Cluster_Unknown, delta_expr: string, backend: Backend, apply_slew: bool) {
+        if u.limiter_kind == .AMP_CLIP {
+            v_prev := ifx u.has_slew && apply_slew then u.zslew_name else "_v";
+            slew_max_step := ifx u.has_slew && apply_slew then tprint("(%/sample_rate)", u.slew_name) else "1.0e30";
+            print_to_builder(b, "const %8 _v = (%5)(%1 + (%2));\n%1 = clamp_opamp_output(_v, %6, %7, %3, %4);\n",
+                             u.name, delta_expr, u.vsat_n_name, u.vsat_p_name, backend.type_name, v_prev, slew_max_step, backend.decl_type);
+        } else {
+            emit_unknown_update(b, u, delta_expr);
+        }
+    }
+
+    // --- Iteration 0: grounded with the already-derived symbolic Newton
+    // step (u.delta_name), not a naive -f0. An identity-seeded Hinv assumes
+    // df/dx ~ 1, wildly wrong for e.g. a diode/BJT's exponential I-V law
+    // (Is ~ 1e-14), so a raw -f0 step overshoots by many orders of
+    // magnitude and Broyden's rank-1 updates never recover from that bad a
+    // start. Using the real Newton step here costs one symbolic solve
+    // (already computed either way -- cluster.iteration_items is shared with
+    // the Newton path) but properly scales what Hinv's first secant update
+    // is built from; every iteration after this one is pure runtime Broyden.
+    emit_topological_order(cluster.iteration_items, exprs, *builder, backend);
+    for u : cluster.unknowns  print_to_builder(*builder, "%1 bry_prev_res_%2 = %3;\n", T, u.name, u.residual_name);
+    for u : cluster.unknowns {
+        clamped0 := emit_clamped_step(*builder, u.name, u.delta_name, backend);
+        print_to_builder(*builder, "%1 bry_prev_delta_%2 = %3;\n", T, u.name, clamped0);
+    }
+    for u : cluster.unknowns  apply_update(*builder, u, tprint("bry_prev_delta_%", u.name), backend, apply_slew);
+    // Hinv0 = I, refined by the first Broyden update below using the real
+    // Newton step just taken as s0.
+    for r : cluster.unknowns {
+        for c : cluster.unknowns {
+            init_val := ifx r.name == c.name then "1.0" else "0.0";
+            print_to_builder(*builder, "%1 bry_Hinv_%2_%3 = %4;\n", T, r.name, c.name, init_val);
+        }
+    }
+    print_to_builder(*builder, "%1 residual_norm_sq = 0.0;\n", T);
+    for u : cluster.unknowns  print_to_builder(*builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
+    print_to_builder(*builder, "%1 step_norm_sq = 0.0;\n", T);
+    for u : cluster.unknowns  print_to_builder(*builder, "step_norm_sq += bry_prev_delta_%1 * bry_prev_delta_%1;\n", u.name);
+    append(*builder, "bool bry_converged = (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq);\n\n");
+
+    // --- Iterations 1..max_iter-1: runtime Broyden updates.
+    print_to_builder(*builder, "if (!bry_converged)\n{\n    for (int newton_iter = 1; newton_iter < %; ++newton_iter)\n    {\n", max_iter);
+    inner_builder: String_Builder;
+    emit_topological_order(cluster.iteration_items, exprs, *inner_builder, backend);
+
+    // y = f_new - f_old
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "const %1 bry_y_%2 = %3 - bry_prev_res_%2;\n", T, u.name, u.residual_name);
+    append(*inner_builder, "\n");
+
+    // Hy = Hinv * y  (one entry per row)
+    for r : cluster.unknowns {
+        terms: [..] string;
+        for c : cluster.unknowns  array_add(*terms, tprint("bry_Hinv_%1_%2 * bry_y_%2", r.name, c.name));
+        print_to_builder(*inner_builder, "const %1 bry_Hy_%2 = %3;\n", T, r.name, String.join(..terms, separator = " + "));
+    }
+    // denom = s^T * Hy  (s = bry_prev_delta)
+    denom_terms: [..] string;
+    for u : cluster.unknowns  array_add(*denom_terms, tprint("bry_prev_delta_%1 * bry_Hy_%1", u.name));
+    print_to_builder(*inner_builder, "const %1 bry_denom = %2;\n\n", T, String.join(..denom_terms, separator = " + "));
+
+    print_to_builder(*inner_builder, "if (bry_denom > 1.0e-12 || bry_denom < -1.0e-12)\n{\n");
+    // sHinv_c = sum_r s_r * Hinv_r_c  (one entry per column)
+    for c : cluster.unknowns {
+        terms: [..] string;
+        for r : cluster.unknowns  array_add(*terms, tprint("bry_prev_delta_%1 * bry_Hinv_%1_%2", r.name, c.name));
+        print_to_builder(*inner_builder, "    const %1 bry_sHinv_%2 = %3;\n", T, c.name, String.join(..terms, separator = " + "));
+    }
+    for r : cluster.unknowns {
+        print_to_builder(*inner_builder, "    const %1 bry_scale_%2 = (bry_prev_delta_%2 - bry_Hy_%2) / bry_denom;\n", T, r.name);
+    }
+    for r : cluster.unknowns {
+        for c : cluster.unknowns {
+            print_to_builder(*inner_builder, "    bry_Hinv_%1_%2 = bry_Hinv_%1_%2 + bry_scale_%1 * bry_sHinv_%2;\n", r.name, c.name);
+        }
+    }
+    append(*inner_builder, "}\n\n");
+
+    // delta = -Hinv * f, hard-clamped before it ever reaches the physical
+    // per-unknown limiter (see emit_clamped_step) -- a poorly-conditioned
+    // Hinv early in the iteration can otherwise produce a step large enough
+    // to overflow to inf, which the limiters can't recover from.
+    clamped_deltas: [..] string;
+    for r : cluster.unknowns {
+        terms: [..] string;
+        for c : cluster.unknowns  array_add(*terms, tprint("bry_Hinv_%1_%2 * %3", r.name, c.name, c.residual_name));
+        raw_name := tprint("bry_raw_delta_%", r.name);
+        print_to_builder(*inner_builder, "const %1 %2 = -(%3);\n", T, raw_name, String.join(..terms, separator = " + "));
+        array_add(*clamped_deltas, emit_clamped_step(*inner_builder, r.name, raw_name, backend));
+    }
+    for u, i : cluster.unknowns  print_to_builder(*inner_builder, "const %1 bry_delta_%2 = %3;\n", T, u.name, clamped_deltas[i]);
+    append(*inner_builder, "\n");
+
+    // Backtracking line search on the true (re-evaluated) nonlinear
+    // residual: a rank-1 Hinv estimate is only a local model, and taking
+    // its full suggested step unconditionally is what let a handful of bad
+    // iterations spiral into an overflow in a stiff (e.g. BJT) cluster --
+    // see the module comment. Halve the step until it actually reduces
+    // ||f||, or give up after a few tries and accept the smallest one so a
+    // single bad outer iteration can't stall the whole loop.
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "const %1 bry_x0_%2 = %2;\n", T, u.name);
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "const %1 bry_res0_%2 = %3;\n", T, u.name, u.residual_name);
+    base_norm_terms: [..] string;
+    for u : cluster.unknowns  array_add(*base_norm_terms, tprint("bry_res0_%1 * bry_res0_%1", u.name));
+    print_to_builder(*inner_builder, "const %1 bry_base_norm = %2;\n", T, String.join(..base_norm_terms, separator = " + "));
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "%1 bry_final_res_%2 = bry_res0_%2;\n", T, u.name);
+    print_to_builder(*inner_builder, "%1 bry_ls_scale = 1.0;\n", T);
+    append(*inner_builder, "for (int bry_ls = 0; bry_ls < 4; ++bry_ls)\n{\n");
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "    %1 = bry_x0_%1;\n", u.name);
+    for u : cluster.unknowns  apply_update(*inner_builder, u, tprint("bry_ls_scale * bry_delta_%", u.name), backend, apply_slew);
+    emit_topological_order(cluster.iteration_items, exprs, *inner_builder, backend);
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "bry_final_res_%1 = %2;\n", u.name, u.residual_name);
+    trial_norm_terms: [..] string;
+    for u : cluster.unknowns  array_add(*trial_norm_terms, tprint("%1 * %1", u.residual_name));
+    print_to_builder(*inner_builder, "const %1 bry_trial_norm = %2;\n", T, String.join(..trial_norm_terms, separator = " + "));
+    append(*inner_builder, "if (bry_trial_norm < bry_base_norm)  break;\n");
+    append(*inner_builder, "bry_ls_scale *= 0.5;\n");
+    append(*inner_builder, "}\n\n");
+
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "bry_prev_res_%1 = bry_res0_%1;\n", u.name);
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "bry_prev_delta_%1 = %1 - bry_x0_%1;\n", u.name);
+
+    append(*inner_builder, "\nresidual_norm_sq = 0.0;\n");
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "residual_norm_sq += bry_final_res_%1 * bry_final_res_%1;\n", u.name);
+    append(*inner_builder, "step_norm_sq = 0.0;\n");
+    for u : cluster.unknowns  print_to_builder(*inner_builder, "step_norm_sq += bry_prev_delta_%1 * bry_prev_delta_%1;\n", u.name);
+    append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");
+
+    inner_text := builder_to_string(*inner_builder);
+    indented := String.replace(inner_text, "\n", "\n        ");
+    indented, _ = String.replace(indented, "\n        \n", "\n\n");
+    append(*builder, "        ");
+    append(*builder, indented);
+    append(*builder, "\n    }\n}\n");
 
     return builder_to_string(*builder);
 }

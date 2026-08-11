@@ -281,9 +281,8 @@ Netlist_Info :: struct {
     // `* sub-circuit: <name> <in_node> <out_node>`.
     sub_circuits : [..] Sub_Circuit_Decl;
 
-    // Newton-Raphson solver defaults.
-    newton_tol_sq   := 1.0e-5;
-    newton_max_iter := 20;
+    // Iterative nonlinear solver defaults, overridden via `iter_solve(...)`.
+    iter_solve: Iter_Solve_Config;
 }
 
 parse_netlist :: (netlist_str: string) -> Netlist_Info {
@@ -404,9 +403,9 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                     log("Warning: malformed 'sub-circuit:' line '%'; expected '<name> <in_node> <out_node>'.\n", rest);
                 }
             }
-            // `nr_solve(max_iter=<int>, tol=<val>)`.
-            if String.begins_with(line, "nr_solve") {
-                rest := String.slice(line, 8, line.count - 8);
+            // `iter_solve(method=<name>, max_iter=<int>, tol=<val>, alpha=<val>)`.
+            if String.begins_with(line, "iter_solve") {
+                rest := String.slice(line, 10, line.count - 10);
                 rest, _ = String.replace(rest, "(", " ");
                 rest, _ = String.replace(rest, ")", " ");
                 rest, _ = String.replace(rest, ",", " ");
@@ -416,11 +415,22 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                     parts := String.split(kv, #char "=");
                     if parts.count != 2  continue;
                     key := String.to_upper_copy(String.trim(parts[0]));
-                    val, success := string_to_float(String.trim(parts[1]));
+                    val_str := String.trim(parts[1]);
+                    if key == "METHOD" {
+                        method, success := iter_solve_method_from_string(val_str);
+                        if success {
+                            iter_solve.method = method;
+                        } else {
+                            log("Warning: unrecognized iter_solve method '%'; keeping default.\n", val_str);
+                        }
+                        continue;
+                    }
+                    val, success := string_to_float(val_str);
                     if !success  continue;
                     if key == {
-                        case "TOL";      newton_tol_sq = val;
-                        case "MAX_ITER"; newton_max_iter = cast(int) val;
+                        case "TOL";      iter_solve.tol_sq = val;
+                        case "MAX_ITER"; iter_solve.max_iter = cast(int) val;
+                        case "ALPHA";    iter_solve.alpha = val;
                     }
                 }
             }
@@ -742,7 +752,7 @@ element_group_has_node :: (elements: [] Element, node: string) -> bool {
 // compute() and reset() for every circuit.
 generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string, values: [] Element_Value,
                   backend: Backend, label: string, suffix: string,
-                  newton_tol_sq: float64, newton_max_iter: int) -> (code: string, has_nonlinear: bool) {
+                  iter_solve: Iter_Solve_Config) -> (code: string, has_nonlinear: bool) {
     elements_copy := elements; // reduce_circuit mutates in place
     has_nonlinear := circuit_has_nonlinear(elements_copy);
 
@@ -753,7 +763,7 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     cluster_exprs: [] Expr;
 
     if has_nonlinear {
-        log("Nonlinear system: resolving with Newton-Raphson (tol²=%, max_iter=%)\n", newton_tol_sq, newton_max_iter);
+        log("Nonlinear system: resolving with % (tol²=%, max_iter=%, alpha=%)\n", iter_solve.method, iter_solve.tol_sq, iter_solve.max_iter, iter_solve.alpha);
 
         // Same as solve_and_codegen(), but with build_nonlinear_clusters()
         // spliced in between solve() and generate_expressions() -- see
@@ -808,11 +818,11 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
             setup_flops := count_flops(c.invariant_items, cluster_exprs);
             iter_flops  := count_flops(c.iteration_items, cluster_exprs);
             log("  Cluster \"%\" Newton setup: %\n", c.name, flop_str(setup_flops));
-            log("  Cluster \"%\" Newton iteration: % × up to % iters\n", c.name, flop_str(iter_flops), newton_max_iter);
+            log("  Cluster \"%\" solver iteration: % × up to % iters\n", c.name, flop_str(iter_flops), iter_solve.max_iter);
             if c.invariant_items.count == 0 {
                 log("    No Newton-invariant subexpressions found -- nothing hoisted out of the per-iteration loop\n");
             }
-            newton_worst_case += flop_total(setup_flops) + newton_max_iter * flop_total(iter_flops);
+            newton_worst_case += flop_total(setup_flops) + iter_solve.max_iter * flop_total(iter_flops);
         }
     }
     log("  Estimated worst-case ops/sample: % (% outer + % inner%)\n",
@@ -863,8 +873,13 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
 
     if has_nonlinear {
         for c : clusters {
-            newton_code := generate_cluster_newton_code(c, cluster_exprs, backend);
-            append(*builder, tprint("%\n", indent(newton_code, "            ")));
+            cluster_code: string;
+            if iter_solve.method == {
+                case .NEWTON;      cluster_code = generate_cluster_newton_code(c, cluster_exprs, backend);
+                case .FIXED_POINT; cluster_code = generate_cluster_fixed_point_code(c, cluster_exprs, backend);
+                case .BROYDEN;     cluster_code = generate_cluster_broyden_code(c, cluster_exprs, backend);
+            }
+            append(*builder, tprint("%\n", indent(cluster_code, "            ")));
         }
     }
 
@@ -952,8 +967,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         if circuit_uses_limiter_kind(net.elements, .EXP_JUNCTION) { append(*builder, generate_junction_limiter_helper(backend)); append(*builder, "\n"); }
         if circuit_uses_limiter_kind(net.elements, .JFET_PINCHOFF) { append(*builder, generate_jfet_limiter_helper(backend)); append(*builder, "\n"); }
         if circuit_uses_limiter_kind(net.elements, .AMP_CLIP) { append(*builder, generate_opamp_clip_limiter_helper(backend)); append(*builder, "\n"); }
-        append(*builder, generate_newton_constants(net.newton_tol_sq, net.newton_max_iter, backend));
-        append(*builder, "\n");
+        append(*builder, generate_newton_constants(net.iter_solve, backend));
     }
 
     all_single_io := true;
@@ -977,7 +991,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         }
 
         code, has_nonlinear := generate_unit(part.elements, local_inputs, local_outputs, net.values,
-                                             backend, unit_label, suffix, net.newton_tol_sq, net.newton_max_iter);
+                                             backend, unit_label, suffix, net.iter_solve);
         append(*builder, code);
         append(*builder, "\n");
     }
