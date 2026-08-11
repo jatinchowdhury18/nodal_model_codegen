@@ -1,9 +1,22 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h
 
 #pragma once
 
 #include <cmath>
+
+[[maybe_unused]] static auto clamp_opamp_output = [](auto v_new, auto v_prev, auto slew_max_step, auto vsat_n, auto vsat_p)
+{
+    if (v_new - v_prev > slew_max_step)  v_new = v_prev + slew_max_step;
+    if (v_new - v_prev < -slew_max_step) v_new = v_prev - slew_max_step;
+    if (v_new > vsat_p) return vsat_p;
+    if (v_new < vsat_n) return vsat_n;
+    return v_new;
+};
+
+static constexpr auto newton_tol_sq = 0.00001;
+static constexpr int newton_max_iter = 20;
+
 
 struct Params {
     float R1 = 1.0e+03f;
@@ -16,18 +29,6 @@ struct Params {
 struct State {
     float vclip_Eop {};
 };
-
-[[maybe_unused]] static auto clamp_opamp_output = [](auto v_new, auto v_prev, auto slew_max_step, auto vsat_n, auto vsat_p)
-{
-    if (v_new - v_prev > slew_max_step)  v_new = v_prev + slew_max_step;
-    if (v_new - v_prev < -slew_max_step) v_new = v_prev - slew_max_step;
-    if (v_new > vsat_p) return vsat_p;
-    if (v_new < vsat_n) return vsat_n;
-    return v_new;
-};
-
-static constexpr auto newton_tol_sq = 1.0e-05;
-static constexpr int newton_max_iter = 20;
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -95,7 +96,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
 {
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
@@ -148,8 +149,12 @@ static void reset (Params params, State* state, int num_channels, float sample_r
             break;
         
     }
+    const auto vo_dc_out = vclip_Eop;
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vclip_Eop = vclip_Eop;
     }
+    return vo_dc_out;
 }
+

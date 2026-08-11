@@ -1,9 +1,13 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen common_cathode.net common_cathode.h -type_name double
 
 #pragma once
 
 #include <cmath>
+
+static constexpr auto newton_tol_sq = 0.00001;
+static constexpr int newton_max_iter = 20;
+
 
 struct Params {
     double VCC = 2.5e+02;
@@ -31,9 +35,6 @@ struct State {
     double vPKX1 {};
     double vGKX1 {};
 };
-
-static constexpr auto newton_tol_sq = 1.0e-05;
-static constexpr int newton_max_iter = 20;
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -215,7 +216,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
 {
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
@@ -335,6 +336,8 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto zCout = (-((gCout * (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) - (gRp * VCC))) / (gRp + (1.0 / 1000000000.0))));
     const auto zRkCk = (((gzRkCk * (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0))) / ((1.0 / Rk) + (1.0 / 1000000000.0))) / 2.0);
 
+    const auto vo_dc_out = 0.0;
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vPKX1 = vPKX1;
@@ -343,4 +346,6 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         state[ch].zCout = zCout;
         state[ch].zRkCk = zRkCk;
     }
+    return vo_dc_out;
 }
+

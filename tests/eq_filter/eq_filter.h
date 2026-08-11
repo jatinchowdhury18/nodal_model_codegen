@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen eq_filter.net eq_filter.h -namespace nodal::eq_filter
 
 #pragma once
@@ -143,5 +143,64 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zR43C18C19 = zR43C18C19;
     }
 }
+
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+{
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
+    const auto gR33 = 1.0f / params.R33;
+    
+    const auto gR37 = 1.0f / params.R37;
+    
+    const auto gR35 = 1.0f / params.R35;
+    
+    const auto gR40 = 1.0f / params.R40;
+    
+    const auto gR39 = 1.0f / params.R39;
+    
+    const auto gR66 = 1.0f / params.R66;
+    
+    const auto R45 = params.R45;
+    const auto C20 = params.C20;
+    const auto gR45C20 = (2.0f * sample_rate * C20) / (1.0f + 2.0f * sample_rate * R45 * C20);
+    const auto gnR45C20 = gR45C20 * (2.0f * sample_rate * R45 * C20 - 1.0f) / (2.0f * sample_rate * C20);
+    
+    const auto gR44 = 1.0f / params.R44;
+    
+    const auto gR47 = 1.0f / params.R47;
+    
+    const auto gR48 = 1.0f / params.R48;
+    
+    const auto R42 = params.R42;
+    const auto C17C16 = sum(params.C17, params.C16);
+    const auto gR42C17C16 = (2.0f * sample_rate * C17C16) / (1.0f + 2.0f * sample_rate * R42 * C17C16);
+    const auto gnR42C17C16 = gR42C17C16 * (2.0f * sample_rate * R42 * C17C16 - 1.0f) / (2.0f * sample_rate * C17C16);
+    
+    const auto R41R38 = recip_sum(params.R41, params.R38);
+    const auto gR41R38 = 1.0f / R41R38;
+    
+    const auto R43 = params.R43;
+    const auto C18C19 = sum(params.C18, params.C19);
+    const auto gR43C18C19 = 2.0f * sample_rate * C18C19 + (1.0f / R43);
+    const auto gzR43C18C19 = 4.0f * sample_rate * C18C19;
+    
+    const auto vi = vi_dc;
+
+    const auto zR45C20 = 0.0f;
+    const auto zR42C17C16 = ((gR42C17C16 * (((((gR33 * vi) * gR40) / R43) - (((gR35 * gR39) * vi) / R43)) * R43)) / (gR35 * ((((gR40 + gR39) + gR66) + gR41R38) + (1.0f / 1000000000.0f))));
+    const auto zR43C18C19 = 0.0f;
+
+    const auto vo_dc_out = (-((gR33 * vi) / gR35));
+
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        state[ch].zR45C20 = zR45C20;
+        state[ch].zR42C17C16 = zR42C17C16;
+        state[ch].zR43C18C19 = zR43C18C19;
+    }
+    return vo_dc_out;
+}
+
 
 } // namespace nodal::eq_filter

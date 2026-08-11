@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
 
 #pragma once
@@ -168,3 +168,77 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zR19Rf2C10 = zR19Rf2C10;
     }
 }
+
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+{
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
+    const auto gR13 = 1.0 / params.R13;
+    
+    const auto gR50 = 1.0 / params.R50;
+    
+    const auto gR23 = 1.0 / params.R23;
+    
+    const auto RboostmR11 = sum(params.Rboostm, params.R11);
+    const auto gRboostmR11 = 1.0 / RboostmR11;
+    
+    const auto R12 = params.R12;
+    const auto C8 = params.C8;
+    const auto gR12C8 = 2.0 * sample_rate * C8 + (1.0 / R12);
+    const auto gzR12C8 = 4.0 * sample_rate * C8;
+    
+    const auto R40R17 = recip_sum(params.R40, params.R17);
+    const auto gR40R17 = 1.0 / R40R17;
+    
+    const auto R16Rboostp = sum(params.R16, params.Rboostp);
+    const auto gR16Rboostp = 1.0 / R16Rboostp;
+    
+    const auto gR62 = 1.0 / params.R62;
+    
+    const auto R24Rq2 = sum(params.R24, params.Rq2);
+    const auto gR24Rq2 = 1.0 / R24Rq2;
+    
+    const auto gRq1m = 1.0 / params.Rq1m;
+    
+    const auto gR64 = 1.0 / params.R64;
+    
+    const auto gRq1p = 1.0 / params.Rq1p;
+    
+    const auto Rf1R18 = sum(params.Rf1, params.R18);
+    const auto C9 = params.C9;
+    const auto gRf1R18C9 = (2.0 * sample_rate * C9) / (1.0 + 2.0 * sample_rate * Rf1R18 * C9);
+    const auto gnRf1R18C9 = gRf1R18C9 * (2.0 * sample_rate * Rf1R18 * C9 - 1.0) / (2.0 * sample_rate * C9);
+    
+    const auto gR20 = 1.0 / params.R20;
+    
+    const auto gC11 = 2.0 * sample_rate * params.C11;
+    
+    const auto gR22 = 1.0 / params.R22;
+    
+    const auto gR21 = 1.0 / params.R21;
+    
+    const auto R19Rf2 = sum(params.R19, params.Rf2);
+    const auto C10 = params.C10;
+    const auto gR19Rf2C10 = 2.0 * sample_rate * C10 + (1.0 / R19Rf2);
+    const auto gzR19Rf2C10 = 4.0 * sample_rate * C10;
+    
+    const auto vi = vi_dc;
+
+    const auto zR12C8 = (-((((gzR12C8 * gR50) * vi) * R12) / 2.0));
+    const auto zRf1R18C9 = (-((gRf1R18C9 * ((((gR50 * vi) * (((((gR23 + gR22) + (1.0 / 1000000000.0)) * (gR24Rq2 * (gR16Rboostp * (((((gR62 + gRq1m) + gRq1p) * (((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * (((gRq1p + gR22) + gR21) + (1.0 / 1000000000.0))) - (gR21 * gR21))) - (gRq1m * ((gRq1m * (((gRq1p + gR22) + gR21) + (1.0 / 1000000000.0))) + (gR21 * gRq1p)))) - (gRq1p * ((gRq1m * gR21) + ((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * gRq1p))))))) / R19Rf2) + ((gR22 * (gR24Rq2 * (gR16Rboostp * ((gRq1m * (gRq1m * gR22)) - (((gR62 + gRq1m) + gRq1p) * ((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * gR22)))))) / R19Rf2))) - ((((((gR23 + gR22) + (1.0 / 1000000000.0)) * (gR24Rq2 * ((gRboostmR11 * vi) * (((((gR62 + gRq1m) + gRq1p) * (((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * (((gRq1p + gR22) + gR21) + (1.0 / 1000000000.0))) - (gR21 * gR21))) - (gRq1m * ((gRq1m * (((gRq1p + gR22) + gR21) + (1.0 / 1000000000.0))) + (gR21 * gRq1p)))) - (gRq1p * ((gRq1m * gR21) + ((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * gRq1p))))))) / R19Rf2) + ((gR22 * (gR24Rq2 * ((gRboostmR11 * vi) * ((gRq1m * (gRq1m * gR22)) - (((gR62 + gRq1m) + gRq1p) * ((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * gR22)))))) / R19Rf2)) / R12)) * R12)) / (((((gR23 + gR22) + (1.0 / 1000000000.0)) * (gR24Rq2 * (((((gRboostmR11 + gR40R17) + gR16Rboostp) + gR64) + (1.0 / 1000000000.0)) * (((((gR62 + gRq1m) + gRq1p) * (((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * (((gRq1p + gR22) + gR21) + (1.0 / 1000000000.0))) - (gR21 * gR21))) - (gRq1m * ((gRq1m * (((gRq1p + gR22) + gR21) + (1.0 / 1000000000.0))) + (gR21 * gRq1p)))) - (gRq1p * ((gRq1m * gR21) + ((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * gRq1p))))))) / R19Rf2) + ((gR22 * (gR24Rq2 * (((((gRboostmR11 + gR40R17) + gR16Rboostp) + gR64) + (1.0 / 1000000000.0)) * ((gRq1m * (gRq1m * gR22)) - (((gR62 + gRq1m) + gRq1p) * ((((gRq1m + gR20) + gR21) + (1.0 / 1000000000.0)) * gR22)))))) / R19Rf2))));
+    const auto zC11 = 0.0;
+    const auto zR19Rf2C10 = 0.0;
+
+    const auto vo_dc_out = (-((gR50 * vi) * R12));
+
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        state[ch].zR12C8 = zR12C8;
+        state[ch].zRf1R18C9 = zRf1R18C9;
+        state[ch].zC11 = zC11;
+        state[ch].zR19Rf2C10 = zR19Rf2C10;
+    }
+    return vo_dc_out;
+}
+

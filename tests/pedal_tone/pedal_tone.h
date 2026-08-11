@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen pedal_tone.net pedal_tone.h
 
 #pragma once
@@ -71,3 +71,36 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zC9 = zC9;
     }
 }
+
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+{
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
+    const auto gR8 = 1.0f / params.R8;
+    
+    const auto gC8 = 2.0f * sample_rate * params.C8;
+    
+    const auto gC9 = 2.0f * sample_rate * params.C9;
+    
+    const auto gR5 = 1.0f / params.R5;
+    
+    const auto gRtp = 1.0f / params.Rtp;
+    
+    const auto gRtm = 1.0f / params.Rtm;
+    
+    const auto vi = vi_dc;
+
+    const auto zC8 = (-((gC8 * ((gR8 * vi) * ((((gR5 + gRtp) + (1.0f / 1000000000.0f)) * ((gRtp + gRtm) + (1.0f / 1000000000.0f))) - (gRtp * gRtp)))) / ((gRtm * (((gR5 + gRtp) + (1.0f / 1000000000.0f)) * gRtm)) - (((gR8 + gRtm) + (1.0f / 1000000000.0f)) * ((((gR5 + gRtp) + (1.0f / 1000000000.0f)) * ((gRtp + gRtm) + (1.0f / 1000000000.0f))) - (gRtp * gRtp))))));
+    const auto zC9 = (gC9 * (vi + (((gR8 * vi) * (gRtp * gRtm)) / ((gRtm * (((gR5 + gRtp) + (1.0f / 1000000000.0f)) * gRtm)) - (((gR8 + gRtm) + (1.0f / 1000000000.0f)) * ((((gR5 + gRtp) + (1.0f / 1000000000.0f)) * ((gRtp + gRtm) + (1.0f / 1000000000.0f))) - (gRtp * gRtp)))))));
+
+    const auto vo_dc_out = (-(((gR8 * vi) * (((gR5 + gRtp) + (1.0f / 1000000000.0f)) * gRtm)) / ((gRtm * (((gR5 + gRtp) + (1.0f / 1000000000.0f)) * gRtm)) - (((gR8 + gRtm) + (1.0f / 1000000000.0f)) * ((((gR5 + gRtp) + (1.0f / 1000000000.0f)) * ((gRtp + gRtm) + (1.0f / 1000000000.0f))) - (gRtp * gRtp))))));
+
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        state[ch].zC8 = zC8;
+        state[ch].zC9 = zC9;
+    }
+    return vo_dc_out;
+}
+

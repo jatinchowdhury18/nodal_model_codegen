@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen summing_amp.net summing_amp.h
 
 #pragma once
@@ -68,3 +68,47 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
         state[ch].zRFCf = zRFCf;
     }
 }
+
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi1_dc = 0.0f, float vi2_dc = 0.0f, float vi3_dc = 0.0f)
+{
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
+    const auto gR1 = 1.0f / params.R1;
+    
+    const auto gR2 = 1.0f / params.R2;
+    
+    const auto gR3 = 1.0f / params.R3;
+    
+    const auto Vdc = params.Vdc;
+    
+    const auto vdc = Vdc;
+    
+    const auto gR4 = 1.0f / params.R4;
+    
+    const auto Vbias = params.Vbias;
+    
+    const auto NNON = Vbias;
+    
+    const auto gRL = 1.0f / params.RL;
+    
+    const auto RF = params.RF;
+    const auto Cf = params.Cf;
+    const auto gRFCf = 2.0f * sample_rate * Cf + (1.0f / RF);
+    const auto gzRFCf = 4.0f * sample_rate * Cf;
+    
+    const auto vi1 = vi1_dc;
+    const auto vi2 = vi2_dc;
+    const auto vi3 = vi3_dc;
+
+    const auto zRFCf = (-((gzRFCf * ((((((((-1.0f / RF) - (((gR1 + gR2) + gR3) + gR4)) - (1.0f / 1000000000.0f)) * Vbias) + (gR4 * Vdc)) + (((gR1 * vi1) + (gR2 * vi2)) + (gR3 * vi3))) * RF) + Vbias)) / 2.0f));
+
+    const auto vo_dc_out = (-(((((((-1.0f / RF) - (((gR1 + gR2) + gR3) + gR4)) - (1.0f / 1000000000.0f)) * Vbias) + (gR4 * Vdc)) + (((gR1 * vi1) + (gR2 * vi2)) + (gR3 * vi3))) * RF));
+
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        state[ch].zRFCf = zRFCf;
+    }
+    return vo_dc_out;
+}
+

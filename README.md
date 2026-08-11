@@ -163,6 +163,26 @@ configuration is:
 * nr_solve(max_iter=20, tol=1.0e-5)
 ```
 
+### `sub-circuit`
+
+Modelling a large circuit with nodal analysis can be
+difficult, since the solved equations often become
+poorly conditioned (especially with single-precision
+`float`s), and may have poor performance.
+`* sub-circuit: <name> <in_node> <out_node>` allows
+a circuit to be broken up into "sub-circuits" that
+are each modelled as their own independent systems:
+
+```
+* sub-circuit: stage1  vi vo1
+* sub-circuit: stage2 vo1 vo2
+* sub-circuit: stage3 vo2  vo
+```
+
+For each declared piece, `netlist_codegen` emits its own
+`Params`/`State`/`compute()`/etc. with `_name` appended to
+each name, as well as the usual ones for the full circuit.
+
 ### Nonlinear Elements
 
 `netlist_codegen` handles standard SPICE nonlinear elements, including

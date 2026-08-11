@@ -25,10 +25,7 @@ test summing_amp
 test eq_filter
 test eq_filter2
 test multi_svf
-
-# pathological test circuits
-test reductions
-test rc_cascade_stability
+test eq73
 
 # simple nonlinear
 test diode_circuit
@@ -49,3 +46,8 @@ test tube_compressor
 test opamp_finite_gain
 test opamp_clipping
 test opamp_complete
+
+# pathological test circuits
+test reductions
+test rc_cascade_stability
+test dc_coupled_x2

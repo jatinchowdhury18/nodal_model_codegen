@@ -1,31 +1,9 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen common_emitter.net common_emitter.h
 
 #pragma once
 
 #include <cmath>
-
-struct Params {
-    float VCC = 9.0e+00f;
-    float C1 = 1.0e-07f;
-    float R1 = 4.7e+05f;
-    float R2 = 1.0e+05f;
-    float RE = 2.7e+03f;
-    float RC = 1.2e+04f;
-    float Q2N5089_Is = 5.0e-14f;
-    float Q2N5089_vt = 2.585e-02f;
-    float Q2N5089_BetaF = 6.0e+02f;
-    float Q2N5089_BetaR = 5.0e+01f;
-    float C2 = 1.0e-07f;
-    float RL = 1.0e+05f;
-};
-
-struct State {
-    float zC1 {};
-    float zC2 {};
-    float vBCQ1 {};
-    float vBEQ1 {};
-};
 
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -56,8 +34,31 @@ struct State {
     return v_new;
 };
 
-static constexpr auto newton_tol_sq = 1.0e-05;
+static constexpr auto newton_tol_sq = 0.00001;
 static constexpr int newton_max_iter = 20;
+
+
+struct Params {
+    float VCC = 9.0e+00f;
+    float C1 = 1.0e-07f;
+    float R1 = 4.7e+05f;
+    float R2 = 1.0e+05f;
+    float RE = 2.7e+03f;
+    float RC = 1.2e+04f;
+    float Q2N5089_Is = 5.0e-14f;
+    float Q2N5089_vt = 2.585e-02f;
+    float Q2N5089_BetaF = 6.0e+02f;
+    float Q2N5089_BetaR = 5.0e+01f;
+    float C2 = 1.0e-07f;
+    float RL = 1.0e+05f;
+};
+
+struct State {
+    float zC1 {};
+    float zC2 {};
+    float vBCQ1 {};
+    float vBEQ1 {};
+};
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -210,7 +211,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
 {
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
@@ -314,6 +315,8 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto zC1 = (gC1 * (vi - (((gR1 * VCC) - (Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR)))) / ((gR1 + gR2) + (1.0f / 1000000000.0f)))));
     const auto zC2 = (-((gC2 * ((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR))) - (VCC * gRC))) / (gRC + (1.0f / 1000000000.0f))));
 
+    const auto vo_dc_out = 0.0f;
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vBCQ1 = vBCQ1;
@@ -321,4 +324,6 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         state[ch].zC1 = zC1;
         state[ch].zC2 = zC2;
     }
+    return vo_dc_out;
 }
+

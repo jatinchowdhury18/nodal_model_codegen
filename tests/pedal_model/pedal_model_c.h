@@ -1,9 +1,37 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen pedal_model.net pedal_model_c.h -lang c -type_name double
 
 #pragma once
 
 #include <math.h>
+
+static double limit_junction_voltage(double v_new, double v_old, double vt, double vcrit) {
+    if (v_new > vcrit && fabs(v_new - v_old) > 2 * vt) {
+        if (v_old > 0) {
+            double arg = 1 + (v_new - v_old) / vt;
+            v_new = arg > 0 ? v_old + vt * log(arg) : vcrit;
+        } else {
+            v_new = vt * log(v_new / vt);
+        }
+    } else if (v_new < -vcrit && fabs(v_new - v_old) > 2 * vt) {
+        if (v_old < 0) {
+            double arg = 1 + (v_old - v_new) / vt;
+            v_new = arg > 0 ? v_old - vt * log(arg) : -vcrit;
+        } else {
+            v_new = -vt * log(-v_new / vt);
+        }
+    }
+    return v_new;
+}
+
+static double limit_jfet_vgs(double v_new, double vp) {
+    if (v_new < vp) return vp;
+    return v_new;
+}
+
+static const double newton_tol_sq = 0.000001;
+static const int newton_max_iter = 20;
+
 
 typedef struct {
     double Vpp; // = 9.0e+00
@@ -48,33 +76,6 @@ typedef struct {
     double vGSJ1;
     double vD1D2;
 } State;
-
-static double limit_junction_voltage(double v_new, double v_old, double vt, double vcrit) {
-    if (v_new > vcrit && fabs(v_new - v_old) > 2 * vt) {
-        if (v_old > 0) {
-            double arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * log(arg) : vcrit;
-        } else {
-            v_new = vt * log(v_new / vt);
-        }
-    } else if (v_new < -vcrit && fabs(v_new - v_old) > 2 * vt) {
-        if (v_old < 0) {
-            double arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * log(arg) : -vcrit;
-        } else {
-            v_new = -vt * log(-v_new / vt);
-        }
-    }
-    return v_new;
-}
-
-static double limit_jfet_vgs(double v_new, double vp) {
-    if (v_new < vp) return vp;
-    return v_new;
-}
-
-static const double newton_tol_sq = 1.0e-06;
-static const int newton_max_iter = 20;
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -394,7 +395,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc)
 {
     #define sum(a, b) ((a) + (b))
     #define recip_sum(a, b) ((a) * (b) / ((a) + (b)))
@@ -524,6 +525,8 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const double zRdC5 = 0.0;
     const double zR9C9 = ((gR9C9 * (((gRfR10 + (1.0 / 1000000000.0)) * D1N914_Is) * (exp((vD1D2 / D1N914_vt)) - (1.0 / exp((vD1D2 / D1N914_vt)))))) / (((gRfR10 + (1.0 / 1000000000.0)) * (gRfR10 + (1.0 / 1000000000.0))) - (gRfR10 * gRfR10)));
 
+    const double vo_dc_out = 0.0;
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vGSJ1 = vGSJ1;
@@ -538,4 +541,6 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         state[ch].zRdC5 = zRdC5;
         state[ch].zR9C9 = zR9C9;
     }
+    return vo_dc_out;
 }
+

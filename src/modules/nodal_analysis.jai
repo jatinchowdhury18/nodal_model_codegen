@@ -1,4 +1,5 @@
 #import "Basic";
+#import "Hash_Table";
 #import "sym_algebra";
 
 Element_Type :: enum {
@@ -984,4 +985,129 @@ generate_junction_voltage_expressions :: (elements: [] Element,
     }
 
     return junctions;
+}
+
+// -----------------------------------------------------------------------
+// Circuit partitioning -- `sub-circuit` directive support.
+// -----------------------------------------------------------------------
+
+// One `* sub-circuit: <name> <in_node> <out_node>` directive.
+Sub_Circuit_Decl :: struct {
+    name:     string;
+    in_node:  string;
+    out_node: string;
+}
+
+// One named piece cut apart by partition_circuit().
+Circuit_Partition :: struct {
+    name:     string;
+    elements: [..] Element;
+    in_node:  string;
+    out_node: string;
+}
+
+// Splits `elements` into one piece per decl, in decl order. Ground ("0")
+// and every decl's in/out node are excluded from the connectivity graph --
+// elements only union through some other shared node, which is the cut.
+// Each resulting group is matched to whichever decl's in_node/out_node it
+// touches. Only exact for a decl boundary that's a true ideal-source node.
+partition_circuit :: (elements: [] Element, decls: [] Sub_Circuit_Decl) -> [] Circuit_Partition {
+    if decls.count == 0 {
+        single: Circuit_Partition;
+        array_copy(*single.elements, elements);
+        result: [..] Circuit_Partition;
+        array_add(*result, single);
+        return result;
+    }
+
+    is_boundary :: (node: string, decls: [] Sub_Circuit_Decl) -> bool #expand {
+        for d : decls  if d.in_node == node || d.out_node == node  return true;
+        return false;
+    }
+    is_real :: (node: string, decls: [] Sub_Circuit_Decl) -> bool #expand {
+        return node != "0" && !is_boundary(node, decls);
+    }
+
+    find :: (parent: [] int, x: int) -> int {
+        root := x;
+        while parent[root] != root  root = parent[root];
+        cur := x;
+        while parent[cur] != root { next := parent[cur]; parent[cur] = root; cur = next; }
+        return root;
+    }
+    dsu_union :: (parent: [] int, a: int, b: int) {
+        ra := find(parent, a); rb := find(parent, b);
+        if ra != rb  parent[ra] = rb;
+    }
+
+    // Elements with no real terminal at all (only ground/boundary nodes,
+    // e.g. a load resistor from a boundary node straight to ground) can't
+    // be placed by shared-node union -- handled separately below.
+    real_idxs, orphan_idxs: [..] int;
+    for i : 0..elements.count-1 {
+        has_real := false;
+        for term : elements[i].terminals  if is_real(term, decls) { has_real = true; break; }
+        if has_real  array_add(*real_idxs, i); else array_add(*orphan_idxs, i);
+    }
+
+    parent: [..] int;
+    for i : 0..elements.count-1  array_add(*parent, i);
+
+    node_elements: Table(string, [..] int);
+    for i : real_idxs {
+        for term : elements[i].terminals {
+            if !is_real(term, decls)  continue;
+            list := table_find_pointer(*node_elements, term);
+            if !list { empty: [..] int; list = table_add(*node_elements, term, empty); }
+            array_add(list, i);
+        }
+    }
+    for list : node_elements  for k : 1..list.count-1  dsu_union(parent, list[0], list[k]);
+
+    group_of_root: Table(int, int);
+    groups: [..] [..] int;
+    for i : real_idxs {
+        r := find(parent, i);
+        found, gi := table_find(*group_of_root, r);
+        if !found { gi = groups.count; table_add(*group_of_root, r, gi); empty: [..] int; array_add(*groups, empty); }
+        array_add(*groups[gi], i);
+    }
+
+    touches :: (elements: [] Element, group: [] int, node: string) -> bool {
+        for ei : group  for term : elements[ei].terminals  if term == node  return true;
+        return false;
+    }
+
+    matched: [..] int; // decl index -> group index, -1 if unmatched
+    for d : decls {
+        gi := -1;
+        for g, i : groups  if touches(elements, g, d.in_node) && touches(elements, g, d.out_node) { gi = i; break; }
+        array_add(*matched, gi);
+        if gi == -1  log("Warning: no elements match sub-circuit '%' (% -> %).\n", d.name, d.in_node, d.out_node);
+    }
+
+    // Orphans can't change any node's voltage either way (a load on an
+    // already-driven node doesn't affect it), so any matching decl is fine
+    // to attach to. "first in decl order" is just the tiebreak.
+    for oi : orphan_idxs {
+        for d, di : decls {
+            gi := matched[di];
+            if gi == -1  continue;
+            touches_decl := false;
+            for term : elements[oi].terminals  if term == d.in_node || term == d.out_node  { touches_decl = true; break; }
+            if touches_decl { array_add(*groups[gi], oi); break; }
+        }
+    }
+
+    result: [..] Circuit_Partition;
+    for d, di : decls {
+        part: Circuit_Partition;
+        part.name     = d.name;
+        part.in_node  = d.in_node;
+        part.out_node = d.out_node;
+        gi := matched[di];
+        if gi != -1  for ei : groups[gi]  array_add(*part.elements, elements[ei]);
+        array_add(*result, part);
+    }
+    return result;
 }

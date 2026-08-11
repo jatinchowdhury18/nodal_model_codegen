@@ -1,9 +1,48 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen pedal_model.net pedal_model.h -type_name double
 
 #pragma once
 
 #include <cmath>
+
+[[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
+{
+    if (v_new > vcrit && std::abs(v_new - v_old) > 2 * vt)
+    {
+        if (v_old > 0)
+        {
+            const auto arg = 1 + (v_new - v_old) / vt;
+            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
+        }
+        else
+        {
+            v_new = vt * std::log(v_new / vt);
+        }
+    }
+    else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
+    {
+        if (v_old < 0)
+        {
+            const auto arg = 1 + (v_old - v_new) / vt;
+            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+        }
+        else
+        {
+            v_new = -vt * std::log(-v_new / vt);
+        }
+    }
+    return v_new;
+};
+
+[[maybe_unused]] static auto limit_jfet_vgs = [](auto v_new, auto vp)
+{
+    if (v_new < vp) return vp;
+    return v_new;
+};
+
+static constexpr auto newton_tol_sq = 0.000001;
+static constexpr int newton_max_iter = 20;
+
 
 struct Params {
     double Vpp = 9.0e+00;
@@ -48,44 +87,6 @@ struct State {
     double vGSJ1 {};
     double vD1D2 {};
 };
-
-[[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
-{
-    if (v_new > vcrit && std::abs(v_new - v_old) > 2 * vt)
-    {
-        if (v_old > 0)
-        {
-            const auto arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
-        }
-        else
-        {
-            v_new = vt * std::log(v_new / vt);
-        }
-    }
-    else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
-    {
-        if (v_old < 0)
-        {
-            const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
-        }
-        else
-        {
-            v_new = -vt * std::log(-v_new / vt);
-        }
-    }
-    return v_new;
-};
-
-[[maybe_unused]] static auto limit_jfet_vgs = [](auto v_new, auto vp)
-{
-    if (v_new < vp) return vp;
-    return v_new;
-};
-
-static constexpr auto newton_tol_sq = 1.0e-06;
-static constexpr int newton_max_iter = 20;
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -405,7 +406,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
 {
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
@@ -535,6 +536,8 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto zRdC5 = 0.0;
     const auto zR9C9 = ((gR9C9 * (((gRfR10 + (1.0 / 1000000000.0)) * D1N914_Is) * (exp((vD1D2 / D1N914_vt)) - (1.0 / exp((vD1D2 / D1N914_vt)))))) / (((gRfR10 + (1.0 / 1000000000.0)) * (gRfR10 + (1.0 / 1000000000.0))) - (gRfR10 * gRfR10)));
 
+    const auto vo_dc_out = 0.0;
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vGSJ1 = vGSJ1;
@@ -549,4 +552,6 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         state[ch].zRdC5 = zRdC5;
         state[ch].zR9C9 = zR9C9;
     }
+    return vo_dc_out;
 }
+

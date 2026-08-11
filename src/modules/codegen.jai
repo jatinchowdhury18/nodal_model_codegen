@@ -160,9 +160,11 @@ collect_param_leaf_names :: (expr: *Param_Expr, names: *[..] string) {
     collect_param_leaf_names(expr.right, names);
 }
 
+// unit_name suffixes the struct name -- used for sub-circuit units (Params_shelf, ...).
 generate_params_struct :: (elements: [] Element,
                            values: [] Element_Value,
-                           backend: Backend = .{}) -> string {
+                           backend: Backend = .{},
+                           unit_name := "") -> string {
     context.print_style.default_format_float.mode = .SCIENTIFIC;
     context.print_style.default_format_float.zero_removal = .ONE_ZERO_AFTER_DECIMAL;
 
@@ -177,8 +179,9 @@ generate_params_struct :: (elements: [] Element,
         return tprint("    % %;\n", backend.type_name, name);
     }
 
+    struct_name := tprint("Params%", unit_name);
     builder: String_Builder;
-    append(*builder, struct_open(backend, "Params"));
+    append(*builder, struct_open(backend, struct_name));
 
     // DIODE/DIODE_PAIR/BJT parameters belong to a .model card, which may be
     // shared by several elements, so we guard against emitting the same Params
@@ -235,18 +238,18 @@ generate_params_struct :: (elements: [] Element,
         }
     }
 
-    append(*builder, struct_close(backend, "Params"));
+    append(*builder, struct_close(backend, struct_name));
     return builder_to_string(*builder);
 }
 
-// `extra_state_names` holds nonlinear-cluster junction-voltage unknowns
-// (Nonlinear_Cluster.unknowns[].name), which persist across samples as the
-// per-sample Newton-Raphson warm start.
-generate_state_struct :: (elements: [] Element, extra_state_names: [] string, backend: Backend = .{}) -> string, [] string {
+// extra_state_names: nonlinear-cluster junction-voltage unknowns, persisted
+// across samples as the Newton warm start.
+generate_state_struct :: (elements: [] Element, extra_state_names: [] string, backend: Backend = .{}, unit_name := "") -> string, [] string {
     states: [..] string;
+    struct_name := tprint("State%", unit_name);
 
     builder: String_Builder;
-    append(*builder, struct_open(backend, "State"));
+    append(*builder, struct_open(backend, struct_name));
 
     for el : elements {
         if el.type == {
@@ -272,7 +275,7 @@ generate_state_struct :: (elements: [] Element, extra_state_names: [] string, ba
         append(*builder, field_decl(backend, backend.type_name, name));
     }
 
-    append(*builder, struct_close(backend, "State"));
+    append(*builder, struct_close(backend, struct_name));
     return builder_to_string(*builder), states;
 }
 
@@ -717,11 +720,13 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
 
 // Builds and solves the DC-equivalent circuit (see generate_kcl_equations
 // dc_mode), and derives the steady-state z-value for each reactive element.
-build_dc_operating_point :: (elements: [] Element, inputs: [] string) -> (clusters: [] Nonlinear_Cluster, pool: Expr_Pool, z_init_vars: [] Gen_Var) {
+// outputs: also solves the DC voltage at each of these nodes (returned as
+// output_dc_vars, name "<node>_dc_out").
+build_dc_operating_point :: (elements: [] Element, inputs: [] string, outputs: [] string = .[]) -> (clusters: [] Nonlinear_Cluster, pool: Expr_Pool, z_init_vars: [] Gen_Var, output_dc_vars: [] Gen_Var) {
     dc_solve_vars, dc_equations, dc_pool, dc_elements := generate_kcl_equations(elements, inputs, true);
     dc_solutions := solve(dc_equations, dc_solve_vars, *dc_pool);
 
-    dc_clusters := build_nonlinear_clusters(elements, dc_solve_vars, dc_solutions, *dc_pool);
+    dc_clusters := build_nonlinear_clusters(dc_elements, dc_solve_vars, dc_solutions, *dc_pool);
 
     z_init_vars: [..] Gen_Var;
     for el : dc_elements {
@@ -746,18 +751,26 @@ build_dc_operating_point :: (elements: [] Element, inputs: [] string) -> (cluste
         array_add(*z_init_vars, Gen_Var.{ name = tprint("z%", el.name), expr_id = z_expr });
     }
 
-    return dc_clusters, dc_pool, z_init_vars;
+    output_dc_vars: [..] Gen_Var;
+    for output : outputs {
+        v := simplify(copy_expr(lookup_node_voltage(output, dc_solve_vars, dc_solutions, *dc_pool, inputs), *dc_pool), *dc_pool);
+        array_add(*output_dc_vars, Gen_Var.{ name = tprint("%_dc_out", output), expr_id = v });
+    }
+
+    return dc_clusters, dc_pool, z_init_vars, output_dc_vars;
 }
 
-// Emits a `reset()` function that solves the DC operating point analytically
-// and writes it into every channel's State. Each input gets its own
-// `<input>_dc` parameter (the value it's held at for DC analysis) -- solved
-// once and copied to all `num_channels` states.
-generate_reset_function :: (elements: [] Element, inputs: [] string, backend: Backend) -> string {
-    dc_clusters, dc_pool, z_init_vars := build_dc_operating_point(elements, inputs);
+// Emits a `reset()` that solves the DC operating point and writes it into
+// every channel's State. Each input gets its own `<input>_dc` param. When
+// `outputs` is exactly one node, reset() also returns that node's settled
+// DC voltage (instead of void).
+generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: [] string, backend: Backend, unit_name := "") -> string {
+    dc_clusters, dc_pool, z_init_vars, output_dc_vars := build_dc_operating_point(elements, inputs, outputs);
+    returns_dc := outputs.count == 1;
 
     builder: String_Builder;
-    append(*builder, "static void reset (Params params, State* state, int num_channels, float sample_rate");
+    print_to_builder(*builder, "static % reset% (Params% params, State%* state, int num_channels, float sample_rate",
+                      ifx returns_dc then "float" else "void", unit_name, unit_name, unit_name);
     for input : inputs {
         append(*builder, param_decl_with_default(backend, "float", tprint("%_dc", input), "0.0f"));
     }
@@ -786,6 +799,10 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, backend: Ba
         print_to_builder(*builder, "    const %1 %2 = %3;\n", backend.decl_type, zv.name, print_expr(zv.expr_id, dc_pool.exprs, reset_suffix));
     }
     if z_init_vars.count > 0  append(*builder, "\n");
+    for ov : output_dc_vars {
+        print_to_builder(*builder, "    const %1 %2 = %3;\n", backend.decl_type, ov.name, print_expr(ov.expr_id, dc_pool.exprs, reset_suffix));
+    }
+    if output_dc_vars.count > 0  append(*builder, "\n");
 
     append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
     for c : dc_clusters {
@@ -798,6 +815,7 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, backend: Ba
     for zv : z_init_vars  print_to_builder(*builder, "        state[ch].%1 = %1;\n", zv.name);
     append(*builder, "    }\n");
 
+    if returns_dc  print_to_builder(*builder, "    return %;\n", output_dc_vars[0].name);
     append(*builder, "}\n");
     return builder_to_string(*builder);
 }

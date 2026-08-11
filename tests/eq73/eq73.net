@@ -1,0 +1,72 @@
+* 1073 EQ circuit
+* inspired by: https://www.soundskulptor.com/en/eq-s/4-7-eq573-ii-equaliser-for-the-series-500.html#/1-kit_or_asm-kit
+
+* Shelf Filter
+V1   vis    0 PULSE(-1 1 0 10m 10m 1u 20m)
+
+* high shelf
+R13  vis  v13 620
+C25  v13  vch 10n IC=0 ; param:HighFreq range:33n:4.7n log
+R1p  vch  vph 5k ; param:HighBoost range:10k:1
+R1m  vph vcl2 5k ; param:HighBoost range:1:10k
+C26 vcl2  v18 10n IC=0 ; param:HighFreq range:33n:4.7n log
+R18  v18  vib 620
+C46  vph  vab 15n IC=0
+Rbias1 vph 0 100Meg
+
+* low shelf
+R14 vis v14 6.2k
+R2p v14 vpl 5k ; param:LowBoost range:10k:1
+R2m vpl v17 5k ; param:LowBoost range:1:10k
+R17 v17 vib 6.2k
+C35 v14 v45 100n IC=0 ; param:LowFreq range:330n:15n log
+C36 v17 v45 100n IC=0 ; param:LowFreq range:330n:15n log
+C45 vpl v45 10n IC=0
+Rbias2 v45 0 100Meg
+R19 vpl vab 12k
+
+Es   vib  0   vab    0  1e6
+C47  vab vib 470p IC=0
+R20  vib   0 10k
+
+* Bell filter
+* V1  vib   0 PULSE(-1 1 0 20m 1u 1u 20m)
+R21 vib v21 6.8k
+R23 v21  va 8.2k
+R25 v21  vb 6.8k
+C60  vb  va 150p IC=0
+R26  vb   0  10k
+* Op-amp @TODO: replace with discrete amp?
+* [out, 0, pos, neg, gain]
+Eb  vb  0   va    0  1e6
+R3p  vb vpt   5k ; param:MidBoost range:0:10k
+R3m vpt vib   5k ; param:MidBoost range:10k:0
+Cf  vpt  vc 220n IC=0 ; param:MidFreq range:220n:1n log
+Lf   vc  vl    2 IC=0 ; param:MidFreq range:2:0.1 log
+R24  vl  va 4.7k
+
+* resonant highpass
+R27   vb vihp 1.8k
+C21 vihp  vl2 2.2u IC=0 ; param:HPF range:2.2u:100n
+C22  vl2  voh 2.2u IC=0 ; param:HPF range:2.2u:100n
+L1   vl2    0   10 IC=0 ; param:HPF range:10:1.3
+R9   voh    0 5.1k
+
+* output amp
+R10 vnh  0 15k
+Rll vnh vo 10k
+Eout vo 0 voh vnh 1e6
+
+* solved as 3 independent pieces for numerical stability
+* sub-circuit: shelf vis vib
+* sub-circuit: bell vib vb
+* sub-circuit: hpf vb vo
+
+Escaled vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip
+
+.tran 0 80m 0 20.0u uic
+.wav "vin.wav" 32 96k V(vis)
+.wav "vout.wav" 32 96k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end

@@ -1,39 +1,9 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen pedal_drive.net pedal_drive.h -type_name double
 
 #pragma once
 
 #include <cmath>
-
-struct Params {
-    double Cout = 9.999999e-08;
-    double Rout = 1.0e+05;
-    double R20 = 1.0e+05;
-    double R21 = 1.5e+02;
-    double Vp = 9.0e+00;
-    double R18 = 1.0e+04;
-    double Q2N5089_Is = 5.0e-14;
-    double Q2N5089_vt = 2.585e-02;
-    double Q2N5089_BetaF = 6.0e+02;
-    double Q2N5089_BetaR = 5.0e+01;
-    double R19 = 1.0e+04;
-    double C5 = 9.999999e-08;
-    double C6 = 1.0e-06;
-    double R17 = 4.7e+05;
-    double C12 = 4.7e-10;
-    double D1N914_Is = 2.52e-09;
-    double D1N914_vt = 4.52892e-02;
-};
-
-struct State {
-    double zCout {};
-    double zR19C5 {};
-    double zC6 {};
-    double zR17C12 {};
-    double vBCQ1 {};
-    double vBEQ1 {};
-    double vD3D4 {};
-};
 
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -64,8 +34,39 @@ struct State {
     return v_new;
 };
 
-static constexpr auto newton_tol_sq = 1.0e-04;
+static constexpr auto newton_tol_sq = 0.0001;
 static constexpr int newton_max_iter = 10;
+
+
+struct Params {
+    double Cout = 9.999999e-08;
+    double Rout = 1.0e+05;
+    double R20 = 1.0e+05;
+    double R21 = 1.5e+02;
+    double Vp = 9.0e+00;
+    double R18 = 1.0e+04;
+    double Q2N5089_Is = 5.0e-14;
+    double Q2N5089_vt = 2.585e-02;
+    double Q2N5089_BetaF = 6.0e+02;
+    double Q2N5089_BetaR = 5.0e+01;
+    double R19 = 1.0e+04;
+    double C5 = 9.999999e-08;
+    double C6 = 1.0e-06;
+    double R17 = 4.7e+05;
+    double C12 = 4.7e-10;
+    double D1N914_Is = 2.52e-09;
+    double D1N914_vt = 4.52892e-02;
+};
+
+struct State {
+    double zCout {};
+    double zR19C5 {};
+    double zC6 {};
+    double zR17C12 {};
+    double vBCQ1 {};
+    double vBEQ1 {};
+    double vD3D4 {};
+};
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -406,7 +407,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
 {
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
@@ -631,6 +632,8 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto zC6 = (gC6 * (((((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17)) - (((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) - (((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))))))));
     const auto zR17C12 = ((gzR17C12 * ((((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))) + (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) - (((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))))) / 2.0);
 
+    const auto vo_dc_out = 0.0;
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vBCQ1 = vBCQ1;
@@ -641,4 +644,6 @@ static void reset (Params params, State* state, int num_channels, float sample_r
         state[ch].zC6 = zC6;
         state[ch].zR17C12 = zR17C12;
     }
+    return vo_dc_out;
 }
+

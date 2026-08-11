@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen res_highpass.net res_highpass.h
 
 #pragma once
@@ -61,3 +61,32 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zL1 = zL1;
     }
 }
+
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+{
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
+    const auto gC21 = 2.0f * sample_rate * params.C21;
+    
+    const auto gC22 = 2.0f * sample_rate * params.C22;
+    
+    const auto gL1 = 1.0f / (2.0f * sample_rate * params.L1);
+    
+    const auto gR9 = 1.0f / params.R9;
+    
+    const auto vi = vi_dc;
+
+    const auto zC21 = (gC21 * vi);
+    const auto zC22 = 0.0f;
+
+    const auto vo_dc_out = 0.0f;
+
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        state[ch].zC21 = zC21;
+        state[ch].zC22 = zC22;
+    }
+    return vo_dc_out;
+}
+

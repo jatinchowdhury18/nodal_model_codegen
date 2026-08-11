@@ -1,21 +1,9 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen diode_circuit.net diode_circuit.h
 
 #pragma once
 
 #include <cmath>
-
-struct Params {
-    float R1 = 1.0e+03f;
-    float C1 = 1.0e-06f;
-    float D1N914_Is = 2.52e-09f;
-    float D1N914_vt = 4.52892e-02f;
-};
-
-struct State {
-    float zC1 {};
-    float vD1 {};
-};
 
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -46,8 +34,21 @@ struct State {
     return v_new;
 };
 
-static constexpr auto newton_tol_sq = 1.0e-05;
+static constexpr auto newton_tol_sq = 0.00001;
 static constexpr int newton_max_iter = 20;
+
+
+struct Params {
+    float R1 = 1.0e+03f;
+    float C1 = 1.0e-06f;
+    float D1N914_Is = 2.52e-09f;
+    float D1N914_vt = 4.52892e-02f;
+};
+
+struct State {
+    float zC1 {};
+    float vD1 {};
+};
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -108,7 +109,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
 {
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
@@ -151,9 +152,13 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     }
     const auto zC1 = (-((gC1 * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0f)) - (gR1 * vi))) / (gR1 + (1.0f / 1000000000.0f))));
 
+    const auto vo_dc_out = (-(((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0f)) - (gR1 * vi)) / (gR1 + (1.0f / 1000000000.0f))));
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vD1 = vD1;
         state[ch].zC1 = zC1;
     }
+    return vo_dc_out;
 }
+

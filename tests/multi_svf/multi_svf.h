@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen multi_svf.net multi_svf.h
 
 #pragma once
@@ -90,3 +90,43 @@ static void compute (const float* const* input, float** output_vh, float** outpu
         state[ch].zCf2 = zCf2;
     }
 }
+
+static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+{
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
+    const auto gRin = 1.0f / params.Rin;
+    
+    const auto gR1 = 1.0f / params.R1;
+    
+    const auto gRf1 = 1.0f / params.Rf1;
+    
+    const auto gCf1 = 2.0f * sample_rate * params.Cf1;
+    
+    const auto gRf2 = 1.0f / params.Rf2;
+    
+    const auto gCf2 = 2.0f * sample_rate * params.Cf2;
+    
+    const auto gRfb1 = 1.0f / params.Rfb1;
+    
+    const auto gRfb2 = 1.0f / params.Rfb2;
+    
+    const auto gRg = 1.0f / params.Rg;
+    
+    const auto vi = vi_dc;
+
+    const auto zCf1 = 0.0f;
+    const auto zCf2 = (-((gCf2 * ((gRin * vi) * (((gR1 + gRfb2) + gRg) + (1.0f / 1000000000.0f)))) / ((gRin + gRfb1) * gRfb2)));
+
+    const auto vh_dc_out = 0.0f;
+    const auto vb_dc_out = 0.0f;
+    const auto vl_dc_out = (((gRin * vi) * (((gR1 + gRfb2) + gRg) + (1.0f / 1000000000.0f))) / ((gRin + gRfb1) * gRfb2));
+
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        state[ch].zCf1 = zCf1;
+        state[ch].zCf2 = zCf2;
+    }
+}
+

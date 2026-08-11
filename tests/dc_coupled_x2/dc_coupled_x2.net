@@ -1,0 +1,34 @@
+* Two diode+RC stages
+* Fixture for testing reset() DC-chaining between sub-circuits.
+
+Vin vi 0 PULSE(-1 1 0 20m 1u 1u 20m)
+Vbias vbias 0 DC 5
+
+* stage1: diode-shifted RC lowpass off a 5V rail
+R1 vi va 1k
+R2 vbias va 1k
+D1 va vo1_int D1N914
+C1 vo1_int 0 100n
+R3 vo1_int 0 10k
+* unity-gain buffer
+Ebuf vo1 0 vo1_int vo1 1e6
+
+* stage2: same topology, fed from the buffered output
+R1x vo1 vax 1k
+D1x vax vo2 D1N914
+C1x vo2 0 100n
+R3x vo2 0 10k
+
+.model D1N914 D (IS=2.52E-9 N=1.752)
+
+* output: vo2
+* sub-circuit: stage1 vi vo1
+* sub-circuit: stage2 vo1 vo2
+
+.tran 0 80m 0 20.0u
+Escale1 vo_scaled 0 value = {V(vo2)*0.1} ; netlist_skip
+.wav "vin.wav" 32 48k V(vi)
+.wav "vout.wav" 32 48k V(vo_scaled)
+.options plotwinsize=0
+.backanno
+.end

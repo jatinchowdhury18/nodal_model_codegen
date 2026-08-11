@@ -1,9 +1,19 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen common_drain.net common_drain.h -type_name double
 
 #pragma once
 
 #include <cmath>
+
+[[maybe_unused]] static auto limit_jfet_vgs = [](auto v_new, auto vp)
+{
+    if (v_new < vp) return vp;
+    return v_new;
+};
+
+static constexpr auto newton_tol_sq = 0.00001;
+static constexpr int newton_max_iter = 20;
+
 
 struct Params {
     double VCC = 9.0e+00;
@@ -21,15 +31,6 @@ struct State {
     double zC13 {};
     double vGSJ1 {};
 };
-
-[[maybe_unused]] static auto limit_jfet_vgs = [](auto v_new, auto vp)
-{
-    if (v_new < vp) return vp;
-    return v_new;
-};
-
-static constexpr auto newton_tol_sq = 1.0e-05;
-static constexpr int newton_max_iter = 20;
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
 {
@@ -113,7 +114,7 @@ static void compute (const float* const* input, float** output, int num_channels
     }
 }
 
-static void reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
 {
     [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
     [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
@@ -165,10 +166,14 @@ static void reset (Params params, State* state, int num_channels, float sample_r
     const auto zC12 = (gC12 * vi);
     const auto zC13 = ((gC13 * ((_2N5485_Beta * ((vGSJ1 - _2N5485_vp) + (1.0 / 1000.0))) * ((vGSJ1 - _2N5485_vp) + (1.0 / 1000.0)))) / (gR13 + (1.0 / 1000000000.0)));
 
+    const auto vo_dc_out = 0.0;
+
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vGSJ1 = vGSJ1;
         state[ch].zC12 = zC12;
         state[ch].zC13 = zC13;
     }
+    return vo_dc_out;
 }
+

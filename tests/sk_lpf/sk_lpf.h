@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 9b9cfe2.
+// Auto-generated with netlist_codegen version ce593e9.
 // Command: netlist_codegen sk_lpf.net sk_lpf.h
 
 #pragma once
@@ -73,3 +73,38 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zC2 = zC2;
     }
 }
+
+static float reset (Params params, State* state, int num_channels, float sample_rate, float vi_dc = 0.0f)
+{
+    [[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };
+    [[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };
+    
+    const auto gR1 = 1.0f / params.R1;
+    
+    const auto gR2 = 1.0f / params.R2;
+    
+    const auto gC1 = 2.0f * sample_rate * params.C1;
+    
+    const auto gC2 = 2.0f * sample_rate * params.C2;
+    
+    const auto gRf = 1.0f / params.Rf;
+    
+    const auto gRg = 1.0f / params.Rg;
+    
+    const auto gRload = 1.0f / params.Rload;
+    
+    const auto vi = vi_dc;
+
+    const auto zC1 = ((gC1 * ((gR1 * vi) * (gR2 * gRf))) / ((((gR1 + gR2) + (1.0f / 1000000000.0f)) * (gR2 * gRf)) - (gR2 * (gR2 * gRf))));
+    const auto zC2 = (gC2 * ((((gR1 * vi) * (gR2 * ((gRf + gRg) + (1.0f / 1000000000.0f)))) / ((((gR1 + gR2) + (1.0f / 1000000000.0f)) * (gR2 * gRf)) - (gR2 * (gR2 * gRf)))) - (((gR1 * vi) * (gR2 * gRf)) / ((((gR1 + gR2) + (1.0f / 1000000000.0f)) * (gR2 * gRf)) - (gR2 * (gR2 * gRf))))));
+
+    const auto vo_dc_out = (((gR1 * vi) * (gR2 * ((gRf + gRg) + (1.0f / 1000000000.0f)))) / ((((gR1 + gR2) + (1.0f / 1000000000.0f)) * (gR2 * gRf)) - (gR2 * (gR2 * gRf))));
+
+    for (int ch = 0; ch < num_channels; ++ch)
+    {
+        state[ch].zC1 = zC1;
+        state[ch].zC2 = zC2;
+    }
+    return vo_dc_out;
+}
+

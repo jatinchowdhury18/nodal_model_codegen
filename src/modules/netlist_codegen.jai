@@ -278,6 +278,9 @@ Netlist_Info :: struct {
     inputs : [..] string;
     outputs : [..] string;
 
+    // `* sub-circuit: <name> <in_node> <out_node>`.
+    sub_circuits : [..] Sub_Circuit_Decl;
+
     // Newton-Raphson solver defaults.
     newton_tol_sq   := 1.0e-5;
     newton_max_iter := 20;
@@ -384,6 +387,22 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 output := String.trim(String.slice(line, 7, line.count - 7));
                 log("Adding output node: %\n", output);
                 array_add(*outputs, output);
+            }
+            if String.begins_with(line, "sub-circuit:") {
+                rest := String.trim(String.slice(line, 12, line.count - 12));
+                rest_tokens_raw := String.split(rest, #char " ");
+                rest_tokens: [..] string;
+                for t : rest_tokens_raw  if t.count > 0  array_add(*rest_tokens, t);
+                if rest_tokens.count == 3 {
+                    decl: Sub_Circuit_Decl;
+                    decl.name     = rest_tokens[0];
+                    decl.in_node  = rest_tokens[1];
+                    decl.out_node = rest_tokens[2];
+                    log("Sub-circuit %: % -> %\n", decl.name, decl.in_node, decl.out_node);
+                    array_add(*sub_circuits, decl);
+                } else {
+                    log("Warning: malformed 'sub-circuit:' line '%'; expected '<name> <in_node> <out_node>'.\n", rest);
+                }
             }
             // `nr_solve(max_iter=<int>, tol=<val>)`.
             if String.begins_with(line, "nr_solve") {
@@ -690,55 +709,61 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
     return netlist_info;
 }
 
-netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "") -> string {
-    backend := make_backend(lang, type_name);
-    net := parse_netlist(netlist_str);
-
-    if net.outputs.count == 0 {
-        log("Adding output node: vo\n");
-        array_add(*net.outputs, "vo");
+// True if any element in `elements` needs the Newton-Raphson path (a real
+// nonlinear I-V law, or an op-amp with an active clip/slew stage --
+// AMP_CLIP isn't in nonlinear_device_spec() -- see circuit_uses_limiter_kind).
+circuit_has_nonlinear :: (elements: [] Element) -> bool {
+    for el : elements {
+        if nonlinear_device_spec(el.type).unknowns.count > 0  return true;
+        if el.type == .AMP && opamp_has_clip_stage(el)  return true;
     }
+    return false;
+}
 
-    has_nonlinear := false;
-    for el : net.elements {
-        if nonlinear_device_spec(el.type).unknowns.count > 0 { has_nonlinear = true; break; }
-        // AMP_CLIP isn't in nonlinear_device_spec() -- see circuit_uses_limiter_kind.
-        if el.type == .AMP && opamp_has_clip_stage(el) { has_nonlinear = true; break; }
-    }
+flop_str :: (f: Flop_Count) -> string {
+    b: String_Builder;
+    sep := "";
+    if f.muls > 0 { append(*b, sep); print_to_builder(*b, "% mul", f.muls); sep = ", "; }
+    if f.divs > 0 { append(*b, sep); print_to_builder(*b, "% div", f.divs); sep = ", "; }
+    if f.adds > 0 { append(*b, sep); print_to_builder(*b, "% add", f.adds); sep = ", "; }
+    if f.transcendentals > 0 { append(*b, sep); print_to_builder(*b, "% transcendental", f.transcendentals); sep = ", "; }
+    total := f.muls + f.divs + f.adds + f.transcendentals;
+    if total == 0  return "0 ops";
+    return tprint("% ops (%)", total, builder_to_string(*b));
+}
+flop_total :: (f: Flop_Count) -> int { return f.muls + f.divs + f.adds + f.transcendentals; }
 
-    outer_code: string;
-    loop_code:  string;
+element_group_has_node :: (elements: [] Element, node: string) -> bool {
+    for el : elements  for term : el.terminals  if term == node  return true;
+    return false;
+}
+
+// Emits one complete unit for `elements`: Params<suffix>/State<suffix>,
+// compute() and reset() for every circuit.
+generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string, values: [] Element_Value,
+                  backend: Backend, label: string, suffix: string,
+                  newton_tol_sq: float64, newton_max_iter: int) -> (code: string, has_nonlinear: bool) {
+    elements_copy := elements; // reduce_circuit mutates in place
+    has_nonlinear := circuit_has_nonlinear(elements_copy);
+
+    outer_code, loop_code: string;
     outer_flops, inner_flops: Flop_Count;
     outer_temp_count, inner_temp_count: int;
     clusters: [] Nonlinear_Cluster;
-    cluster_exprs: [] Expr; // only valid/used when has_nonlinear
-
-    flop_str :: (f: Flop_Count) -> string #expand {
-        b: String_Builder;
-        sep := "";
-        if f.muls > 0 { append(*b, sep); print_to_builder(*b, "% mul", f.muls); sep = ", "; }
-        if f.divs > 0 { append(*b, sep); print_to_builder(*b, "% div", f.divs); sep = ", "; }
-        if f.adds > 0 { append(*b, sep); print_to_builder(*b, "% add", f.adds); sep = ", "; }
-        if f.transcendentals > 0 { append(*b, sep); print_to_builder(*b, "% transcendental", f.transcendentals); sep = ", "; }
-        total := f.muls + f.divs + f.adds + f.transcendentals;
-        if total == 0  return "0 ops";
-        return tprint("% ops (%)", total, builder_to_string(*b));
-    }
-    flop_total :: (f: Flop_Count) -> int #expand { return f.muls + f.divs + f.adds + f.transcendentals; }
+    cluster_exprs: [] Expr;
 
     if has_nonlinear {
-        log("Nonlinear system: resolving with Newton-Raphson (tol²=%, max_iter=%)\n", net.newton_tol_sq, net.newton_max_iter);
+        log("Nonlinear system: resolving with Newton-Raphson (tol²=%, max_iter=%)\n", newton_tol_sq, newton_max_iter);
 
         // Same as solve_and_codegen(), but with build_nonlinear_clusters()
         // spliced in between solve() and generate_expressions() -- see
         // nonlinear_solve.jai for why the ordering matters.
-        reduce_circuit(*net.elements, net.inputs, net.outputs);
-        solve_vars, equations, pool, kcl_elements := generate_kcl_equations(net.elements, net.inputs);
-        check := build_magnitude_check(net.elements, net.values, backend, label);
+        reduce_circuit(*elements_copy, inputs, outputs);
+        solve_vars, equations, pool, kcl_elements := generate_kcl_equations(elements_copy, inputs);
+        check := build_magnitude_check(elements_copy, values, backend, label);
         solutions := solve(equations, solve_vars, *pool, check);
 
         clusters = build_nonlinear_clusters(kcl_elements, solve_vars, solutions, *pool);
-
         for c : clusters {
             unknown_names: [..] string;
             for u : c.unknowns  array_add(*unknown_names, u.name);
@@ -748,37 +773,34 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
             }
         }
 
-        // Junction-voltage unknowns (vD1, vBCQ1, ...) only appear in the tree
-        // *after* nonlinear_solve.jai substitutes them in for branch-current
-        // symbols.
+        // Junction-voltage unknowns only appear in the tree *after*
+        // nonlinear_solve.jai substitutes them in for branch-current symbols.
         cluster_variant_names: [..] string;
         for c : clusters  for u : c.unknowns  array_add(*cluster_variant_names, u.name);
 
-        gen_vars := generate_expressions(kcl_elements, net.outputs, solve_vars, solutions, *pool);
-
+        gen_vars := generate_expressions(kcl_elements, outputs, solve_vars, solutions, *pool);
         gen_var_ids: [..] Expr_ID;
         for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
 
         cse_vars := cse(gen_var_ids, *pool);
         sort_cse_topological(*cse_vars, pool.exprs);
 
-        licm_variant_base := build_variant_base(kcl_elements, net.inputs);
+        licm_variant_base := build_variant_base(kcl_elements, inputs);
         for gv : gen_vars  array_add(*licm_variant_base, gv.name);
         for n : cluster_variant_names  array_add(*licm_variant_base, n);
         licm(gen_var_ids, *cse_vars, *pool, licm_variant_base);
         recip_hoist(gen_var_ids, *cse_vars, *pool, licm_variant_base);
 
         outer_code, loop_code, outer_flops, inner_flops, outer_temp_count, inner_temp_count =
-            codegen(kcl_elements, net.inputs, gen_vars, cse_vars, pool.exprs, backend, cluster_variant_names);
+            codegen(kcl_elements, inputs, gen_vars, cse_vars, pool.exprs, backend, cluster_variant_names);
         cluster_exprs = pool.exprs;
     } else {
         outer_code, loop_code, outer_flops, inner_flops, outer_temp_count, inner_temp_count =
-            solve_and_codegen(*net.elements, net.inputs, net.outputs, net.values, backend, label);
+            solve_and_codegen(*elements_copy, inputs, outputs, values, backend, label);
     }
 
     log("  Outer loop: %\n  Inner loop: %\n", flop_str(outer_flops), flop_str(inner_flops));
-    log("  Temp vars: % outer, % inner, % total\n",
-        outer_temp_count, inner_temp_count, outer_temp_count + inner_temp_count);
+    log("  Temp vars: % outer, % inner, % total\n", outer_temp_count, inner_temp_count, outer_temp_count + inner_temp_count);
 
     newton_worst_case := 0;
     if has_nonlinear {
@@ -786,11 +808,11 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
             setup_flops := count_flops(c.invariant_items, cluster_exprs);
             iter_flops  := count_flops(c.iteration_items, cluster_exprs);
             log("  Cluster \"%\" Newton setup: %\n", c.name, flop_str(setup_flops));
-            log("  Cluster \"%\" Newton iteration: % × up to % iters\n", c.name, flop_str(iter_flops), net.newton_max_iter);
+            log("  Cluster \"%\" Newton iteration: % × up to % iters\n", c.name, flop_str(iter_flops), newton_max_iter);
             if c.invariant_items.count == 0 {
                 log("    No Newton-invariant subexpressions found -- nothing hoisted out of the per-iteration loop\n");
             }
-            newton_worst_case += flop_total(setup_flops) + net.newton_max_iter * flop_total(iter_flops);
+            newton_worst_case += flop_total(setup_flops) + newton_max_iter * flop_total(iter_flops);
         }
     }
     log("  Estimated worst-case ops/sample: % (% outer + % inner%)\n",
@@ -799,72 +821,43 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
         ifx has_nonlinear then tprint(" + % Newton (worst case)", newton_worst_case) else "");
 
     builder: String_Builder;
-    append(*builder, "#pragma once\n\n");
-    if has_nonlinear {
-        append(*builder, math_include(backend));
-    }
 
-    if namespace.count > 0 && backend.is_cpp {
-        append(*builder, tprint("namespace %\n{\n\n", namespace));
-    }
-
-    params_struct_code := generate_params_struct(net.elements, net.values, backend);
-    append(*builder, params_struct_code);
+    append(*builder, generate_params_struct(elements_copy, values, backend, suffix));
     append(*builder, "\n");
 
     extra_state_names: [..] string;
     for c : clusters  for u : c.unknowns  array_add(*extra_state_names, u.name);
-    state_struct_code, states := generate_state_struct(net.elements, extra_state_names, backend);
+    state_struct_code, states := generate_state_struct(elements_copy, extra_state_names, backend, suffix);
     append(*builder, state_struct_code);
     append(*builder, "\n");
 
-    if has_nonlinear {
-        if circuit_uses_limiter_kind(net.elements, .EXP_JUNCTION) {
-            append(*builder, generate_junction_limiter_helper(backend));
-            append(*builder, "\n");
-        }
-        if circuit_uses_limiter_kind(net.elements, .JFET_PINCHOFF) {
-            append(*builder, generate_jfet_limiter_helper(backend));
-            append(*builder, "\n");
-        }
-        if circuit_uses_limiter_kind(net.elements, .AMP_CLIP) {
-            append(*builder, generate_opamp_clip_limiter_helper(backend));
-            append(*builder, "\n");
-        }
-        append(*builder, generate_newton_constants(net.newton_tol_sq, net.newton_max_iter, backend));
-    }
-
-    append(*builder, "static void compute (");
-    if net.inputs.count == 1 {
+    print_to_builder(*builder, "static void compute% (", suffix);
+    if inputs.count == 1 {
         append(*builder, "const float* const* input, ");
     } else {
-        for input : net.inputs  append(*builder, tprint("const float* const* input_%, ", input));
+        for input : inputs  append(*builder, tprint("const float* const* input_%, ", input));
     }
-    if net.outputs.count == 1 {
+    if outputs.count == 1 {
         append(*builder, "float** output, ");
     } else {
-        for output : net.outputs  append(*builder, tprint("float** output_%, ", output));
+        for output : outputs  append(*builder, tprint("float** output_%, ", output));
     }
-    append(*builder, "int num_channels, int num_samples, Params params, State* state, float sample_rate)\n");
+    print_to_builder(*builder, "int num_channels, int num_samples, Params% params, State%* state, float sample_rate)\n", suffix, suffix);
     append(*builder, "{\n");
 
-    append(*builder, indent(generate_impedance_defs(net.elements, backend)));
+    append(*builder, indent(generate_impedance_defs(elements_copy, backend)));
     if has_nonlinear  append(*builder, indent(generate_vcrit_defs(clusters, backend)));
     if outer_code.count > 0  append(*builder, indent(outer_code));
 
-    append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n");
-    append(*builder, "    {\n");
+    append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
     for state : states  append(*builder, tprint("        %1 %2 = state[ch].%2;\n", backend.decl_type, state));
 
-    append(*builder, "        for (int n = 0; n < num_samples; ++n)\n");
-    append(*builder, "        {\n");
+    append(*builder, "        for (int n = 0; n < num_samples; ++n)\n        {\n");
 
-    if net.inputs.count == 1 {
-        append(*builder, tprint("            const %1 %2 = input[ch][n];\n\n", backend.decl_type, net.inputs[0]));
+    if inputs.count == 1 {
+        append(*builder, tprint("            const %1 %2 = input[ch][n];\n\n", backend.decl_type, inputs[0]));
     } else {
-        for input : net.inputs {
-            append(*builder, tprint("            const %1 %2 = input_%2[ch][n];\n", backend.decl_type, input));
-        }
+        for input : inputs  append(*builder, tprint("            const %1 %2 = input_%2[ch][n];\n", backend.decl_type, input));
         append(*builder, "\n");
     }
 
@@ -877,28 +870,127 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
 
     append(*builder, tprint("%\n", indent(loop_code, "            ")));
 
-    if net.outputs.count == 1 {
-        append(*builder, tprint("            output[ch][n] = %;\n", net.outputs[0]));
+    if outputs.count == 1 {
+        append(*builder, tprint("            output[ch][n] = %;\n", outputs[0]));
     } else {
-        for output : net.outputs {
-            append(*builder, tprint("            output_%1[ch][n] = %1;\n", output));
-        }
+        for output : outputs  append(*builder, tprint("            output_%1[ch][n] = %1;\n", output));
     }
     append(*builder, "        }\n");
 
-    for state : states append(*builder, tprint("        state[ch].%1 = %1;\n", state));
-    append(*builder, "    }\n");
+    for state : states  append(*builder, tprint("        state[ch].%1 = %1;\n", state));
+    append(*builder, "    }\n}\n");
 
-    append(*builder, "}\n");
+    append(*builder, "\n");
+    append(*builder, generate_reset_function(elements_copy, inputs, outputs, backend, suffix));
 
-    if has_nonlinear {
+    return builder_to_string(*builder), has_nonlinear;
+}
+
+// A struct wrapping every named sub-circuit's own struct/function as a
+// field, plus compute()/reset() that just call each sub-circuit's
+// compute_<name>()/reset_<name>() in sequence, in place.
+generate_joined_unit :: (decls: [] Sub_Circuit_Decl) -> string {
+    builder: String_Builder;
+
+    append(*builder, "struct Params {\n");
+    for d : decls  print_to_builder(*builder, "    Params_% %;\n", d.name, d.name);
+    append(*builder, "};\n\n");
+
+    append(*builder, "struct State {\n");
+    for d : decls  print_to_builder(*builder, "    State_% %;\n", d.name, d.name);
+    append(*builder, "};\n\n");
+
+    append(*builder, "static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)\n{\n");
+    append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
+    for d, i : decls {
+        in_arg := ifx i == 0 then "&input[ch]" else "&output[ch]";
+        print_to_builder(*builder, "        compute_%1(%2, &output[ch], 1, num_samples, params.%1, &state[ch].%1, sample_rate);\n", d.name, in_arg);
+    }
+    append(*builder, "    }\n}\n");
+
+    // Joined reset(): seed the first stage's DC level from the caller, then
+    // chain each stage's settled DC output into the next stage's input bias.
+    print_to_builder(*builder, "\nstatic void reset (Params params, State* state, int num_channels, float sample_rate, float %_dc = 0.0f)\n{\n", decls[0].in_node);
+    append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
+    prev_dc_var := "";
+    for d, i : decls {
+        chain_arg := ifx i == 0
+            then tprint(", %_dc", decls[0].in_node)
+            else ifx d.in_node == decls[i-1].out_node then tprint(", %", prev_dc_var) else "";
+        dc_var := tprint("%_dc", d.name);
+        print_to_builder(*builder, "        const float %1 = reset_%2(params.%2, &state[ch].%2, 1, sample_rate%3);\n", dc_var, d.name, chain_arg);
+        prev_dc_var = dc_var;
+    }
+    append(*builder, "    }\n}\n");
+
+    return builder_to_string(*builder);
+}
+
+netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "") -> string {
+    backend := make_backend(lang, type_name);
+    net := parse_netlist(netlist_str);
+
+    if net.outputs.count == 0 {
+        log("Adding output node: vo\n");
+        array_add(*net.outputs, "vo");
+    }
+
+    partitions := partition_circuit(net.elements, net.sub_circuits);
+
+    builder: String_Builder;
+    append(*builder, "#pragma once\n\n");
+
+    file_has_nonlinear := circuit_has_nonlinear(net.elements);
+    if file_has_nonlinear  append(*builder, math_include(backend));
+
+    if namespace.count > 0 && backend.is_cpp  append(*builder, tprint("namespace %\n{\n\n", namespace));
+
+    // Nonlinear file-scope helpers -- shared by every unit below, so these
+    // are emitted once here rather than once per unit (which would collide
+    // on redefinition when more than one unit is nonlinear).
+    if file_has_nonlinear {
+        if circuit_uses_limiter_kind(net.elements, .EXP_JUNCTION) { append(*builder, generate_junction_limiter_helper(backend)); append(*builder, "\n"); }
+        if circuit_uses_limiter_kind(net.elements, .JFET_PINCHOFF) { append(*builder, generate_jfet_limiter_helper(backend)); append(*builder, "\n"); }
+        if circuit_uses_limiter_kind(net.elements, .AMP_CLIP) { append(*builder, generate_opamp_clip_limiter_helper(backend)); append(*builder, "\n"); }
+        append(*builder, generate_newton_constants(net.newton_tol_sq, net.newton_max_iter, backend));
         append(*builder, "\n");
-        append(*builder, generate_reset_function(net.elements, net.inputs, backend));
     }
 
-    if namespace.count > 0 && backend.is_cpp {
-        append(*builder, tprint("\n} // namespace %\n", namespace));
+    all_single_io := true;
+    for part : partitions {
+        local_inputs: [..] string;
+        for inp : net.inputs  if element_group_has_node(part.elements, inp)  array_add_if_unique(*local_inputs, inp);
+        if part.in_node.count > 0  array_add_if_unique(*local_inputs, part.in_node);
+
+        local_outputs: [..] string;
+        for outp : net.outputs  if element_group_has_node(part.elements, outp)  array_add_if_unique(*local_outputs, outp);
+        if part.out_node.count > 0  array_add_if_unique(*local_outputs, part.out_node);
+
+        if local_inputs.count != 1 || local_outputs.count != 1  all_single_io = false;
+
+        suffix := ifx part.name.count > 0 then tprint("_%", part.name) else "";
+        unit_label := ifx part.name.count > 0 then tprint("%[%]", label, part.name) else label;
+
+        if net.sub_circuits.count > 0 {
+            log("[%] % element(s), inputs: [%], outputs: [%]\n", ifx part.name.count > 0 then part.name else "?",
+                part.elements.count, String.join(..local_inputs, separator = ", "), String.join(..local_outputs, separator = ", "));
+        }
+
+        code, has_nonlinear := generate_unit(part.elements, local_inputs, local_outputs, net.values,
+                                             backend, unit_label, suffix, net.newton_tol_sq, net.newton_max_iter);
+        append(*builder, code);
+        append(*builder, "\n");
     }
+
+    if net.sub_circuits.count > 1 {
+        if all_single_io {
+            append(*builder, generate_joined_unit(net.sub_circuits));
+        } else {
+            log("Warning: sub-circuits with more than one input/output aren't supported for the joined compute().\n");
+        }
+    }
+
+    if namespace.count > 0 && backend.is_cpp  append(*builder, tprint("\n} // namespace %\n", namespace));
 
     return builder_to_string(*builder);
 }
