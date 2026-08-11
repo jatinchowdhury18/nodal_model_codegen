@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version d79a711.
 // Command: netlist_codegen common_emitter.net common_emitter.h
 
 #pragma once
@@ -134,8 +134,8 @@ static void compute (const float* const* input, float** output, int num_channels
             {
                 const auto _Q1_t10 = (vBEQ1 / Q2N5089_vt);
                 const auto _Q1_t14 = (vBCQ1 / Q2N5089_vt);
-                const auto _Q1_t9 = exp(_Q1_t10);
-                const auto _Q1_t13 = exp(_Q1_t14);
+                const auto _Q1_t9 = std::exp(_Q1_t10);
+                const auto _Q1_t13 = std::exp(_Q1_t14);
                 const auto _Q1_t22 = (_Q1_t9 - _Q1_t13);
                 const auto _Q1_t31 = (Q2N5089_Is * _Q1_t9);
                 const auto _Q1_t33 = (_Q1_t31 / Q2N5089_vt);
@@ -188,8 +188,8 @@ static void compute (const float* const* input, float** output, int num_channels
             }
 
             const auto _t2 = (zC2 * 128.0f);
-            const auto _t4 = exp((vBEQ1 / Q2N5089_vt));
-            const auto _t5 = exp((vBCQ1 / Q2N5089_vt));
+            const auto _t4 = std::exp((vBEQ1 / Q2N5089_vt));
+            const auto _t5 = std::exp((vBCQ1 / Q2N5089_vt));
             const auto _t7 = (_t5 - 1.0f);
             const auto _t6 = (_t7 / Q2N5089_BetaR);
             const auto _t3 = (((Q2N5089_Is * ((_t4 - _t5) - _t6)) - zC2) * 128.0f);
@@ -260,8 +260,8 @@ static float reset (Params params, State* state, int num_channels, float sample_
     {
         const auto _Q1_t9 = (vBEQ1 / Q2N5089_vt);
         const auto _Q1_t13 = (vBCQ1 / Q2N5089_vt);
-        const auto _Q1_t8 = exp(_Q1_t9);
-        const auto _Q1_t12 = exp(_Q1_t13);
+        const auto _Q1_t8 = std::exp(_Q1_t9);
+        const auto _Q1_t12 = std::exp(_Q1_t13);
         const auto _Q1_t19 = (_Q1_t8 - _Q1_t12);
         const auto _Q1_t25 = (Q2N5089_Is * _Q1_t8);
         const auto _Q1_t27 = (_Q1_t25 / Q2N5089_vt);
@@ -312,8 +312,8 @@ static float reset (Params params, State* state, int num_channels, float sample_
             break;
         
     }
-    const auto zC1 = (gC1 * (vi - (((gR1 * VCC) - (Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR)))) / ((gR1 + gR2) + (1.0f / 1000000000.0f)))));
-    const auto zC2 = (-((gC2 * ((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR))) - (VCC * gRC))) / (gRC + (1.0f / 1000000000.0f))));
+    const auto zC1 = (gC1 * (vi - (((gR1 * VCC) - (Q2N5089_Is * (((std::exp((vBEQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaF) + ((std::exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR)))) / ((gR1 + gR2) + (1.0f / 1000000000.0f)))));
+    const auto zC2 = (-((gC2 * ((Q2N5089_Is * ((std::exp((vBEQ1 / Q2N5089_vt)) - std::exp((vBCQ1 / Q2N5089_vt))) - ((std::exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR))) - (VCC * gRC))) / (gRC + (1.0f / 1000000000.0f))));
 
     const auto vo_dc_out = 0.0f;
 

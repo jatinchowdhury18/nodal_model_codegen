@@ -138,7 +138,7 @@ END);
 
     // Slew alone (no Vsat at all): needs_explicit_vcvs still requires Aol
     // (needs_aol includes has_slew), and vsat_p_name/vsat_n_name must still
-    // get populated with permissive defaults -- clamp_opamp_output's
+    // get populated with permissive defaults. clamp_opamp_output's
     // generated call always passes both Vsat rail args regardless of
     // whether Vsat itself was configured (regression guard for a real bug:
     // this was originally gated on `has_vsat_p || has_vsat_n` alone, which
@@ -194,7 +194,7 @@ END);
 
     // Rin/Rout/GBW are synthesized as ordinary RESISTOR/CAPACITOR elements
     // wired into the gain-node chain, not fields read directly by the AMP
-    // KCL branch -- verify they actually show up in info.elements.
+    // KCL branch. Verify they actually show up in info.elements.
     {
         info := parse_netlist(#string END
 .model SYNTH OPAMP (Aol=1e5 GBW=1Meg Rin=1Meg Rout=75)
@@ -215,7 +215,7 @@ END);
     }
 
     // Two instances sharing one named model get independent (non-deduped)
-    // per-instance params, unlike D/Q model dedup -- and the tag works
+    // per-instance params, unlike D/Q model dedup. The tag also works
     // regardless of which line it's attached to.
     {
         info := parse_netlist(#string END
@@ -255,8 +255,8 @@ END);
         x1 := find_element(info.elements, "X1");
         check_bool("X-line parses to a TRIODE element", x1.type == .TRIODE, true);
         check_bool("terminals: plate/grid/cathode", x1.terminals[0] == "vpl" && x1.terminals[1] == "vg" && x1.terminals[2] == "vk", true);
-        // "12AX7" starts with a digit -- ident_safe_name() prefixes it with "_"
-        // for Params field names, same as D/Q/J (e.g. common_drain's "2N5485").
+        // "12AX7" starts with a digit, so ident_safe_name() prefixes it with
+        // "_" for Params field names, same as D/Q/J (e.g. common_drain's "2N5485").
         check_str("gk_name", x1.nonlinear.gk_name, "_12AX7_Gk");
 
         gk_val, gk_found := find_value(info.values, "_12AX7_Gk");
@@ -274,9 +274,10 @@ END);
     // No .model card at all, or a .model card of the wrong kind: like Q/J
     // (which switch on model.kind == "NPN"/"NJF"), find_model()'s fallback
     // default has an empty kind, so the switch matches nothing and the
-    // element is silently dropped -- no crash, no element, no values. (D is
-    // the odd one out here: it doesn't gate on kind at all, so it always
-    // gets a diode with default-Is/N. Triode intentionally mirrors Q/J, not D.)
+    // element is silently dropped. There's no crash, no element, and no
+    // values. (D is the odd one out here: it doesn't gate on kind at all,
+    // so it always gets a diode with default-Is/N. Triode intentionally
+    // mirrors Q/J, not D.)
     {
         info := parse_netlist(#string END
 X1 vpl vg vk UNKNOWN_TUBE
@@ -339,8 +340,8 @@ END);
 // exercised via a well-formed X-line), these hit parse_model_line() /
 // parse_opamp_model_line() directly with garbage, since a netlist that will
 // go public should degrade gracefully on hand-edited or truncated SPICE
-// cards rather than crash -- the realistic failure mode once other people
-// are feeding this their own netlists.
+// cards rather than crash. That's the realistic failure mode once other
+// people are feeding this their own netlists.
 test_malformed_model_parsing :: () {
     print("--- malformed .model parsing ---\n");
 
@@ -353,7 +354,7 @@ test_malformed_model_parsing :: () {
     }
 
     // Unrecognized kind string: parse_model_kind() returns UNKNOWN, but
-    // any key=val params that follow are still parsed normally -- the
+    // any key=val params that follow are still parsed normally, since the
     // param block doesn't gate on kind.
     {
         model := parse_model_line("model FUTURE_DEVICE PENTODE (Is=5e-13)");
@@ -385,7 +386,7 @@ test_malformed_model_parsing :: () {
 
     // Missing closing paren: '(' / ')' / ',' are all just replaced with
     // spaces before splitting, so an unbalanced paren doesn't misparse or
-    // swallow the rest of the line -- it degrades to "one fewer space".
+    // swallow the rest of the line. It just degrades to "one fewer space".
     {
         model := parse_model_line("model UNBALANCED D (Is=2e-14 Bf=150");
         check_bool("missing ')' still parses the params before it", model.is_val == 2.0e-14 && model.betaf_val == 150.0, true);
@@ -421,7 +422,7 @@ test_malformed_model_parsing :: () {
 
     // Routed through parse_netlist(): a garbage .model card that nothing
     // references shouldn't register any Params values or affect the
-    // element list -- find_model()'s fallback only kicks in when an
+    // element list. find_model()'s fallback only kicks in when an
     // element line actually looks the name up.
     {
         info := parse_netlist(#string END

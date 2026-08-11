@@ -1,4 +1,4 @@
-// sym_algebra -- symbolic computer algebra for Jai: build, simplify, and
+// sym_algebra: symbolic computer algebra for Jai. Build, simplify, and
 // solve expressions, then generate code to evaluate them.
 //
 // Expressions live in an Expr_Pool (a flat arena + name->id interning
@@ -9,16 +9,16 @@
 // fold() constant-folds and collapses algebraic identities (0+x->x, 1*x->x).
 // simplify() cancels common MUL/DIV factors; call fold() first.
 //
-// linearize()/solve() are the linear MNA solver -- only linear expressions.
+// linearize()/solve() are the linear MNA solver, for linear expressions only.
 // EXP and differentiate() exist to build/solve small nonlinear systems
-// (Newton-Raphson for diode/BJT equations) on top of that linear core --
-// see nonlinear_solve.jai.
+// (Newton-Raphson for diode/BJT equations) on top of that linear core.
+// See nonlinear_solve.jai.
 //
 // cse()/licm()/recip_hoist() are codegen-prep passes: common subexpression
 // elimination, loop-invariant code motion, and reciprocal hoisting (turning
 // repeated inner-loop divisions by a hoisted temp into multiplies). Run in
-// that order -- cse(), then sort_cse_topological(), then licm(), then
-// recip_hoist() -- before print_expr().
+// that order: cse(), then sort_cse_topological(), then licm(), then
+// recip_hoist(), before print_expr().
 
 #import "Basic";
 #import "Hash_Table";
@@ -36,7 +36,7 @@ Expr_Kind :: enum {
     DIV;
     EXP; // unary; operand is `left`. exp(left)
     LOG; // unary; operand is `left`. natural log(left)
-    POW; // binary. left^right (right need not be a literal/integer -- see differentiate())
+    POW; // binary. left^right (right need not be a literal/integer; see differentiate())
 }
 
 // Kinds whose node has a single operand (in `left`), rather than the usual
@@ -109,12 +109,12 @@ make_unary :: (kind: Expr_Kind, a: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
 }
 
 // Deep-copy a subtree into fresh Expr slots, so later in-place mutation
-// (fold/simplify/cse) of the copy can't corrupt a shared original -- needed
-// whenever the same Expr_ID gets handed to more than one independent
+// (fold/simplify/cse) of the copy can't corrupt a shared original. This is
+// needed whenever the same Expr_ID gets handed to more than one independent
 // consumer (e.g. a device residual and a circuit output reading the same
 // node-voltage subtree).
 //
-// SYMBOL leaves are returned as-is, not copied -- they're already interned
+// SYMBOL leaves are returned as-is, not copied. They're already interned
 // by name, and sharing them is what lets CSE/print_expr recognize repeated
 // uses of the same symbol.
 copy_expr :: (e: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
@@ -296,7 +296,7 @@ linearize :: (e: Expr_ID, vars: [] Expr_ID, pool: *Expr_Pool) -> Linear {
 // `var` must come from the same expr_symbol(name, *pool) call used in `e`.
 // Used to build the Newton-Raphson Jacobian (see nonlinear_solve.jai).
 //
-// Result is unsimplified -- run simplify() after, fold()'s identities
+// Result is unsimplified; run simplify() after. fold()'s identities
 // (0+x->x, 0*x->0, 1*x->x) clean up most of the 0/1 clutter.
 // ===========================================================================
 differentiate :: (e: Expr_ID, var: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
@@ -555,12 +555,12 @@ fold_impl :: (e: Expr_ID, pool: *Expr_Pool, visited: *Table(Expr_ID, bool), $mem
 //
 // Why not Gauss-Jordan: it builds each diagonal entry as a product of
 // intermediate pivots. For typical audio-circuit conductances (~1e-3 to
-// 1e-5) an 8x8 system produces pivot products of 1e-45 to 1e-60 -- at or
+// 1e-5) an 8x8 system produces pivot products of 1e-45 to 1e-60, at or
 // below float32's minimum denormal (~1.4e-45), underflowing to zero and
 // producing NaN/Inf output.
 //
-// Cramer's rule expresses det(A) via cofactor (Laplace) expansion -- a
-// *sum* of products rather than a *product* of pivots -- which for the same
+// Cramer's rule expresses det(A) via cofactor (Laplace) expansion, a
+// *sum* of products rather than a *product* of pivots, which for the same
 // circuit stays around ~6e-16, well within float32's normal range. All n
 // solutions share the same det(A) denominator, so CSE extracts it once and
 // recip_hoist turns it into a single precomputed reciprocal.
@@ -657,7 +657,7 @@ symbolic_det :: (M: [] Expr_ID, n: int,
 // `default_magnitude` (1.0 is a safe no-op: an unknown factor won't shrink
 // a product estimate).
 //
-// Rules (all worst-case, not typical-case -- this only needs to catch
+// Rules (all worst-case, not typical-case; this only needs to catch
 // "could plausibly be too small", false positives are fine):
 //   CONST        -> abs(value), or 1 if zero
 //   SYMBOL       -> magnitudes[name], else default_magnitude
@@ -710,7 +710,7 @@ Magnitude_Check :: struct {
     label:      string; // free-form, only used in the printed warning
 }
 
-// Largest estimate_min_magnitude() among a row's nonzero entries -- the
+// Largest estimate_min_magnitude() among a row's nonzero entries. This is the
 // "dominant" term, used to pick that row's power-of-two scale factor.
 estimate_row_magnitude :: (entries: [] Expr_ID, pool: *Expr_Pool, magnitudes: Table(string, float64)) -> float64 {
     mag: float64 = 0.0;
@@ -723,7 +723,7 @@ estimate_row_magnitude :: (entries: [] Expr_ID, pool: *Expr_Pool, magnitudes: Ta
 }
 
 // Power-of-two exponent that brings `magnitude` closest to 1 (round(-log2(magnitude))).
-// Clamped well within CONST's s64 range -- no real component magnitude needs more.
+// Clamped well within CONST's s64 range; no real component magnitude needs more.
 row_scale_exponent :: (magnitude: float64) -> int {
     if magnitude <= 0  return 0;
     LOG2E :: 1.4426950408889634; // 1/ln(2)
@@ -733,8 +733,8 @@ row_scale_exponent :: (magnitude: float64) -> int {
     return k;
 }
 
-// Multiply/divide `id` by 2^k (exact in floating point either way -- only
-// the exponent field changes). k > 0 grows magnitude, k < 0 shrinks it.
+// Multiply/divide `id` by 2^k. This is exact in floating point either way,
+// since only the exponent field changes. k > 0 grows magnitude, k < 0 shrinks it.
 scale_pow2 :: (id: Expr_ID, k: int, pool: *Expr_Pool) -> Expr_ID {
     if id == NO_EXPR || k == 0  return id;
     if k > 0  return expr_mul(id, expr_const(cast(s64)1 << k, pool), pool);
@@ -798,7 +798,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
     all_mask : u64 = (cast(u64)1 << n) - 1;
 
     // -----------------------------------------------------------------------
-    // Step 2: Compute det(A) — the shared denominator for every solution.
+    // Step 2: Compute det(A), the shared denominator for every solution.
     // Because symbolic_det uses cofactor expansion, det(A) is expressed as
     // a *sum* of products of conductances, keeping values in float32 range.
     // -----------------------------------------------------------------------
@@ -820,8 +820,8 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
     // -----------------------------------------------------------------------
     // Step 3: For each variable x[i], build A_i and compute det(A_i).
     // We seed the A_i cache with all sub-matrix results from det(A) that do
-    // NOT involve column i — those sub-matrices are identical in A and A_i,
-    // so the same Expr_IDs can be reused.  This enables the later CSE pass
+    // NOT involve column i; those sub-matrices are identical in A and A_i,
+    // so the same Expr_IDs can be reused. This enables the later CSE pass
     // to recognise shared cofactors across all Cramer determinants.
     // -----------------------------------------------------------------------
     result: [..] Expr_ID;
@@ -846,7 +846,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
         det_Ai := symbolic_det(A_i, n, all_mask, all_mask, *det_Ai_cache, pool);
         fold_dag(det_Ai, pool);
 
-        // Numerically zero solution — return directly without a division.
+        // Numerically zero solution: return directly without a division.
         if pool.exprs[det_Ai].kind == .CONST && pool.exprs[det_Ai].value == 0 {
             array_add(*result, det_Ai);
             continue;
@@ -883,9 +883,9 @@ exprs_equal :: (a: Expr_ID, b: Expr_ID, exprs: [] Expr) -> bool {
     return exprs_equal(ea.left, eb.left, exprs) && exprs_equal(ea.right, eb.right, exprs);
 }
 
-// Structural hash matching exprs_equal -- equal subtrees always hash equal,
-// collisions are fine (cse_pass still confirms with exprs_equal, this is
-// just to avoid comparing every pair). `cache` memoizes per cse_pass() call,
+// Structural hash matching exprs_equal: equal subtrees always hash equal.
+// Collisions are fine (cse_pass still confirms with exprs_equal); this is
+// just to avoid comparing every pair. `cache` memoizes per cse_pass() call,
 // same DAG-sharing reason as fold_dag.
 expr_hash :: (e: Expr_ID, exprs: [] Expr, cache: *Table(Expr_ID, u32)) -> u32 {
     found, cached := table_find(cache, e);
@@ -1198,6 +1198,8 @@ simplify :: (e: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
 
 //==================================================
 // `suffix` is the target type's literal suffix (e.g. "f" for float, "" for double).
+//
+// EXP/LOG/POW are emitted as placeholder tokens (`math_fn_exp` etc.).
 print_expr :: (e: Expr_ID, exprs: [] Expr, suffix: string = "") -> string {
     expr_to_builder :: (builder: *String_Builder, e: Expr_ID, exprs: [] Expr, suffix: string) {
         if exprs[e].kind == {
@@ -1214,17 +1216,17 @@ print_expr :: (e: Expr_ID, exprs: [] Expr, suffix: string = "") -> string {
                 append(builder, ")");
 
             case .EXP;
-                append(builder, "exp(");
+                append(builder, "math_fn_exp(");
                 expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 append(builder, ")");
 
             case .LOG;
-                append(builder, "log(");
+                append(builder, "math_fn_log(");
                 expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 append(builder, ")");
 
             case .POW;
-                append(builder, "pow(");
+                append(builder, "math_fn_pow(");
                 expr_to_builder(builder, exprs[e].left, exprs, suffix);
                 append(builder, ", ");
                 expr_to_builder(builder, exprs[e].right, exprs, suffix);
@@ -1263,7 +1265,7 @@ cse_expr_size :: (e: Expr_ID, exprs: [] Expr) -> int {
 }
 
 // `seen` maps an Expr_ID we've already recorded to its slot in `ids`/`counts`,
-// so a repeat visit is O(1) instead of a linear scan -- with cofactor-shared
+// so a repeat visit is O(1) instead of a linear scan. With cofactor-shared
 // nodes recurring thousands of times, the scan used to make this O(ids^2).
 cse_count_refs :: (e: Expr_ID, exprs: [] Expr,
                    ids: *[..] Expr_ID, counts: *[..] int, seen: *Table(Expr_ID, int)) {
@@ -1297,7 +1299,7 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
 
     // Union-find: merge structurally-equal nodes into one equivalence class.
     // Bucket by hash first so exprs_equal only checks pairs that already
-    // match -- `ids` can run into the thousands, so the old all-pairs loop
+    // match. `ids` can run into the thousands, so the old all-pairs loop
     // was O(ids^2) per pass, x20 passes.
     hash_cache: Table(Expr_ID, u32);
     hashes: [..] u32;
@@ -1444,7 +1446,7 @@ licm_walk :: (e: Expr_ID, pool: *Expr_Pool,
         ch := (pool.exprs)[child_id];
         if ch.kind == .CONST || ch.kind == .SYMBOL || ch.kind == .NULL  continue;
         if !expr_is_loop_variant(child_id, pool.exprs, variant_base, variant_cse_names) {
-            // Loop-invariant compound sub-expression inside a loop-variant context -- hoist it.
+            // Loop-invariant compound sub-expression inside a loop-variant context: hoist it.
             temp_name := tprint("%1%2", prefix, counter.*);  counter.* += 1;
             saved_id  := ifx is_unary(ch.kind)
                          then make_unary(ch.kind, ch.left, pool)
@@ -1601,7 +1603,7 @@ replace_div_by_name :: (e: Expr_ID, sym_name: string, recip_sym_id: Expr_ID, poo
 //   - Otherwise: add a new outer-loop temp (1 / _tN) and replace inner-loop
 //     (x / _tN) with (x * new_temp).
 // `prefix` must match whatever prefix cse_vars' own names were generated
-// with (see cse()) -- new dedicated-reciprocal temporaries are named after it.
+// with (see cse()); new dedicated-reciprocal temporaries are named after it.
 recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Pool,
                 variant_base: [] string, prefix: string = "_t") {
     // Classify each CSE temp as inner (loop-variant) or outer (loop-invariant).
@@ -1632,7 +1634,7 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
     }
     if infos.count == 0  return;
 
-    // Count inner-loop uses -- one walk per expression, all names at once.
+    // Count inner-loop uses: one walk per expression, all names at once.
     inner_div:   [..] int;
     inner_other: [..] int;
     array_resize(*inner_div,   infos.count);

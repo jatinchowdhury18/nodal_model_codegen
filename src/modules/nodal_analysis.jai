@@ -57,7 +57,7 @@ Nonlinear_Model :: struct {
     vp_name:    string; // JFET only; pinch-off voltage
     beta_name:  string; // JFET only; transconductance coefficient
 
-    // TRIODE only (Dempwolf & Zolzer model) -- empty string for other types.
+    // TRIODE only (Dempwolf & Zolzer model); empty string for other types.
     gk_name:    string; // cathode-current perveance
     mu_name:    string; // amplification factor
     gamma_name: string; // cathode-current exponent
@@ -69,14 +69,14 @@ Nonlinear_Model :: struct {
 }
 
 // -----------------------------------------------------------------------
-// Nonlinear device registry -- adding a new nonlinear element type means
+// Nonlinear device registry. Adding a new nonlinear element type means
 // filling out one case in nonlinear_device_spec() (below), device_iv_law()
 // (nonlinear_solve.jai) and device_model_param_names() (below), plus the
-// SPICE line parsing in netlist_codegen.jai (not generalized here -- that
-// part is inherently SPICE-grammar-specific, not device-physics-specific).
+// SPICE line parsing in netlist_codegen.jai (not generalized here, since
+// that part is inherently SPICE-grammar-specific, not device-physics-specific).
 // -----------------------------------------------------------------------
 
-// Per-iteration Newton-step limiter for one unknown -- caps a bad step
+// Per-iteration Newton-step limiter for one unknown. Caps a bad step
 // before it wanders into a region the I-V law approximates badly.
 Limiter_Kind :: enum {
     NONE;           // plain Newton step
@@ -97,7 +97,7 @@ Device_Unknown :: struct {
 // One term in a device's KCL contribution: the branch current named
 // `i<branch_suffix><el.name>` (suffix "" for a single-branch device) either
 // enters or leaves terminals[terminal_idx]. Terms sharing a terminal
-// accumulate -- e.g. BJT's iE = iB + iC is two ADD terms on the emitter,
+// accumulate, e.g. BJT's iE = iB + iC is two ADD terms on the emitter,
 // not a pre-summed expression.
 Device_Kcl_Term :: struct {
     terminal_idx:  int;
@@ -106,14 +106,14 @@ Device_Kcl_Term :: struct {
 }
 
 // Everything generic nonlinear-device code needs about one Element_Type.
-// The actual I-V law stays a named function in nonlinear_solve.jai (that's
-// real physics, not something worth generalizing away) -- see device_iv_law().
+// The actual I-V law stays a named function in nonlinear_solve.jai. That's
+// real physics, not something worth generalizing away; see device_iv_law().
 Nonlinear_Device_Spec :: struct {
     unknowns:  [] Device_Unknown;
     kcl_terms: [] Device_Kcl_Term;
 }
 
-// Empty for any non-nonlinear (or unhandled) type -- every generic pass
+// Empty for any non-nonlinear (or unhandled) type. Every generic pass
 // below treats an empty spec as "this element contributes nothing."
 nonlinear_device_spec :: (type: Element_Type) -> Nonlinear_Device_Spec {
     if type == {
@@ -205,7 +205,7 @@ device_limiter_names :: (kind: Limiter_Kind, m: Nonlinear_Model) -> (vt_name: st
     return "", "", "";
 }
 
-// Params struct field names a device's .model card populates -- used for
+// Params struct field names a device's .model card populates. Used for
 // both Params-struct emission and impedance-alias emission.
 device_model_param_names :: (type: Element_Type, m: Nonlinear_Model) -> [..] string {
     names: [..] string;
@@ -226,8 +226,8 @@ device_model_param_names :: (type: Element_Type, m: Nonlinear_Model) -> [..] str
     return names;
 }
 
-// True if any element in `elements` has an unknown using this limiter kind
-// -- used to decide which limiter helper functions to emit.
+// True if any element in `elements` has an unknown using this limiter kind.
+// Used to decide which limiter helper functions to emit.
 circuit_uses_limiter_kind :: (elements: [] Element, kind: Limiter_Kind) -> bool {
     for el : elements {
         spec := nonlinear_device_spec(el.type);
@@ -256,7 +256,7 @@ Opamp_Model :: struct {
     has_ibias:  bool; ibias_name:  string; // input bias current
 }
 
-// True if none of an AMP's non-ideal characteristics are set -- i.e. it's
+// True if none of an AMP's non-ideal characteristics are set, i.e. it's
 // still today's ideal op-amp (structural node merge, no numeric model).
 opamp_is_ideal :: (el: Element) -> bool {
     o := el.opamp;
@@ -271,7 +271,7 @@ needs_explicit_vcvs :: (el: Element) -> bool {
     return o.has_aol || o.has_rin || o.has_rout || o.has_vsat_p || o.has_vsat_n || o.has_slew || o.has_gbw;
 }
 
-// True if the op-amp has an output clipping/slew stage -- i.e. a Newton
+// True if the op-amp has an output clipping/slew stage, i.e. a Newton
 // unknown (vclip_<name>) sits between the gain chain and Rout/out_node.
 opamp_has_clip_stage :: (el: Element) -> bool {
     return el.opamp.has_vsat_p || el.opamp.has_vsat_n || el.opamp.has_slew;
@@ -280,14 +280,14 @@ opamp_has_clip_stage :: (el: Element) -> bool {
 // vgain_<name>: the ideal (infinite-bandwidth) gain-stage node, holding
 // Aol*(pos - neg + Vos). Collapses to the real out_node directly when
 // nothing else (GBW lowpass, clip/slew stage, Rout) follows it in the
-// chain -- e.g. an Aol-only op-amp needs no synthetic nodes at all.
+// chain, e.g. an Aol-only op-amp needs no synthetic nodes at all.
 opamp_gain_node :: (el: Element) -> string {
     if el.opamp.has_gbw || opamp_has_clip_stage(el) || el.opamp.has_rout  return tprint("vgain_%", el.name);
     return el.terminals[0];
 }
 
 // One-pole-lowpassed version of vgain_<name> (meaningful only when
-// has_gbw -- an internal Rcomp/Ccomp synthesized upstream). Collapses to
+// has_gbw, an internal Rcomp/Ccomp synthesized upstream). Collapses to
 // vgain_<name> directly if there's no lowpass, or to out_node directly if
 // there's a lowpass but nothing (clip/slew, Rout) follows it.
 opamp_bandwidth_node :: (el: Element) -> string {
@@ -325,12 +325,12 @@ Element :: struct {
     // For AMP elements only. Zero value == today's ideal op-amp.
     opamp: Opamp_Model;
 
-    // Set from a "; no_combine" inline netlist comment (R/C/D only) -- opts
+    // Set from a "; no_combine" inline netlist comment (R/C/D only). Opts
     // this element out of series/parallel/antiparallel-pair reduction.
     no_combine: bool;
 };
 
-// A (name, value) pair for a Params struct field -- parsed by
+// A (name, value) pair for a Params struct field, parsed by
 // netlist_codegen.jai's parse_netlist, emitted by codegen.jai's
 // generate_params_struct.
 Element_Value :: struct {
@@ -593,12 +593,12 @@ reduce_circuit :: (elements: *[..] Element, inputs: [] string, outputs: [] strin
 // `dc_mode`: build the DC-equivalent circuit instead. Capacitors are open
 // circuits at DC, so CAPACITOR/RC_SERIES are dropped entirely; RC_PARALLEL
 // still conducts through its resistor half. INDUCTORs are short circuits at
-// DC -- handled by a dedicated merge pass below, same idea as an ideal
+// DC, handled by a dedicated merge pass below, same idea as an ideal
 // op-amp's virtual short.
 generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode := false) -> []Expr_ID, []Expr_ID, Expr_Pool, []Element {
     // Op-amp handling below (substitute_node) mutates terminals in place.
     // Callers reuse the same Element array across an AC-mode call and a
-    // separate DC-mode call (build_dc_operating_point) -- work on a local
+    // separate DC-mode call (build_dc_operating_point), so work on a local
     // copy so one call's substitutions can't corrupt the other's terminals.
     elements: [..] Element;
     for el : elements_in {
@@ -611,8 +611,8 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
 
     eqn_nodes: [..] string;
 
-    // vclip_<name> is a free Newton symbol, like a diode's branch current --
-    // but unlike a branch current, Rout's synthesized resistor uses it as a
+    // vclip_<name> is a free Newton symbol, like a diode's branch current.
+    // But unlike a branch current, Rout's synthesized resistor uses it as a
     // literal terminal string, so it'd otherwise get pulled into
     // eqn_nodes/solve_vars and solved as an ordinary linear unknown.
     clip_node_names: [..] string;
@@ -631,7 +631,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     }
 
     // vgain_<name>/vbw_<name> need their own KCL row for the hard constraint
-    // below -- usually guaranteed by being a synthesized Rcomp/Ccomp/Rout
+    // below. This is usually guaranteed by being a synthesized Rcomp/Ccomp/Rout
     // terminal, but a clip/slew stage reroutes Rout to vclip_<name> instead,
     // orphaning them when GBW isn't also set. Add them explicitly.
     for el : elements {
@@ -661,8 +661,8 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         if el.type == .AMP || el.type == .FIXED_VOLTAGE  continue;
         if nonlinear_device_spec(el.type).kcl_terms.count > 0  continue;
         if dc_mode {
-            if el.type == .CAPACITOR || el.type == .RC_SERIES  continue; // open circuit at DC -- excluded entirely, not left as a free symbol
-            if el.type == .INDUCTOR  continue; // short circuit at DC -- handled by the merge pass below, not here
+            if el.type == .CAPACITOR || el.type == .RC_SERIES  continue; // open circuit at DC; excluded entirely, not left as a free symbol
+            if el.type == .INDUCTOR  continue; // short circuit at DC; handled by the merge pass below, not here
         }
 
         pos_node := el.terminals[0];
@@ -690,7 +690,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
                 current_expr = expr_sub(expr_mul(impedance_symbol, expr_sub(pos_node_symbol, neg_node_symbol, *pool), *pool), state_symbol, *pool);
             case .RC_PARALLEL;
                 if dc_mode {
-                    // only the resistor half conducts at DC -- use its raw param, not the trapezoidal g
+                    // only the resistor half conducts at DC; use its raw param, not the trapezoidal g
                     res_symbol := expr_symbol(el.rc_internal.res_name, *pool);
                     current_expr = expr_div(expr_sub(pos_node_symbol, neg_node_symbol, *pool), res_symbol, *pool);
                 } else {
@@ -711,7 +711,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     // Nonlinear devices: branch currents stay free symbols here (no
     // current_expr substitution, unlike the linear pass above), so solve()
     // gives a closed-form node voltage parametrized by them. Terms sharing a
-    // terminal accumulate -- see Device_Kcl_Term's comment (nonlinear_solve.jai
+    // terminal accumulate; see Device_Kcl_Term's comment (nonlinear_solve.jai
     // picks these symbols back up when building each device's I-V law).
     for el : elements {
         spec := nonlinear_device_spec(el.type);
@@ -740,7 +740,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     }
 
     // Rows already holding an exact constraint (fixed voltage, op-amp pin,
-    // diode-partner fallback) -- the gmin pass below must skip these.
+    // diode-partner fallback). The gmin pass below must skip these.
     pinned: [..] bool;
     for _ : eqn_nodes  array_add(*pinned, false);
 
@@ -768,7 +768,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
             if n == node {
                 if equations[idx] == NO_EXPR {
                     // At DC `value` can itself be undefined (e.g. another
-                    // floating node) -- ground instead, like gmin below.
+                    // floating node), so ground instead, like gmin below.
                     pin_value := ifx dc_mode then expr_const(0, *pool) else value;
                     equations[idx] = expr_sub(expr_symbol(node, *pool), pin_value, *pool);
                     pinned[idx] = true;
@@ -936,7 +936,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     // leakage conductance on every non-pinned node breaks that degeneracy,
     // same as real SPICE's gmin-to-ground regularization.
     if dc_mode {
-        // expr_const is integer-only -- build 1e-9 as 1/1e9.
+        // expr_const is integer-only, so build 1e-9 as 1/1e9.
         gmin := expr_div(expr_const(1, *pool), expr_const(1_000_000_000, *pool), *pool);
         for node, idx : eqn_nodes {
             if equations[idx] == NO_EXPR continue;
@@ -988,7 +988,7 @@ generate_junction_voltage_expressions :: (elements: [] Element,
 }
 
 // -----------------------------------------------------------------------
-// Circuit partitioning -- `sub-circuit` directive support.
+// Circuit partitioning: `sub-circuit` directive support.
 // -----------------------------------------------------------------------
 
 // One `* sub-circuit: <name> <in_node> <out_node>` directive.
@@ -1007,8 +1007,8 @@ Circuit_Partition :: struct {
 }
 
 // Splits `elements` into one piece per decl, in decl order. Ground ("0")
-// and every decl's in/out node are excluded from the connectivity graph --
-// elements only union through some other shared node, which is the cut.
+// and every decl's in/out node are excluded from the connectivity graph.
+// Elements only union through some other shared node, which is the cut.
 // Each resulting group is matched to whichever decl's in_node/out_node it
 // touches. Only exact for a decl boundary that's a true ideal-source node.
 partition_circuit :: (elements: [] Element, decls: [] Sub_Circuit_Decl) -> [] Circuit_Partition {
@@ -1042,7 +1042,7 @@ partition_circuit :: (elements: [] Element, decls: [] Sub_Circuit_Decl) -> [] Ci
 
     // Elements with no real terminal at all (only ground/boundary nodes,
     // e.g. a load resistor from a boundary node straight to ground) can't
-    // be placed by shared-node union -- handled separately below.
+    // be placed by shared-node union; they're handled separately below.
     real_idxs, orphan_idxs: [..] int;
     for i : 0..elements.count-1 {
         has_real := false;

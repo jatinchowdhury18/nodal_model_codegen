@@ -6,8 +6,8 @@
 //      Jai context pointer; keep it around.
 //   2. For each netlist, call netlist_codegen_generate() with that context
 //      pointer plus the netlist text (and options) as (pointer, length)
-//      pairs -- Jai strings aren't null-terminated, so lengths are required
-//      both in and out.
+//      pairs, since Jai strings aren't null-terminated and lengths are
+//      required both in and out.
 //   3. Free the returned buffer with netlist_codegen_free_string() once done
 //      with it.
 #import "Basic";
@@ -16,8 +16,8 @@
 // Runtime_Support's __jai_runtime_init/__jai_runtime_fini are already
 // #program_export'd by the compiler (see Runtime_Support.jai) whenever
 // DEFINE_INITIALIZATION is on, which it is for STATIC_LIBRARY output. They
-// aren't declared here -- the host just needs to know their C signatures
-// (see netlist_codegen_c_api.h).
+// aren't declared here; the host just needs to know their C signatures (see
+// netlist_codegen_c_api.h).
 
 to_jai_string :: (data: *u8, len: s64) -> string {
     s: string = ---;

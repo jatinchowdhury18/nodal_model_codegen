@@ -61,7 +61,7 @@ test_opamp_node_naming :: () {
 }
 
 // Inverting amp (R1 from vi to n1, RF from n1 to vo, pos tied to 0) with a
-// finite Aol -- verifies generate_kcl_equations' explicit-VCVS path against
+// finite Aol. Verifies generate_kcl_equations' explicit-VCVS path against
 // a hand-derived closed form:
 //   vo = -Aol*gR1*vi / (gR1 + gRF + gRF*Aol)
 test_finite_gain_inverting_amp :: () {

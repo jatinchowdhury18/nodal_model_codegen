@@ -5,8 +5,7 @@
 // helpers, vcrit/newton constants, per-cluster Newton code, reset()).
 //
 // Sits above nonlinear_solve.jai in the dependency DAG (sym_algebra <-
-// nodal_analysis <- nonlinear_solve <- codegen <- netlist_codegen) -- it
-// consumes Nonlinear_Cluster etc. but nothing below it depends on codegen.
+// nodal_analysis <- nonlinear_solve <- codegen <- netlist_codegen).
 
 #import "Basic";
 #import "Hash_Table";
@@ -45,10 +44,27 @@ make_backend :: (lang: string, type_name: string) -> Backend {
     };
 }
 
-// C++: "std::<name>"; C: "<name>". Covers every libm function the emitters
-// below call (log, sqrt, abs, ...).
+// C++: "std::<name>"
+// C: "<name>" or "<name>f" for float
 math_fn :: (backend: Backend, name: string) -> string {
-    return ifx backend.is_cpp then tprint("std::%", name) else name;
+    if backend.is_cpp  return tprint("std::%", name);
+    if backend.type_name == "float"  return tprint("%f", name);
+    return name;
+}
+
+// sym_algebra emits complex math functions like `math_fn_exp`,
+// so here we replace them with the proper C/C++ equivalent.
+resolve_math_fns :: (code: string, backend: Backend) -> string {
+    result := code;
+    result = String.replace(result, "math_fn_exp", math_fn(backend, "exp"));
+    result = String.replace(result, "math_fn_log", math_fn(backend, "log"));
+    result = String.replace(result, "math_fn_pow", math_fn(backend, "pow"));
+    return result;
+}
+
+// Emits `<prefix>const <decl_type> <name> = <expr>;\n`.
+emit_const_decl :: (builder: *String_Builder, backend: Backend, name: string, e: Expr_ID, exprs: [] Expr, suffix: string, prefix := "") {
+    print_to_builder(builder, "%1const %2 %3 = %4;\n", prefix, backend.decl_type, name, resolve_math_fns(print_expr(e, exprs, suffix), backend));
 }
 
 math_include :: (backend: Backend) -> string {
@@ -160,7 +176,7 @@ collect_param_leaf_names :: (expr: *Param_Expr, names: *[..] string) {
     collect_param_leaf_names(expr.right, names);
 }
 
-// unit_name suffixes the struct name -- used for sub-circuit units (Params_shelf, ...).
+// unit_name suffixes the struct name, used for sub-circuit units (Params_shelf, ...).
 generate_params_struct :: (elements: [] Element,
                            values: [] Element_Value,
                            backend: Backend = .{},
@@ -224,7 +240,7 @@ generate_params_struct :: (elements: [] Element,
             case .TRIODE;
                 for pname : device_model_param_names(el.type, el.nonlinear)  emit_nonlinear_param(pname);
             case .AMP;
-                // Rin/Rout/GBW have no fields of their own here -- they're
+                // Rin/Rout/GBW have no fields of their own here; they're
                 // synthesized RESISTOR/CAPACITOR elements.
                 if el.opamp.has_aol    append(*builder, write_value(el.opamp.aol_name));
                 if opamp_has_clip_stage(el) {
@@ -408,7 +424,7 @@ build_det_a_magnitude_table :: (elements: [] Element, values: [] Element_Value) 
     }
 
     // R/L/C (and RC_SERIES/RC_PARALLEL, VCCS) don't appear in det(A) under
-    // their own name -- solve() sees the derived admittance symbol
+    // their own name. solve() sees the derived admittance symbol
     // ("g" + name), computed here with the same formulas generate_impedance_defs()
     // emits as code, so this overrides/extends the pass-through above.
     for el : elements {
@@ -428,14 +444,14 @@ build_det_a_magnitude_table :: (elements: [] Element, values: [] Element_Value) 
                 sr := DET_A_CHECK_NOMINAL_SAMPLE_RATE;
                 table_set(*table, tprint("g%", el.name), (2.0 * sr * c) / (1.0 + 2.0 * sr * r * c));
                 // gn (state-decay coefficient) is a ratio near 1, not a
-                // shrinking factor -- left at the default_magnitude fallback.
+                // shrinking factor, so it's left at the default_magnitude fallback.
             case .RC_PARALLEL;
                 r  := lookup_or_default(el.rc_internal.res_name, DET_A_CHECK_DEFAULT_R);
                 c  := lookup_or_default(el.rc_internal.cap_name, DET_A_CHECK_DEFAULT_C);
                 sr := DET_A_CHECK_NOMINAL_SAMPLE_RATE;
                 table_set(*table, tprint("g%", el.name), 2.0 * sr * c + 1.0 / r);
             case .VCCS;
-                gm := lookup_or_default(el.name, 1.0); // no standard "conservative" default for transconductance -- neutral fallback
+                gm := lookup_or_default(el.name, 1.0); // no standard "conservative" default for transconductance, so this is a neutral fallback
                 table_set(*table, tprint("g%", el.name), gm);
         }
     }
@@ -462,59 +478,64 @@ build_magnitude_check :: (elements: [] Element, values: [] Element_Value, backen
 generate_junction_limiter_helper :: (backend: Backend) -> string {
     if !backend.is_cpp {
         type_name := backend.type_name;
+        abs_fn    := math_fn(backend, "fabs");
+        log_fn    := math_fn(backend, "log");
         template := #string DONE
-static % limit_junction_voltage(% v_new, % v_old, % vt, % vcrit) {
-    if (v_new > vcrit && fabs(v_new - v_old) > 2 * vt) {
+static %1 limit_junction_voltage(%1 v_new, %1 v_old, %1 vt, %1 vcrit) {
+    if (v_new > vcrit && %2(v_new - v_old) > 2 * vt) {
         if (v_old > 0) {
-            % arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * log(arg) : vcrit;
+            %1 arg = 1 + (v_new - v_old) / vt;
+            v_new = arg > 0 ? v_old + vt * %3(arg) : vcrit;
         } else {
-            v_new = vt * log(v_new / vt);
+            v_new = vt * %3(v_new / vt);
         }
-    } else if (v_new < -vcrit && fabs(v_new - v_old) > 2 * vt) {
+    } else if (v_new < -vcrit && %2(v_new - v_old) > 2 * vt) {
         if (v_old < 0) {
-            % arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * log(arg) : -vcrit;
+            %1 arg = 1 + (v_old - v_new) / vt;
+            v_new = arg > 0 ? v_old - vt * %3(arg) : -vcrit;
         } else {
-            v_new = -vt * log(-v_new / vt);
+            v_new = -vt * %3(-v_new / vt);
         }
     }
     return v_new;
 }
 DONE
-        return tprint(template, type_name, type_name, type_name, type_name, type_name, type_name, type_name);
+        return tprint(template, type_name, abs_fn, log_fn);
     }
 
-    return #string DONE
+    abs_fn := math_fn(backend, "abs");
+    log_fn := math_fn(backend, "log");
+    template := #string DONE
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
-    if (v_new > vcrit && std::abs(v_new - v_old) > 2 * vt)
+    if (v_new > vcrit && %1(v_new - v_old) > 2 * vt)
     {
         if (v_old > 0)
         {
             const auto arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
+            v_new = arg > 0 ? v_old + vt * %2(arg) : vcrit;
         }
         else
         {
-            v_new = vt * std::log(v_new / vt);
+            v_new = vt * %2(v_new / vt);
         }
     }
-    else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
+    else if (v_new < -vcrit && %1(v_new - v_old) > 2 * vt)
     {
         if (v_old < 0)
         {
             const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+            v_new = arg > 0 ? v_old - vt * %2(arg) : -vcrit;
         }
         else
         {
-            v_new = -vt * std::log(-v_new / vt);
+            v_new = -vt * %2(-v_new / vt);
         }
     }
     return v_new;
 };
-DONE;
+DONE
+    return tprint(template, abs_fn, log_fn);
 }
 
 // JFET vGS step limiter: clamps Newton steps at pinch-off (vGS < Vp).
@@ -733,7 +754,7 @@ build_dc_operating_point :: (elements: [] Element, inputs: [] string, outputs: [
         if el.type != .CAPACITOR && el.type != .RC_SERIES && el.type != .RC_PARALLEL  continue;
 
         // copy_expr: pos_v/neg_v can alias a solution node shared by another
-        // reactive element on the same terminal -- simplify() below mutates
+        // reactive element on the same terminal, and simplify() below mutates
         // in place, so a bare lookup would corrupt it for a later iteration.
         pos_v := copy_expr(lookup_node_voltage(el.terminals[0], dc_solve_vars, dc_solutions, *dc_pool, inputs), *dc_pool);
         neg_v := copy_expr(lookup_node_voltage(el.terminals[1], dc_solve_vars, dc_solutions, *dc_pool, inputs), *dc_pool);
@@ -795,13 +816,9 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: []
     }
 
     reset_suffix := ifx backend.type_name == "float" then "f" else "";
-    for zv : z_init_vars {
-        print_to_builder(*builder, "    const %1 %2 = %3;\n", backend.decl_type, zv.name, print_expr(zv.expr_id, dc_pool.exprs, reset_suffix));
-    }
+    for zv : z_init_vars  emit_const_decl(*builder, backend, zv.name, zv.expr_id, dc_pool.exprs, reset_suffix, "    ");
     if z_init_vars.count > 0  append(*builder, "\n");
-    for ov : output_dc_vars {
-        print_to_builder(*builder, "    const %1 %2 = %3;\n", backend.decl_type, ov.name, print_expr(ov.expr_id, dc_pool.exprs, reset_suffix));
-    }
+    for ov : output_dc_vars  emit_const_decl(*builder, backend, ov.name, ov.expr_id, dc_pool.exprs, reset_suffix, "    ");
     if output_dc_vars.count > 0  append(*builder, "\n");
 
     append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
@@ -878,7 +895,7 @@ generate_expressions :: (elements: [] Element,
 
 // Build the set of base loop-variant symbol names: inputs + state variables
 // + nonlinear branch currents (free per-sample symbols, not solved-for MNA
-// unknowns -- see generate_kcl_equations).
+// unknowns; see generate_kcl_equations).
 build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
     names: [..] string;
     for inp : inputs  array_add(*names, inp);
@@ -899,7 +916,6 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
 // order: each item is written only after all inner-loop symbol dependencies it
 // references have already been written.
 emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder, backend: Backend = .{}) {
-    decl_type := backend.decl_type;
     literal_suffix := ifx backend.type_name == "float" then "f" else "";
     emitted: [..] bool;
     for _ : 0..items.count-1  array_add(*emitted, false);
@@ -925,8 +941,7 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
                 emitted[i]  = true;
                 remaining  -= 1;
                 made_progress = true;
-                print_to_builder(builder, "const % % = %;\n",
-                                 decl_type, items[i].name, print_expr(items[i].expr_id, exprs, literal_suffix));
+                emit_const_decl(builder, backend, items[i].name, items[i].expr_id, exprs, literal_suffix);
             }
         }
         if !made_progress  break;  // Cycle guard.
@@ -936,10 +951,10 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
 // Generate code for the given gen_vars and CSE temporaries.
 //
 // Returns two strings:
-//   outer_code — loop-invariant CSE temporaries (hoist outside the sample loop)
-//   inner_code — loop-variant CSE temps + gen_var assignments + state updates
+//   outer_code: loop-invariant CSE temporaries (hoist outside the sample loop)
+//   inner_code: loop-variant CSE temps + gen_var assignments + state updates
 // `extra_variant_names` lets a caller add more loop-variant names on top of
-// build_variant_base() -- the nonlinear pipeline uses this to mark junction
+// build_variant_base(). The nonlinear pipeline uses this to mark junction
 // voltages (vD1, vBCQ1, ...) as sample-variant.
 codegen :: (elements: [] Element, inputs: [] string,
             gen_vars: [] Gen_Var, cse_vars: [] CSE_Var,

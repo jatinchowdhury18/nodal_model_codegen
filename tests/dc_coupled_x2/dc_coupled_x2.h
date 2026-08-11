@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version 9b570a3.
 // Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2.h -type_name float
 
 #pragma once
@@ -91,7 +91,7 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const auto _D1_t5 = (vD1 / D1N914_vt);
-                const auto _D1_t4 = exp(_D1_t5);
+                const auto _D1_t4 = std::exp(_D1_t5);
                 const auto _D1_t8 = (D1N914_Is * _D1_t4);
                 const auto _D1_t3 = (_D1_t4 - 1.0f);
                 const auto _D1_t7 = (_D1_t8 / D1N914_vt);
@@ -113,7 +113,7 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
                 
             }
 
-            const auto vo1 = ((zR3C1 + (D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0f))) / gR3C1);
+            const auto vo1 = ((zR3C1 + (D1N914_Is * (std::exp((vD1 / D1N914_vt)) - 1.0f))) / gR3C1);
             const auto vR3C1 = (vo1 - 0);
             
             zR3C1 = gzR3C1 * vR3C1 - zR3C1; // RC parallel
@@ -159,7 +159,7 @@ static float reset_stage1 (Params_stage1 params, State_stage1* state, int num_ch
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _D1_t5 = (vD1 / D1N914_vt);
-        const auto _D1_t4 = exp(_D1_t5);
+        const auto _D1_t4 = std::exp(_D1_t5);
         const auto _D1_t7 = (D1N914_Is * _D1_t4);
         const auto _D1_t3 = (_D1_t4 - 1.0f);
         const auto _D1_t2 = (D1N914_Is * _D1_t3);
@@ -179,9 +179,9 @@ static float reset_stage1 (Params_stage1 params, State_stage1* state, int num_ch
             break;
         
     }
-    const auto zR3C1 = ((gzR3C1 * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0f)) * R3)) / 2.0f);
+    const auto zR3C1 = ((gzR3C1 * ((D1N914_Is * (std::exp((vD1 / D1N914_vt)) - 1.0f)) * R3)) / 2.0f);
 
-    const auto vo1_dc_out = ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0f)) * R3);
+    const auto vo1_dc_out = ((D1N914_Is * (std::exp((vD1 / D1N914_vt)) - 1.0f)) * R3);
 
     for (int ch = 0; ch < num_channels; ++ch)
     {
@@ -234,7 +234,7 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const auto _D1x_t5 = (vD1x / D1N914_vt);
-                const auto _D1x_t4 = exp(_D1x_t5);
+                const auto _D1x_t4 = std::exp(_D1x_t5);
                 const auto _D1x_t7 = (D1N914_Is * _D1x_t4);
                 const auto _D1x_t3 = (_D1x_t4 - 1.0f);
                 const auto _D1x_t6 = (_D1x_t7 / D1N914_vt);
@@ -256,7 +256,7 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
                 
             }
 
-            const auto vo2 = ((zR3xC1x + (D1N914_Is * (exp((vD1x / D1N914_vt)) - 1.0f))) / gR3xC1x);
+            const auto vo2 = ((zR3xC1x + (D1N914_Is * (std::exp((vD1x / D1N914_vt)) - 1.0f))) / gR3xC1x);
             const auto vR3xC1x = (vo2 - 0);
             
             zR3xC1x = gzR3xC1x * vR3xC1x - zR3xC1x; // RC parallel
@@ -297,7 +297,7 @@ static float reset_stage2 (Params_stage2 params, State_stage2* state, int num_ch
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _D1x_t5 = (vD1x / D1N914_vt);
-        const auto _D1x_t4 = exp(_D1x_t5);
+        const auto _D1x_t4 = std::exp(_D1x_t5);
         const auto _D1x_t10 = (D1N914_Is * _D1x_t4);
         const auto _D1x_t3 = (_D1x_t4 - 1.0f);
         const auto _D1x_t9 = (_D1x_t10 / D1N914_vt);
@@ -318,9 +318,9 @@ static float reset_stage2 (Params_stage2 params, State_stage2* state, int num_ch
             break;
         
     }
-    const auto zR3xC1x = (((gzR3xC1x * (D1N914_Is * (exp((vD1x / D1N914_vt)) - 1.0f))) / ((1.0f / R3x) + (1.0f / 1000000000.0f))) / 2.0f);
+    const auto zR3xC1x = (((gzR3xC1x * (D1N914_Is * (std::exp((vD1x / D1N914_vt)) - 1.0f))) / ((1.0f / R3x) + (1.0f / 1000000000.0f))) / 2.0f);
 
-    const auto vo2_dc_out = ((D1N914_Is * (exp((vD1x / D1N914_vt)) - 1.0f)) / ((1.0f / R3x) + (1.0f / 1000000000.0f)));
+    const auto vo2_dc_out = ((D1N914_Is * (std::exp((vD1x / D1N914_vt)) - 1.0f)) / ((1.0f / R3x) + (1.0f / 1000000000.0f)));
 
     for (int ch = 0; ch < num_channels; ++ch)
     {

@@ -63,7 +63,7 @@ main :: () {
 
     // 6. Chain rule: d/dv(exp(v/vt)) simplifies to exp(v/vt) / vt
     //    This is the building block for diode (Shockley) and BJT
-    //    (Ebers-Moll) Jacobian entries -- printed (not string-`check`ed)
+    //    (Ebers-Moll) Jacobian entries. It's printed, not string-`check`ed,
     //    since the exact CSE-free textual form is secondary to eyeballing
     //    that it's algebraically sane.
     {
@@ -94,7 +94,7 @@ main :: () {
     }
 
     // 8. Ebers-Moll BJT collector current, differentiated w.r.t. both
-    //    junction voltages -- exercises product rule + chain rule together
+    //    junction voltages. Exercises product rule and chain rule together
     //    with two independent EXP subexpressions.
     //    iC = Is*((exp(vBE/vt) - exp(vBC/vt)) - (exp(vBC/vt)-1)/BetaR)
     {
@@ -134,12 +134,12 @@ main :: () {
         check("d_log_chain", d, "(1.0 / x)", pool.exprs);
     }
 
-    // 10. POW with a constant exponent (the common case -- e.g. the
+    // 10. POW with a constant exponent (the common case, e.g. the
     //     Dempwolff triode's gamma/xi): d/dx(x^n) = n*x^(n-1), via the
     //     numerically-stable simple power rule, NOT the general
-    //     u^v*(v'*log(u)+v*u'/u) formula (which would divide by x -- see the
-    //     comment on differentiate()'s POW case for why that's a real
-    //     problem, not just an inefficiency, when x can be exactly 0).
+    //     u^v*(v'*log(u)+v*u'/u) formula. That formula would divide by x;
+    //     see the comment on differentiate()'s POW case for why that's a
+    //     real problem, not just an inefficiency, when x can be exactly 0.
     {
         pool: Expr_Pool;
         x := expr_symbol("x", *pool);
@@ -147,12 +147,12 @@ main :: () {
         e := expr_pow(x, n, *pool);
         d := differentiate(e, x, *pool);
         simplify(d, *pool);
-        check("d_pow_const_exponent", d, "(n * pow(x, (n - 1.0)))", pool.exprs);
+        check("d_pow_const_exponent", d, "(n * math_fn_pow(x, (n - 1.0)))", pool.exprs);
     }
 
-    // 11. POW with a variable exponent (general fallback -- not used by any
-    //     device model in this codebase today, but the code path exists and
-    //     should stay correct): d/dx(x^x) = x^x*(log(x)+1).
+    // 11. POW with a variable exponent. This is a general fallback, not used
+    //     by any device model in this codebase today, but the code path
+    //     exists and should stay correct: d/dx(x^x) = x^x*(log(x)+1).
     {
         pool: Expr_Pool;
         x := expr_symbol("x", *pool);
@@ -163,8 +163,8 @@ main :: () {
     }
 
     // 12. Dempwolff triode Hk shape: d/dv(log(1+exp(c*v))^gamma), the actual
-    //     building block of the plate/grid-current Jacobian -- printed (not
-    //     string-checked, same reasoning as case 6) to eyeball that it's
+    //     building block of the plate/grid-current Jacobian. Printed, not
+    //     string-checked (same reasoning as case 6), to eyeball that it's
     //     algebraically sane and, critically, does NOT contain a bare
     //     "/ log(...)" or "/ Hk" division that would underflow to 0/0 deep
     //     in cutoff (see case 10's comment).

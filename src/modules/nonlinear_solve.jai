@@ -6,7 +6,7 @@
 //
 // generate_kcl_equations() leaves nonlinear branch currents as free symbols,
 // so solve() gives closed-form node voltages parametrized by them. From
-// there: (1) group devices into "clusters" -- connected components whose
+// there: (1) group devices into "clusters", connected components whose
 // branch currents appear in each other's junction-voltage expressions, so
 // they need one joint Newton solve; (2) build each device's I-V law as an
 // Expr in its own junction voltage(s); (3) substitute those laws in for the
@@ -25,7 +25,7 @@ String :: #import "String";
 
 // One Newton unknown belonging to a cluster (a device's junction voltage).
 Cluster_Unknown :: struct {
-    name:          string;       // e.g. "vBCQ1" -- also the State field name
+    name:          string;       // e.g. "vBCQ1"; also the State field name
     limiter_kind:  Limiter_Kind;
     vt_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for thermal voltage
     is_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for saturation current
@@ -137,7 +137,7 @@ bjt_iv_laws :: (vbc_name: string, vbe_name: string, model: Nonlinear_Model, pool
 // d(iD)/d(vGS) hits exactly 0 at pinch-off. Harmless solved alone, but if
 // this device shares a Newton cluster with another one (see clustering
 // above), a zero Jacobian entry there can ill-condition their shared linear
-// solve. 1mV epsilon floor keeps it off exact zero -- same idea as gmin.
+// solve. A 1mV epsilon floor keeps it off exact zero, same idea as gmin.
 jfet_iv_law :: (junction_voltage_name: string, model: Nonlinear_Model, pool: *Expr_Pool) -> Expr_ID {
     vgs  := expr_symbol(junction_voltage_name, pool);
     vp   := expr_symbol(model.vp_name, pool);
@@ -183,7 +183,7 @@ Device_Branch_Current :: struct {
 }
 
 // Dispatches to the right I-V law function above for `el.type`. This is the
-// one place that needs a new case when adding a device type -- everything
+// one place that needs a new case when adding a device type; everything
 // else in this file is driven generically by nonlinear_device_spec().
 device_iv_law :: (el: Element, unknown_names: [] string, pool: *Expr_Pool) -> [] Device_Branch_Current {
     result: [..] Device_Branch_Current;
@@ -233,9 +233,9 @@ device_iv_law :: (el: Element, unknown_names: [] string, pool: *Expr_Pool) -> []
 
 // Branch-current symbol name(s) this device contributes as free symbols in
 // the linear KCL system (see nodal_analysis.generate_kcl_equations). An
-// AMP's clip/slew unknown isn't a branch current (it's the driving voltage
-// itself, used directly by Rout/out_node's stamp -- see opamp_clip_node),
-// but it plays the same "free symbol used elsewhere in the linear system"
+// AMP's clip/slew unknown isn't a branch current. It's the driving voltage
+// itself, used directly by Rout/out_node's stamp (see opamp_clip_node), but
+// it plays the same "free symbol used elsewhere in the linear system"
 // role for clustering purposes, so it's included here too.
 branch_current_names :: (el: Element) -> [..] string {
     names: [..] string;
@@ -324,8 +324,8 @@ copy_expr_replacing_symbol :: (e: Expr_ID, old_name: string, replacement: Expr_I
 //
 // Mirrors build_nonlinear_clusters()'s free-system derivation with one
 // fewer unknown/equation. Must be called with `f_ids` in pristine, pre-CSE
-// form -- CSE rewrites them in place to reference temp symbols local to the
-// free system's own generated code, which this copy would otherwise
+// form, since CSE rewrites them in place to reference temp symbols local to
+// the free system's own generated code, which this copy would otherwise
 // wrongly inherit as dangling references.
 derive_amp_clip_reduced_system :: (
         f_ids: [] Expr_ID, cluster_unknown_names: [] string, clip_idx: int,
@@ -440,13 +440,13 @@ build_nonlinear_clusters :: (elements: [] Element,
         }
     }
 
-    // Op-amp output clip/slew stage. Not in nonlinear_device_spec() -- unlike
+    // Op-amp output clip/slew stage. Not in nonlinear_device_spec(): unlike
     // DIODE/DIODE_PAIR/BJT/JFET, whether an AMP is nonlinear depends on its
     // instance-level opamp fields, not just its Element_Type (see
     // opamp_has_clip_stage). Its unknown is a single node's closed-form
     // voltage (opamp_bandwidth_node's solved value, i.e. the ideal/band-
     // limited gain-stage output before clipping), not a terminal-pair
-    // difference, and it needs no I-V law substitution -- its free symbol
+    // difference, and it needs no I-V law substitution. Its free symbol
     // (vclip_<name>, see branch_current_names) *is* the Newton unknown, so
     // there's nothing to substitute the way a diode's current->voltage
     // hand-off needs.
@@ -470,7 +470,7 @@ build_nonlinear_clusters :: (elements: [] Element,
     }
 
     // Union devices whose branch-current symbols appear in each other's
-    // linear_form (checked both directions -- see module comment).
+    // linear_form (checked both directions; see module comment).
     uf := uf_make(devices.count);
     for a : 0..devices.count-1 {
         a_names := branch_current_names(devices[a]);
@@ -663,8 +663,8 @@ build_nonlinear_clusters :: (elements: [] Element,
         }
 
         // Same CSE/LICM/recip_hoist recipe as solve_and_codegen(), but the
-        // loop-variant base is this cluster's own unknowns -- one loop level
-        // in from the per-sample base -- so it hoists Newton-invariant
+        // loop-variant base is this cluster's own unknowns, one loop level
+        // in from the per-sample base, so it hoists Newton-invariant
         // subexpressions automatically.
         gen_var_ids: [..] Expr_ID;
         for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);

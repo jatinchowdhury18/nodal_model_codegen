@@ -219,7 +219,7 @@ wolfram_verify :: (label: string, var_names: [] string, equations: [] Expr_ID,
     }
     append(*sb, "};\n");
 
-    // jaiSols = {sol1, sol2, ...}  -- built from print_expr
+    // jaiSols = {sol1, sol2, ...}, built from print_expr
     append(*sb, "jaiSols = {");
     for i: 0..solutions.count-1 {
         if i > 0  append(*sb, ", ");
@@ -227,7 +227,7 @@ wolfram_verify :: (label: string, var_names: [] string, equations: [] Expr_ID,
     }
     append(*sb, "};\n");
 
-    // eqns = {lhs1 == 0, lhs2 == 0, ...}  -- built from print_expr
+    // eqns = {lhs1 == 0, lhs2 == 0, ...}, built from print_expr
     append(*sb, "eqns = {");
     for i: 0..equations.count-1 {
         if i > 0  append(*sb, ", ");

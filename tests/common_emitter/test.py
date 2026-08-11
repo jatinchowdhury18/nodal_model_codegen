@@ -26,7 +26,7 @@ print(f"Max Error: {max_err}")
 assert max_err < 0.02
 
 # Generate C code
-netlist_codegen("common_emitter.net", "common_emitter_c.h", lang="c", dtype="double")
+netlist_codegen("common_emitter.net", "common_emitter_c.h", lang="c")
 compile_run_c("common_emitter_c")
 c_vout = read_bin("output.bin")
 

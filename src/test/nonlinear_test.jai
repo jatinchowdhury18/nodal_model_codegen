@@ -56,7 +56,7 @@ main :: () {
                                        nonlinear = .{ is_name = "D1_Is", vt_name = "D1_vt" } });
 
         solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
-        print("solve_vars count: %\n", solve_vars.count); // expect 1 (vd) -- iD1 is NOT an MNA unknown
+        print("solve_vars count: %\n", solve_vars.count); // expect 1 (vd); iD1 is NOT an MNA unknown
 
         solutions := solve(equations, solve_vars, *pool);
         junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *pool);
@@ -70,7 +70,7 @@ main :: () {
     // 2. Lone BJT: base fed through R1 from vi, collector tied to a supply
     //    node vcc (fixed voltage), emitter to ground through R2. Expect two
     //    free branch currents (iBQ1, iCQ1), two solved node voltages
-    //    (vb, ve -- vcc is itself an MNA unknown constrained to a fixed
+    //    (vb, ve; vcc is itself an MNA unknown constrained to a fixed
     //    value), and junction voltages vBCQ1 = vb - vcc, vBEQ1 = vb - ve.
     {
         print("--- lone BJT ---\n");
@@ -82,7 +82,7 @@ main :: () {
                                        nonlinear = .{ is_name = "Q1_Is", vt_name = "Q1_vt", betaf_name = "Q1_BetaF", betar_name = "Q1_BetaR" } });
 
         solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
-        print("solve_vars count: %\n", solve_vars.count); // expect 3 (vb, ve, vcc) -- iBQ1/iCQ1 are NOT MNA unknowns
+        print("solve_vars count: %\n", solve_vars.count); // expect 3 (vb, ve, vcc); iBQ1/iCQ1 are NOT MNA unknowns
 
         solutions := solve(equations, solve_vars, *pool);
         junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *pool);
@@ -93,7 +93,7 @@ main :: () {
         for c : clusters  print_cluster(c, pool.exprs);
     }
 
-    // 2b. Lone TRIODE: common-cathode-shaped stage -- plate through Rp to a
+    // 2b. Lone TRIODE: common-cathode-shaped stage. Plate through Rp to a
     //     supply node vp (fixed voltage), grid through Rg to vi, cathode
     //     through Rk to ground. Mirrors the lone-BJT case above: two free
     //     branch currents (iPX1, iGX1, from the plate/grid kcl_terms), and
@@ -112,7 +112,7 @@ main :: () {
                                                        cg_name = "X1_Cg", ig0_name = "X1_Ig0" } });
 
         solve_vars, equations, pool := generate_kcl_equations(circuit, .["vi"]);
-        print("solve_vars count: %\n", solve_vars.count); // expect 4 (vpl, vg, vk, vp) -- iPX1/iGX1 are NOT MNA unknowns
+        print("solve_vars count: %\n", solve_vars.count); // expect 4 (vpl, vg, vk, vp); iPX1/iGX1 are NOT MNA unknowns
 
         solutions := solve(equations, solve_vars, *pool);
         junctions := generate_junction_voltage_expressions(circuit, solve_vars, solutions, *pool);
@@ -128,7 +128,7 @@ main :: () {
 
         // The Jacobian/residual construction must actually reference the
         // model's own params (Gk/Gamma/Gg/Xi), not just pass them through
-        // untouched -- otherwise the I-V law substitution silently no-opped.
+        // untouched; otherwise the I-V law substitution silently no-opped.
         references_model := false;
         for gv : clusters[0].invariant_items  if String.contains(print_expr(gv.expr_id, pool.exprs), "X1_Gk")  references_model = true;
         for gv : clusters[0].iteration_items  if String.contains(print_expr(gv.expr_id, pool.exprs), "X1_Gk")  references_model = true;
@@ -139,7 +139,7 @@ main :: () {
     // 3. Coupled devices: a diode D1 sharing a node with a BJT Q1's base,
     //    so their branch currents must interact in the closed-form linear
     //    system and get merged into ONE joint cluster (2 devices, 3
-    //    unknowns: vD1, vBCQ1, vBEQ1) -- exercising clustering for real,
+    //    unknowns: vD1, vBCQ1, vBEQ1), exercising clustering for real,
     //    ahead of the full clip-stage test fixture in Phase 3.
     {
         print("--- coupled diode + BJT ---\n");
@@ -149,7 +149,7 @@ main :: () {
         array_add(*circuit, Element.{ name = "VCC", type = .FIXED_VOLTAGE, terminals = make_arr(string.["vcc"]) });
         array_add(*circuit, Element.{ name = "Q1", type = .NPN, terminals = make_arr(string.["vcc", "vb", "ve"]),
                                        nonlinear = .{ is_name = "Q1_Is", vt_name = "Q1_vt", betaf_name = "Q1_BetaF", betar_name = "Q1_BetaR" } });
-        // D1 shares node "vb" (the BJT's base) with its anode -- couples the two devices.
+        // D1 shares node "vb" (the BJT's base) with its anode, coupling the two devices.
         array_add(*circuit, Element.{ name = "D1", type = .DIODE, terminals = make_arr(string.["vb", "0"]),
                                        nonlinear = .{ is_name = "D1_Is", vt_name = "D1_vt" } });
 
@@ -165,9 +165,9 @@ main :: () {
     //    circuit with a base-bias network (R1/R2/VCC) and an input coupling
     //    capacitor C1 whose terminal is a raw circuit input ("vi"), not a
     //    solved node. Exercises generate_kcl_equations(dc_mode=true)
-    //    (capacitors excluded/open), lookup_node_voltage() resolving a raw
-    //    input node (needed to derive C1's DC-consistent z-state), and --
-    //    the actual bug this test was written to catch -- that EVERY branch
+    //    (capacitors excluded/open) and lookup_node_voltage() resolving a raw
+    //    input node (needed to derive C1's DC-consistent z-state). The
+    //    actual bug this test was written to catch is that EVERY branch
     //    current symbol (iBQ1, iCQ1) actually gets substituted with its I-V
     //    law everywhere it appears, including in OTHER nodes' closed forms
     //    (here, "vb"'s formula depends on iBQ1 via KCL) built earlier by
@@ -176,11 +176,11 @@ main :: () {
     //      (a) build_nonlinear_clusters()'s own vbc/vbe construction shared
     //          (not copied) `base_v` into two separate simplify() calls,
     //          each of which mutates nodes in place while recursing into
-    //          children -- corrupting "vb"'s own shared closed-form node as
+    //          children, corrupting "vb"'s own shared closed-form node as
     //          a side effect. Fixed with copy_expr().
     //      (b) fold()'s NEG-of-NEG collapse (-(-x) -> x) does a full struct
     //          copy when x is a SYMBOL, silently creating a second node
-    //          with the same name but a different ID -- so substituting
+    //          with the same name but a different ID, so substituting
     //          "the" iBQ1 node by name-based lookup (which only finds one
     //          match) can miss the other one. Fixed by having the
     //          substitution loop scan for and replace ALL matching-named
@@ -203,7 +203,7 @@ main :: () {
         print("cluster count: %\n", dc_clusters.count); // expect 1 (Q1's vBC/vBE)
 
         // No node's closed form should still reference a branch-current
-        // symbol after build_nonlinear_clusters() -- every one of them must
+        // symbol after build_nonlinear_clusters(); every one of them must
         // have been substituted with its device's I-V law.
         all_ok := true;
         for node : dc_solve_vars {
@@ -229,30 +229,30 @@ main :: () {
     //    from n1 to vo, pos tied to 0) with a finite Aol and Vsat+/Vsat- set,
     //    no Rout. Exercises the AMP-specific device-collection loop in
     //    build_nonlinear_clusters() (distinct from the generic
-    //    nonlinear_device_spec()-driven diode/BJT/JFET path -- see its
+    //    nonlinear_device_spec()-driven diode/BJT/JFET path (see its
     //    comment) and generate_kcl_equations()'s vclip_<name> exclusion from
     //    eqn_nodes/solve_vars.
     //
     //    Two real bugs were found and fixed getting this circuit's math to
-    //    check out (a naive smoke test alone didn't catch either -- both
+    //    check out. A naive smoke test alone didn't catch either; both
     //    needed comparing generated closed forms/output against a hand
-    //    derivation to notice something was numerically wrong):
+    //    derivation to notice something was numerically wrong:
     //      (a) Rout's synthesized resistor (netlist_codegen.jai) is wired
     //          using "vclip_<name>" as a literal terminal string, so the
     //          generic eqn_nodes population loop (which treats any element's
     //          terminal as a real KCL-governed node) wrongly pulled it into
-    //          solve_vars -- turning what should be a free Newton symbol
+    //          solve_vars, turning what should be a free Newton symbol
     //          (same role as a diode's branch current) into an ordinary
     //          linear unknown, silently discarding the whole clip nonlinearity.
     //          Fixed by excluding clip-stage node names from eqn_nodes,
     //          exactly like input nodes already are.
     //      (b) differentiate()'s SYMBOL case compared by raw Expr_ID, not by
-    //          name -- the same "second node, same name, different ID"
+    //          name. That's the same "second node, same name, different ID"
     //          hazard already documented for substitution (fold()'s
     //          `-(-x) -> x` rule can produce one). Since a clip's residual
     //          is plain linear (unlike diode/BJT/JFET's transcendental I-V
     //          laws), its Jacobian entry is exactly the kind of small,
-    //          heavily-folded expression likely to trigger this -- an
+    //          heavily-folded expression likely to trigger this: an
     //          occurrence of vclip_<name> from a duplicate node
     //          differentiated to 0 instead of 1, undercounting the
     //          feedback term entirely. Fixed by comparing symbol names.
@@ -282,7 +282,7 @@ main :: () {
         check_str("vsat_p_name threaded through", u.vsat_p_name, "Eop_VsatP");
         check_str("vsat_n_name threaded through", u.vsat_n_name, "Eop_VsatN");
 
-        // "vo"'s closed form must reference vclip_Eop -- if it doesn't
+        // "vo"'s closed form must reference vclip_Eop. If it doesn't
         // (bug (a) above), the whole clip nonlinearity silently vanishes
         // from the circuit's actual output.
         vo_idx := -1;
@@ -293,7 +293,7 @@ main :: () {
 
         // The Jacobian (d(residual)/d(vclip_Eop)) must pick up the feedback
         // term through RF, not just the trivial "-1" from `f = closed_form -
-        // vclip_Eop`'s own subtraction (bug (b) above) -- i.e. some
+        // vclip_Eop`'s own subtraction (bug (b) above). That means some
         // invariant/iteration item must actually reference Aol, not just the
         // residual's own affine "+vclip_Eop" term.
         references_aol := false;
@@ -334,7 +334,7 @@ main :: () {
         check_str("slew_name threaded through", u.slew_name, "Eop_Slew");
         check_str("zslew_name derived from element name", u.zslew_name, "zslew_Eop");
         // vsat_p_name/vsat_n_name must still be non-empty even though Vsat
-        // itself is unset -- clamp_opamp_output's call always needs both.
+        // itself is unset; clamp_opamp_output's call always needs both.
         check_bool("vsat_p_name non-empty despite no Vsat", u.vsat_p_name.count > 0, true);
         check_bool("vsat_n_name non-empty despite no Vsat", u.vsat_n_name.count > 0, true);
     }

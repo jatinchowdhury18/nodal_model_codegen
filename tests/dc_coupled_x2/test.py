@@ -21,6 +21,16 @@ max_err = np.max(np.abs(error))
 print(f"Max Error: {max_err}")
 assert max_err < 0.05
 
+# Generate C code
+netlist_codegen("dc_coupled_x2.net", "dc_coupled_x2_c.h", lang="c", dtype="float")
+compile_run_c("dc_coupled_x2_c")
+c_vout = read_bin("output.bin")
+
+error_c = (c_vout - vout)
+max_err_c = np.max(np.abs(error_c))
+print(f"Max Error (C): {max_err_c}")
+assert max_err_c < 0.05
+
 # Plot
 if "plot" in sys.argv:
     plt.figure()
@@ -28,10 +38,12 @@ if "plot" in sys.argv:
     plt.plot(time, vin)
     plt.plot(time, vout)
     plt.plot(time, cpp_vout, '--')
+    plt.plot(time, c_vout, '--')
     plt.grid()
 
     plt.figure()
     plt.plot(cpp_vout - vout)
+    plt.plot(c_vout - vout)
     plt.grid()
 
     plt.show()
