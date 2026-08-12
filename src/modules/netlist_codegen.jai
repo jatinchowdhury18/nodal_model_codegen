@@ -1,10 +1,11 @@
 #import "Basic";
-String :: #import "String";
 Math :: #import "Math";
 
 #import "nodal_analysis";
 #import "sym_algebra";
 #import "nonlinear_solve";
+#import "backend";
+#import "transcendental_approx";
 #import "codegen";
 
 // Thermal voltage kT/q at room temperature (~300K).
@@ -277,6 +278,35 @@ Netlist_Info :: struct {
     // Newton-Raphson solver defaults.
     newton_tol_sq   := 1.0e-5;
     newton_max_iter := 20;
+
+    // exp/log/pow approximation settings, overridable per netlist via
+    // `* exp_approx(order=N, c1=0/1, exact=0/1)`. See generate_transcendental_approx_helpers().
+    transcendental_approx: Transcendental_Approx;
+}
+
+// One `key=value` pair from a `keyword(key1=val1, key2=val2, ...)` directive line.
+Kv_Pair :: struct {
+    key: string; // upper-cased
+    val: float;
+}
+
+// Parses a `keyword(key1=val1, key2=val2, ...)` line into key/value pairs
+parse_kv_directive :: (line: string, keyword_len: int) -> [] Kv_Pair {
+    rest := String.slice(line, keyword_len, line.count - keyword_len);
+    rest, _ = String.replace(rest, "(", " ");
+    rest, _ = String.replace(rest, ")", " ");
+    rest, _ = String.replace(rest, ",", " ");
+
+    result: [..] Kv_Pair;
+    for kv : String.split(rest, #char " ") {
+        if kv.count == 0  continue;
+        parts := String.split(kv, #char "=");
+        if parts.count != 2  continue;
+        val, success := string_to_float(String.trim(parts[1]));
+        if !success  continue;
+        array_add(*result, Kv_Pair.{ key = String.to_upper_copy(String.trim(parts[0])), val = val });
+    }
+    return result;
 }
 
 parse_netlist :: (netlist_str: string) -> Netlist_Info {
@@ -493,21 +523,23 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
             }
             // `nr_solve(max_iter=<int>, tol=<val>)`.
             if String.begins_with(line, "nr_solve") {
-                rest := String.slice(line, 8, line.count - 8);
-                rest, _ = String.replace(rest, "(", " ");
-                rest, _ = String.replace(rest, ")", " ");
-                rest, _ = String.replace(rest, ",", " ");
-                kv_tokens_raw := String.split(rest, #char " ");
-                for kv : kv_tokens_raw {
-                    if kv.count == 0  continue;
-                    parts := String.split(kv, #char "=");
-                    if parts.count != 2  continue;
-                    key := String.to_upper_copy(String.trim(parts[0]));
-                    val, success := string_to_float(String.trim(parts[1]));
-                    if !success  continue;
-                    if key == {
-                        case "TOL";      newton_tol_sq = val;
-                        case "MAX_ITER"; newton_max_iter = cast(int) val;
+                for kv : parse_kv_directive(line, 8) {
+                    if kv.key == {
+                        case "TOL";      newton_tol_sq = kv.val;
+                        case "MAX_ITER"; newton_max_iter = cast(int) kv.val;
+                    }
+                }
+            }
+
+            // `exp_approx(order=<int>, c1=0/1, exact=0/1)`. Overrides the
+            // default exp/log/pow approximation (order 6, C1-continuous).
+            // `exact=1` falls back to std::exp/std::log/std::pow instead.
+            if String.begins_with(line, "exp_approx") {
+                for kv : parse_kv_directive(line, 10) {
+                    if kv.key == {
+                        case "ORDER"; transcendental_approx.order = cast(int) kv.val;
+                        case "C1";    transcendental_approx.c1_continuous = kv.val != 0;
+                        case "EXACT"; transcendental_approx.exact = kv.val != 0;
                     }
                 }
             }
@@ -711,6 +743,14 @@ circuit_has_nonlinear :: (elements: [] Element) -> bool {
     return false;
 }
 
+// True if any element's I-V law needs exp/log/pow.
+circuit_uses_transcendentals :: (elements: [] Element) -> bool {
+    for el : elements {
+        if el.type == .DIODE || el.type == .DIODE_PAIR || el.type == .NPN || el.type == .PNP || el.type == .TRIODE  return true;
+    }
+    return false;
+}
+
 flop_str :: (f: Flop_Count) -> string {
     b: String_Builder;
     sep := "";
@@ -796,8 +836,8 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     newton_worst_case := 0;
     if has_nonlinear {
         for c : clusters {
-            setup_flops := count_flops(c.invariant_items, cluster_exprs);
-            iter_flops  := count_flops(c.iteration_items, cluster_exprs);
+            setup_flops := count_flops(c.invariant_items, cluster_exprs, backend.transcendental_approx);
+            iter_flops  := count_flops(c.iteration_items, cluster_exprs, backend.transcendental_approx);
             log("  Cluster \"%\" Newton setup: %\n", c.name, flop_str(setup_flops));
             log("  Cluster \"%\" Newton iteration: % × up to % iters\n", c.name, flop_str(iter_flops), newton_max_iter);
             if c.invariant_items.count == 0 {
@@ -921,12 +961,12 @@ generate_joined_unit :: (decls: [] Sub_Circuit_Decl, backend: Backend) -> string
 }
 
 // Main entry point!
-netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "") -> string {
-    // choose the language backend (C, C++, ...)
-    backend := make_backend(lang, type_name);
-
+netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "", cpu_profile: CPU_Profile = CPU_PROFILE_GENERIC) -> string {
     // parse the netlist into our internal structure
     net := parse_netlist(netlist_str);
+
+    // choose the language backend (C, C++, ...)
+    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx);
 
     if net.outputs.count == 0 {
         log("Adding output node: vo\n");
@@ -946,6 +986,10 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
 
     // Nonlinear solver helpers
     if file_has_nonlinear {
+        if !backend.transcendental_approx.exact && circuit_uses_transcendentals(net.elements) {
+            append(*builder, generate_transcendental_approx_helpers(backend));
+            append(*builder, "\n");
+        }
         if circuit_uses_limiter_kind(net.elements, .EXP_JUNCTION) { append(*builder, generate_junction_limiter_helper(backend)); append(*builder, "\n"); }
         if circuit_uses_limiter_kind(net.elements, .JFET_PINCHOFF) { append(*builder, generate_jfet_limiter_helper(backend)); append(*builder, "\n"); }
         if circuit_uses_limiter_kind(net.elements, .AMP_CLIP) { append(*builder, generate_opamp_clip_limiter_helper(backend)); append(*builder, "\n"); }

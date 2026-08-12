@@ -1,9 +1,39 @@
-// Auto-generated with netlist_codegen version 9b570a3.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2.h -type_name float
 
 #pragma once
 
 #include <cmath>
+#include <cstdint>
+
+static int32_t math_bits_from_float(float x) { union { float f; int32_t i; } u; u.f = x; return u.i; }
+static float math_float_from_bits(int32_t i) { union { int32_t i; float f; } u; u.i = i; return u.f; }
+
+static float math_exp_approx(float x) {
+    x *= 1.4426950408889634f;
+    if (x < -126.0f) x = -126.0f;
+    const int32_t xi = (int32_t) x;
+    const int32_t l = x < (float) 0 ? xi - 1 : xi;
+    const float f = x - (float) l;
+    const float f_sq = f * f;
+    const int32_t vi = (l + 127) << 23;
+    return math_float_from_bits(vi) * ((((1.0f + 0.69314718056000002f * f) + f_sq * ((0.24022825068600001f + 0.0554875633068f * f))) + (f_sq * f_sq) * (((0.00967475272129f + 0.00124453797252f * f) + f_sq * (0.000217714753229f)))));
+}
+
+static float math_log_approx(float x) {
+    const int32_t vi = math_bits_from_float(x);
+    const int32_t ex = vi & 0x7f800000;
+    const int32_t e = (ex >> 23) - 127;
+    const int32_t vfi = (vi - ex) | 0x3f800000;
+    const float vf = math_float_from_bits(vfi);
+    const float vf_sq = vf * vf;
+    return 0.6931471805599453f * ((float) e + ((((-3.06081857306000015f + 6.19242937535999972f * vf) + vf_sq * ((-5.46521465639999971f + 3.38542517474999994f * vf))) + (vf_sq * vf_sq) * (((-1.3100709077499999f + 0.28479443750200001f * vf) + vf_sq * (-0.0265448504094f))))));
+}
+
+static float math_pow_approx(float x, float y) {
+    return math_exp_approx(y * math_log_approx(x));
+}
+
 
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -12,11 +42,11 @@
         if (v_old > 0)
         {
             const auto arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
+            v_new = arg > 0 ? v_old + vt * math_log_approx(arg) : vcrit;
         }
         else
         {
-            v_new = vt * std::log(v_new / vt);
+            v_new = vt * math_log_approx(v_new / vt);
         }
     }
     else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
@@ -24,11 +54,11 @@
         if (v_old < 0)
         {
             const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
         }
         else
         {
-            v_new = -vt * std::log(-v_new / vt);
+            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -91,7 +121,7 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const auto _D1_t5 = (vD1 / D1N914_vt);
-                const auto _D1_t4 = std::exp(_D1_t5);
+                const auto _D1_t4 = math_exp_approx(_D1_t5);
                 const auto _D1_t8 = (D1N914_Is * _D1_t4);
                 const auto _D1_t3 = (_D1_t4 - 1.0f);
                 const auto _D1_t7 = (_D1_t8 / D1N914_vt);
@@ -113,7 +143,7 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
                 
             }
 
-            const auto vo1 = ((zR3C1 + (D1N914_Is * (std::exp((vD1 / D1N914_vt)) - 1.0f))) / gR3C1);
+            const auto vo1 = ((zR3C1 + (D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0f))) / gR3C1);
             const auto vR3C1 = (vo1 - 0);
             
             zR3C1 = gzR3C1 * vR3C1 - zR3C1; // RC parallel
@@ -159,7 +189,7 @@ static float reset_stage1 (Params_stage1 params, State_stage1* state, int num_ch
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _D1_t5 = (vD1 / D1N914_vt);
-        const auto _D1_t4 = std::exp(_D1_t5);
+        const auto _D1_t4 = math_exp_approx(_D1_t5);
         const auto _D1_t7 = (D1N914_Is * _D1_t4);
         const auto _D1_t3 = (_D1_t4 - 1.0f);
         const auto _D1_t2 = (D1N914_Is * _D1_t3);
@@ -179,9 +209,9 @@ static float reset_stage1 (Params_stage1 params, State_stage1* state, int num_ch
             break;
         
     }
-    const auto zR3C1 = ((gzR3C1 * ((D1N914_Is * (std::exp((vD1 / D1N914_vt)) - 1.0f)) * R3)) / 2.0f);
+    const auto zR3C1 = ((gzR3C1 * ((D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0f)) * R3)) / 2.0f);
 
-    const auto vo1_dc_out = ((D1N914_Is * (std::exp((vD1 / D1N914_vt)) - 1.0f)) * R3);
+    const auto vo1_dc_out = ((D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0f)) * R3);
 
     for (int ch = 0; ch < num_channels; ++ch)
     {
@@ -234,7 +264,7 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const auto _D1x_t5 = (vD1x / D1N914_vt);
-                const auto _D1x_t4 = std::exp(_D1x_t5);
+                const auto _D1x_t4 = math_exp_approx(_D1x_t5);
                 const auto _D1x_t7 = (D1N914_Is * _D1x_t4);
                 const auto _D1x_t3 = (_D1x_t4 - 1.0f);
                 const auto _D1x_t6 = (_D1x_t7 / D1N914_vt);
@@ -256,7 +286,7 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
                 
             }
 
-            const auto vo2 = ((zR3xC1x + (D1N914_Is * (std::exp((vD1x / D1N914_vt)) - 1.0f))) / gR3xC1x);
+            const auto vo2 = ((zR3xC1x + (D1N914_Is * (math_exp_approx((vD1x / D1N914_vt)) - 1.0f))) / gR3xC1x);
             const auto vR3xC1x = (vo2 - 0);
             
             zR3xC1x = gzR3xC1x * vR3xC1x - zR3xC1x; // RC parallel
@@ -297,7 +327,7 @@ static float reset_stage2 (Params_stage2 params, State_stage2* state, int num_ch
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
         const auto _D1x_t5 = (vD1x / D1N914_vt);
-        const auto _D1x_t4 = std::exp(_D1x_t5);
+        const auto _D1x_t4 = math_exp_approx(_D1x_t5);
         const auto _D1x_t10 = (D1N914_Is * _D1x_t4);
         const auto _D1x_t3 = (_D1x_t4 - 1.0f);
         const auto _D1x_t9 = (_D1x_t10 / D1N914_vt);
@@ -318,9 +348,9 @@ static float reset_stage2 (Params_stage2 params, State_stage2* state, int num_ch
             break;
         
     }
-    const auto zR3xC1x = (((gzR3xC1x * (D1N914_Is * (std::exp((vD1x / D1N914_vt)) - 1.0f))) / ((1.0f / R3x) + (1.0f / 1000000000.0f))) / 2.0f);
+    const auto zR3xC1x = (((gzR3xC1x * (D1N914_Is * (math_exp_approx((vD1x / D1N914_vt)) - 1.0f))) / ((1.0f / R3x) + (1.0f / 1000000000.0f))) / 2.0f);
 
-    const auto vo2_dc_out = ((D1N914_Is * (std::exp((vD1x / D1N914_vt)) - 1.0f)) / ((1.0f / R3x) + (1.0f / 1000000000.0f)));
+    const auto vo2_dc_out = ((D1N914_Is * (math_exp_approx((vD1x / D1N914_vt)) - 1.0f)) / ((1.0f / R3x) + (1.0f / 1000000000.0f)));
 
     for (int ch = 0; ch < num_channels; ++ch)
     {

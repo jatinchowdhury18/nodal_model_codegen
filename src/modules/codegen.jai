@@ -1,8 +1,9 @@
-// Everything that turns a solved circuit (Element list + closed-form MNA/
-// Newton expressions) into C/C++ text: the pre-emission orchestration
-// (CSE-temp classification, topological emission, FLOP counting) and every
-// `generate_*` string emitter (Params/State structs, impedance defs, limiter
-// helpers, vcrit/newton constants, per-cluster Newton code, reset()).
+// Turns a solved circuit (Element list + closed-form MNA/Newton
+// expressions) into C/C++ text: FLOP counting, every `generate_*` string
+// emitter (Params/State structs, impedance defs, limiter helpers,
+// vcrit/newton constants, per-cluster Newton code, reset()), and the
+// pre-emission orchestration (CSE-temp classification, topological
+// emission).
 //
 // Sits above nonlinear_solve.jai in the dependency DAG (sym_algebra <-
 // nodal_analysis <- nonlinear_solve <- codegen <- netlist_codegen).
@@ -10,135 +11,45 @@
 #import "Basic";
 #import "Hash_Table";
 
+#import "backend";
+#import "transcendental_approx";
 #import "sym_algebra";
 #import "nodal_analysis";
 #import "nonlinear_solve";
 
-// Re-indents a multi-line code block by `prefix` (used when splicing one
-// generated block into another, e.g. impedance defs into the outer loop).
-indent :: (in: string, prefix := "    ") -> string {
-    if in.count == 0  return in;
-    ends_with_newline := in[in.count - 1] == #char "\n";
-    out := String.replace(in, "\n", tprint("\n%", prefix));
-    out = tprint("%1%2", prefix, out);
-    if ends_with_newline  out.count -= prefix.count;
-    return out;
-}
-
-// Every language-specific decision the emitters below need computed once only.
-// `Backend.{}` still means "C++, float" for callers that don't build one via make_backend().
-Backend :: struct {
-    is_cpp:    bool   = true;
-    type_name: string = "float";     // numeric type used for variable declarations
-    decl_type: string = "auto";      // "auto" (C++, type inference) or type_name (C)
-    const_kw:  string = "static constexpr"; // vs "static const" (C)
-}
-
-make_backend :: (lang: string, type_name: string) -> Backend {
-    is_cpp := lang != "c";
-    return .{
-        is_cpp    = is_cpp,
-        type_name = type_name,
-        decl_type = ifx is_cpp then "auto" else type_name,
-        const_kw  = ifx is_cpp then "static constexpr" else "static const",
-    };
-}
-
-// C++: "std::<name>"
-// C: "<name>" or "<name>f" for float
-math_fn :: (backend: Backend, name: string) -> string {
-    if backend.is_cpp  return tprint("std::%", name);
-    if backend.type_name == "float"  return tprint("%f", name);
-    return name;
-}
-
-// sym_algebra emits complex math functions like `math_fn_exp`,
-// so here we replace them with the proper C/C++ equivalent.
-resolve_math_fns :: (code: string, backend: Backend) -> string {
-    result := code;
-    result = String.replace(result, "math_fn_exp", math_fn(backend, "exp"));
-    result = String.replace(result, "math_fn_log", math_fn(backend, "log"));
-    result = String.replace(result, "math_fn_pow", math_fn(backend, "pow"));
-    return result;
-}
-
-// Emits `<prefix>const <decl_type> <name> = <expr>;\n`.
-emit_const_decl :: (builder: *String_Builder, backend: Backend, name: string, e: Expr_ID, exprs: [] Expr, suffix: string, prefix := "") {
-    print_to_builder(builder, "%1const %2 %3 = %4;\n", prefix, backend.decl_type, name, resolve_math_fns(print_expr(e, exprs, suffix), backend));
-}
-
-math_include :: (backend: Backend) -> string {
-    return ifx backend.is_cpp then "#include <cmath>\n\n" else "#include <math.h>\n\n";
-}
-
-// Opening line for a Params/State struct. C++ names the struct up front;
-// a C typedef struct is named on the closing line instead (see struct_close).
-struct_open :: (backend: Backend, name: string) -> string {
-    return ifx backend.is_cpp then tprint("struct % {\n", name) else "typedef struct {\n";
-}
-
-struct_close :: (backend: Backend, name: string) -> string {
-    return ifx backend.is_cpp then "};\n" else tprint("} %;\n", name);
-}
-
-// A struct field with no initializer. C++ zero-inits with `{}`, C just declares it.
-field_decl :: (backend: Backend, type_name: string, name: string) -> string {
-    return ifx backend.is_cpp then tprint("    % % {};\n", type_name, name) else tprint("    % %;\n", type_name, name);
-}
-
-// A struct field with a literal initial value. C structs can't have default member
-// initializers, so the value is recorded as a comment instead.
-field_decl_with_value :: (backend: Backend, type_name: string, name: string, value_str: string) -> string {
-    if backend.is_cpp  return tprint("    %1 %2 = %3;\n", type_name, name, value_str);
-    return tprint("    % %; // = %\n", type_name, name, value_str);
-}
-
-// A function parameter with a default value - C doesn't support default
-// parameter values, C++ does.
-param_decl_with_default :: (backend: Backend, type_name: string, name: string, default_str: string) -> string {
-    if backend.is_cpp  return tprint(", %1 %2 = %3", type_name, name, default_str);
-    return tprint(", %1 %2", type_name, name);
-}
-
-// sum/recip_sum helpers referenced by generate_impedance_defs - C++ lambdas,
-// C macros (C has no closures, and these never capture anything anyway).
-sum_recip_sum_defs :: (backend: Backend) -> string {
-    if backend.is_cpp {
-        return "[[maybe_unused]] static constexpr auto sum = [](auto a, auto b) { return a + b; };\n[[maybe_unused]] static constexpr auto recip_sum = [](auto a, auto b) { return a * b / (a + b); };\n\n";
-    }
-    return "#define sum(a, b) ((a) + (b))\n#define recip_sum(a, b) ((a) * (b) / ((a) + (b)))\n\n";
-}
-
-// Counts of floating-point operations in a block of generated code.
-Flop_Count :: struct {
-    muls: int;
-    divs: int;
-    adds: int; // ADD, SUB, and NEG all counted here
-    transcendentals: int; // EXP, LOG, POW
-}
-
 // Recursively walk an expression tree and accumulate op counts into `result`.
 // Stops at SYMBOL and CONST leaves; does not cross into sub-expressions that
 // are already named CSE variables (they appear as SYMBOL nodes).
-count_flops_expr :: (e: Expr_ID, exprs: [] Expr, result: *Flop_Count) {
+// Approximated transcendentals are broken down into a add/mul cost,
+// exact transcendentals are recorded as "transcendentals".
+count_flops_expr :: (e: Expr_ID, exprs: [] Expr, result: *Flop_Count, approx: Transcendental_Approx) {
     if e == NO_EXPR  return;
     kind := exprs[e].kind;
-    if      kind == .MUL                                    result.muls += 1;
-    else if kind == .DIV                                    result.divs += 1;
-    else if kind == .ADD || kind == .SUB || kind == .NEG    result.adds += 1;
-    else if kind == .EXP || kind == .LOG || kind == .POW    result.transcendentals += 1;
+    if      kind == .MUL                                 result.muls += 1;
+    else if kind == .DIV                                 result.divs += 1;
+    else if kind == .ADD || kind == .SUB || kind == .NEG  result.adds += 1;
+    else if kind == .EXP {
+        if approx.exact  result.transcendentals += 1;
+        else  add_flop_count(result, exp_approx_flop_count(approx));
+    } else if kind == .LOG {
+        if approx.exact  result.transcendentals += 1;
+        else  add_flop_count(result, log_approx_flop_count(approx));
+    } else if kind == .POW {
+        if approx.exact  result.transcendentals += 1;
+        else  add_flop_count(result, pow_approx_flop_count(approx));
+    }
 
     if kind == .ADD || kind == .SUB || kind == .MUL || kind == .DIV || kind == .POW {
-        count_flops_expr(exprs[e].left,  exprs, result);
-        count_flops_expr(exprs[e].right, exprs, result);
+        count_flops_expr(exprs[e].left,  exprs, result, approx);
+        count_flops_expr(exprs[e].right, exprs, result, approx);
     } else if kind == .NEG || kind == .EXP || kind == .LOG {
-        count_flops_expr(exprs[e].left, exprs, result);
+        count_flops_expr(exprs[e].left, exprs, result, approx);
     }
 }
 
-count_flops :: (items: [] Gen_Var, exprs: [] Expr) -> Flop_Count {
+count_flops :: (items: [] Gen_Var, exprs: [] Expr, approx: Transcendental_Approx = .{}) -> Flop_Count {
     result: Flop_Count;
-    for item : items  count_flops_expr(item.expr_id, exprs, *result);
+    for item : items  count_flops_expr(item.expr_id, exprs, *result, approx);
     return result;
 }
 
@@ -479,7 +390,7 @@ generate_junction_limiter_helper :: (backend: Backend) -> string {
     if !backend.is_cpp {
         type_name := backend.type_name;
         abs_fn    := math_fn(backend, "fabs");
-        log_fn    := math_fn(backend, "log");
+        log_fn    := transcendental_fn_name(backend, "log");
         template := #string DONE
 static %1 limit_junction_voltage(%1 v_new, %1 v_old, %1 vt, %1 vcrit) {
     if (v_new > vcrit && %2(v_new - v_old) > 2 * vt) {
@@ -504,7 +415,7 @@ DONE
     }
 
     abs_fn := math_fn(backend, "abs");
-    log_fn := math_fn(backend, "log");
+    log_fn := transcendental_fn_name(backend, "log");
     template := #string DONE
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -1000,8 +911,8 @@ codegen :: (elements: [] Element, inputs: [] string,
     }
 
     // Count FLOPs for both groups before emitting.
-    outer_flops := count_flops(outer_items, exprs);
-    inner_flops := count_flops(inner_items, exprs);
+    outer_flops := count_flops(outer_items, exprs, backend.transcendental_approx);
+    inner_flops := count_flops(inner_items, exprs, backend.transcendental_approx);
 
     // Emit both groups in topological order (dependencies before uses).
     emit_topological_order(outer_items, exprs, *outer_builder, backend);

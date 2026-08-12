@@ -1,0 +1,41 @@
+# ARM Cortex-A8 (VFPv3-D16 lite, in-order, dual-issue with tight pairing
+# restrictions). The FPU pipeline is NOT fully pipelined for dependent
+# scalar ops, which is exactly why HighShelfSection.h/MidSection.h needed
+# hand register-pressure work in the first place.
+#
+# EVERY number in this file is an unverified placeholder based on general
+# knowledge of the VFPLite pipeline, not a measurement. This is the one
+# profile that actually matters for real-world targeting here, so please
+# replace with real numbers (measured cycle counts, or even your own
+# estimate from the hand-optimization work) before trusting any -cpu=cortex_a8
+# decision this system makes.
+#
+# No separate exp/log/pow bucket: transcendentals are generated as inline
+# add/mul approximations by default (see Transcendental_Approx in
+# codegen.jai), so their cost already falls out of the add/mul numbers below.
+
+# TODO: real number. Effective usable register count under the in-order
+# VFPLite pipeline may be much lower than the architectural 16 D-regs once
+# spill/reload stalls are accounted for. This is a guess.
+num_registers = 8
+
+# TODO: real numbers. VFPLite ADD/MUL are commonly cited around ~9 cycle
+# latency, not fully pipelined (successive dependent ops can't issue back to
+# back), hence a throughput much worse than 1/cycle.
+add.latency     = 9.0
+add.throughput  = 4.0
+
+mul.latency     = 9.0
+mul.throughput  = 4.0
+
+# TODO: real number. VFP division is not pipelined at all and is known to be
+# very slow relative to add/mul.
+div.latency     = 25.0
+div.throughput  = 25.0
+
+# TODO: real numbers.
+load.latency    = 4.0
+load.throughput = 2.0
+
+store.latency    = 2.0
+store.throughput = 2.0

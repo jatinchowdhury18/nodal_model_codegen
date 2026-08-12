@@ -34,7 +34,7 @@ sys.path.insert(0, SCRIPT_DIR)
 from cases import CASES, CASE_NAMES
 
 FLOP_RE = re.compile(r"Outer loop: (?P<outer>.+)\r?\n\s*Inner loop: (?P<inner>.+)")
-TEMP_RE = re.compile(r"Temp vars \(register pressure\): (?P<outer>\d+) outer, (?P<inner>\d+) inner, (?P<total>\d+) total")
+TEMP_RE = re.compile(r"Temp vars: (?P<outer>\d+) outer, (?P<inner>\d+) inner, (?P<total>\d+) total")
 OPS_RE  = re.compile(r"Estimated worst-case ops/sample: (?P<total>\d+)")
 
 
@@ -65,19 +65,22 @@ def generate_header(case):
         print(f"codegen failed for {case['name']}:\n{result.stdout}\n{result.stderr}", file=sys.stderr)
         sys.exit(1)
 
+    # A circuit split into sub-circuits (see eq73) logs one of each of these
+    # blocks per sub-circuit, so sum across all of them: this way multi-unit
+    # circuits get whole-circuit totals instead of just the first sub-circuit's.
     output = result.stdout + result.stderr
-    flop_m = FLOP_RE.search(output)
-    temp_m = TEMP_RE.search(output)
-    ops_m  = OPS_RE.search(output)
+    flop_ms = list(FLOP_RE.finditer(output))
+    temp_ms = list(TEMP_RE.finditer(output))
+    ops_ms  = list(OPS_RE.finditer(output))
 
     return {
         "codegen_ms": codegen_ms,
-        "outer_ops": flop_m.group("outer") if flop_m else None,
-        "inner_ops": flop_m.group("inner") if flop_m else None,
-        "temp_count_outer": int(temp_m.group("outer")) if temp_m else None,
-        "temp_count_inner": int(temp_m.group("inner")) if temp_m else None,
-        "temp_count_total": int(temp_m.group("total")) if temp_m else None,
-        "estimated_worst_case_ops_per_sample": int(ops_m.group("total")) if ops_m else None,
+        "outer_ops": "; ".join(m.group("outer") for m in flop_ms) if flop_ms else None,
+        "inner_ops": "; ".join(m.group("inner") for m in flop_ms) if flop_ms else None,
+        "temp_count_outer": sum(int(m.group("outer")) for m in temp_ms) if temp_ms else None,
+        "temp_count_inner": sum(int(m.group("inner")) for m in temp_ms) if temp_ms else None,
+        "temp_count_total": sum(int(m.group("total")) for m in temp_ms) if temp_ms else None,
+        "estimated_worst_case_ops_per_sample": sum(int(m.group("total")) for m in ops_ms) if ops_ms else None,
     }
 
 
@@ -102,7 +105,7 @@ def compile_driver():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", action="append", choices=CASE_NAMES, dest="cases",
-                         help="run only this case (repeatable); default: all 5")
+                         help="run only this case (repeatable); default: all cases")
     parser.add_argument("--experiment", default=None,
                          help="experiment tag for perf/results/<tag>/; default: git short-hash (+'-dirty')")
     args = parser.parse_args()
@@ -116,8 +119,8 @@ def main():
 
     print(f"Experiment tag: {tag}")
 
-    # Headers get generated for all 5 cases regardless of selection, since
-    # run_perf.cpp #includes all 5 unconditionally (avoids conditional
+    # Headers get generated for all cases regardless of selection, since
+    # run_perf.cpp #includes all of them unconditionally (avoids conditional
     # compilation for a fixed, small case list) -- only the *timing* is
     # subset-selectable via run_perf.exe's --case flag.
     codegen_stats = {}

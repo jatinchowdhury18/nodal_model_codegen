@@ -1,24 +1,54 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen common_emitter_pnp.net common_emitter_pnp_c.h -lang c -type_name double
 
 #pragma once
 
 #include <math.h>
+#include <stdint.h>
+
+static int64_t math_bits_from_float(double x) { union { double f; int64_t i; } u; u.f = x; return u.i; }
+static double math_float_from_bits(int64_t i) { union { int64_t i; double f; } u; u.i = i; return u.f; }
+
+static double math_exp_approx(double x) {
+    x *= 1.4426950408889634074;
+    if (x < -1022.0) x = -1022.0;
+    const int64_t xi = (int64_t) x;
+    const int64_t l = x < (double) 0 ? xi - 1 : xi;
+    const double f = x - (double) l;
+    const double f_sq = f * f;
+    const int64_t vi = (l + 1023) << 52;
+    return math_float_from_bits(vi) * ((((1.0 + 0.69314718056000002 * f) + f_sq * ((0.24022825068600001 + 0.0554875633068 * f))) + (f_sq * f_sq) * (((0.00967475272129 + 0.00124453797252 * f) + f_sq * (0.000217714753229)))));
+}
+
+static double math_log_approx(double x) {
+    const int64_t vi = math_bits_from_float(x);
+    const int64_t ex = vi & 0x7ff0000000000000LL;
+    const int64_t e = (ex >> 52) - 1023;
+    const int64_t vfi = (vi - ex) | 0x3ff0000000000000LL;
+    const double vf = math_float_from_bits(vfi);
+    const double vf_sq = vf * vf;
+    return 0.69314718055994530942 * ((double) e + ((((-3.06081857306000015 + 6.19242937535999972 * vf) + vf_sq * ((-5.46521465639999971 + 3.38542517474999994 * vf))) + (vf_sq * vf_sq) * (((-1.3100709077499999 + 0.28479443750200001 * vf) + vf_sq * (-0.0265448504094))))));
+}
+
+static double math_pow_approx(double x, double y) {
+    return math_exp_approx(y * math_log_approx(x));
+}
+
 
 static double limit_junction_voltage(double v_new, double v_old, double vt, double vcrit) {
     if (v_new > vcrit && fabs(v_new - v_old) > 2 * vt) {
         if (v_old > 0) {
             double arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * log(arg) : vcrit;
+            v_new = arg > 0 ? v_old + vt * math_log_approx(arg) : vcrit;
         } else {
-            v_new = vt * log(v_new / vt);
+            v_new = vt * math_log_approx(v_new / vt);
         }
     } else if (v_new < -vcrit && fabs(v_new - v_old) > 2 * vt) {
         if (v_old < 0) {
             double arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * log(arg) : -vcrit;
+            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
         } else {
-            v_new = -vt * log(-v_new / vt);
+            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -114,8 +144,8 @@ static void compute (const float* const* input, float** output, int num_channels
             {
                 const double _Q1_t5 = (vEBQ1 / Q2N5087_vt);
                 const double _Q1_t7 = (vCBQ1 / Q2N5087_vt);
-                const double _Q1_t4 = exp(_Q1_t5);
-                const double _Q1_t6 = exp(_Q1_t7);
+                const double _Q1_t4 = math_exp_approx(_Q1_t5);
+                const double _Q1_t6 = math_exp_approx(_Q1_t7);
                 const double _Q1_t9 = (_Q1_t6 - 1.0);
                 const double _Q1_t20 = (_Q1_t4 - 1.0);
                 const double _Q1_t27 = (Q2N5087_Is * _Q1_t4);
@@ -168,8 +198,8 @@ static void compute (const float* const* input, float** output, int num_channels
                 
             }
 
-            const double _t1 = exp((vEBQ1 / Q2N5087_vt));
-            const double _t2 = exp((vCBQ1 / Q2N5087_vt));
+            const double _t1 = math_exp_approx((vEBQ1 / Q2N5087_vt));
+            const double _t2 = math_exp_approx((vCBQ1 / Q2N5087_vt));
             const double _t4 = (_t2 - 1.0);
             const double _t3 = (_t4 / Q2N5087_BetaR);
             const double _t0 = (zC2 + (Q2N5087_Is * ((_t1 - _t2) - _t3)));
@@ -240,8 +270,8 @@ static float reset (Params params, State* state, int num_channels, float sample_
     {
         const double _Q1_t5 = (vEBQ1 / Q2N5087_vt);
         const double _Q1_t7 = (vCBQ1 / Q2N5087_vt);
-        const double _Q1_t4 = exp(_Q1_t5);
-        const double _Q1_t6 = exp(_Q1_t7);
+        const double _Q1_t4 = math_exp_approx(_Q1_t5);
+        const double _Q1_t6 = math_exp_approx(_Q1_t7);
         const double _Q1_t9 = (_Q1_t6 - 1.0);
         const double _Q1_t17 = (_Q1_t4 - 1.0);
         const double _Q1_t24 = (Q2N5087_Is * _Q1_t4);
@@ -292,8 +322,8 @@ static float reset (Params params, State* state, int num_channels, float sample_
             break;
         
     }
-    const double zC1 = (gC1 * (vi - (((Q2N5087_Is * (((exp((vEBQ1 / Q2N5087_vt)) - 1.0) / Q2N5087_BetaF) + ((exp((vCBQ1 / Q2N5087_vt)) - 1.0) / Q2N5087_BetaR))) + (gR1 * VEE)) / ((gR1 + gR2) + (1.0 / 1000000000.0)))));
-    const double zC2 = ((gC2 * ((Q2N5087_Is * ((exp((vEBQ1 / Q2N5087_vt)) - exp((vCBQ1 / Q2N5087_vt))) - ((exp((vCBQ1 / Q2N5087_vt)) - 1.0) / Q2N5087_BetaR))) + (VEE * gRC))) / (gRC + (1.0 / 1000000000.0)));
+    const double zC1 = (gC1 * (vi - (((Q2N5087_Is * (((math_exp_approx((vEBQ1 / Q2N5087_vt)) - 1.0) / Q2N5087_BetaF) + ((math_exp_approx((vCBQ1 / Q2N5087_vt)) - 1.0) / Q2N5087_BetaR))) + (gR1 * VEE)) / ((gR1 + gR2) + (1.0 / 1000000000.0)))));
+    const double zC2 = ((gC2 * ((Q2N5087_Is * ((math_exp_approx((vEBQ1 / Q2N5087_vt)) - math_exp_approx((vCBQ1 / Q2N5087_vt))) - ((math_exp_approx((vCBQ1 / Q2N5087_vt)) - 1.0) / Q2N5087_BetaR))) + (VEE * gRC))) / (gRC + (1.0 / 1000000000.0)));
 
     const double vo_dc_out = 0.0;
 

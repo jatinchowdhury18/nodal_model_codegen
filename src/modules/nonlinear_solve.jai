@@ -19,7 +19,7 @@
 // control flow. Those concerns are handled in netlist_codegen.jai.
 
 #import "Basic";
-String :: #import "String";
+#import "backend";
 #import "sym_algebra";
 #import "nodal_analysis";
 

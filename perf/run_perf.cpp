@@ -28,6 +28,7 @@
 #include "generated/diode_clipper.h"
 #include "generated/common_emitter.h"
 #include "generated/pedal_drive.h"
+#include "generated/eq73.h"
 
 static constexpr int N_WARMUP = 2;
 static constexpr int N_TIMED  = 10;
@@ -85,6 +86,16 @@ struct PedalDriveTraits {
     static constexpr float vi_dc = 0.0f;
     static constexpr auto compute = pedal_drive::compute;
     static constexpr auto reset   = pedal_drive::reset;
+};
+
+struct Eq73Traits {
+    static constexpr const char* name = "eq73";
+    using Params = eq73::Params;
+    using State  = eq73::State;
+    static constexpr bool has_reset = true;
+    static constexpr float vi_dc = 0.0f;
+    static constexpr auto compute = eq73::compute;
+    static constexpr auto reset   = eq73::reset;
 };
 
 // ── Event collection ────────────────
@@ -191,8 +202,8 @@ static void run_case(event_collector& ec, const std::string& out_dir,
 
 static void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0 << " --out-dir <dir> [--case <name>]...\n"
-              << "  --case rc_lowpass | eq_filter2 | diode_clipper | common_emitter | pedal_drive\n"
-              << "  (default: all 5 cases)\n";
+              << "  --case rc_lowpass | eq_filter2 | diode_clipper | common_emitter | pedal_drive | eq73\n"
+              << "  (default: all 6 cases)\n";
 }
 
 int main(int argc, char** argv) {
@@ -235,6 +246,7 @@ int main(int argc, char** argv) {
     if (run_all || cases.count("diode_clipper"))  run_case<DiodeClipperTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("common_emitter")) run_case<CommonEmitterTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("pedal_drive"))    run_case<PedalDriveTraits>(ec, out_dir, input_buf);
+    if (run_all || cases.count("eq73"))           run_case<Eq73Traits>(ec, out_dir, input_buf);
 
     return 0;
 }

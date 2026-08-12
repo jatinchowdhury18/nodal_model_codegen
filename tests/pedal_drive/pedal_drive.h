@@ -1,9 +1,39 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen pedal_drive.net pedal_drive.h -type_name double
 
 #pragma once
 
 #include <cmath>
+#include <cstdint>
+
+static int64_t math_bits_from_float(double x) { union { double f; int64_t i; } u; u.f = x; return u.i; }
+static double math_float_from_bits(int64_t i) { union { int64_t i; double f; } u; u.i = i; return u.f; }
+
+static double math_exp_approx(double x) {
+    x *= 1.4426950408889634074;
+    if (x < -1022.0) x = -1022.0;
+    const int64_t xi = (int64_t) x;
+    const int64_t l = x < (double) 0 ? xi - 1 : xi;
+    const double f = x - (double) l;
+    const double f_sq = f * f;
+    const int64_t vi = (l + 1023) << 52;
+    return math_float_from_bits(vi) * ((((1.0 + 0.69314718056000002 * f) + f_sq * ((0.24022825068600001 + 0.0554875633068 * f))) + (f_sq * f_sq) * (((0.00967475272129 + 0.00124453797252 * f) + f_sq * (0.000217714753229)))));
+}
+
+static double math_log_approx(double x) {
+    const int64_t vi = math_bits_from_float(x);
+    const int64_t ex = vi & 0x7ff0000000000000LL;
+    const int64_t e = (ex >> 52) - 1023;
+    const int64_t vfi = (vi - ex) | 0x3ff0000000000000LL;
+    const double vf = math_float_from_bits(vfi);
+    const double vf_sq = vf * vf;
+    return 0.69314718055994530942 * ((double) e + ((((-3.06081857306000015 + 6.19242937535999972 * vf) + vf_sq * ((-5.46521465639999971 + 3.38542517474999994 * vf))) + (vf_sq * vf_sq) * (((-1.3100709077499999 + 0.28479443750200001 * vf) + vf_sq * (-0.0265448504094))))));
+}
+
+static double math_pow_approx(double x, double y) {
+    return math_exp_approx(y * math_log_approx(x));
+}
+
 
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -12,11 +42,11 @@
         if (v_old > 0)
         {
             const auto arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
+            v_new = arg > 0 ? v_old + vt * math_log_approx(arg) : vcrit;
         }
         else
         {
-            v_new = vt * std::log(v_new / vt);
+            v_new = vt * math_log_approx(v_new / vt);
         }
     }
     else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
@@ -24,11 +54,11 @@
         if (v_old < 0)
         {
             const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
         }
         else
         {
-            v_new = -vt * std::log(-v_new / vt);
+            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -186,9 +216,9 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _Q1_D3D4_t18 = (vBEQ1 / Q2N5089_vt);
                 const auto _Q1_D3D4_t22 = (vBCQ1 / Q2N5089_vt);
                 const auto _Q1_D3D4_t34 = (vD3D4 / D1N914_vt);
-                const auto _Q1_D3D4_t17 = exp(_Q1_D3D4_t18);
-                const auto _Q1_D3D4_t21 = exp(_Q1_D3D4_t22);
-                const auto _Q1_D3D4_t33 = exp(_Q1_D3D4_t34);
+                const auto _Q1_D3D4_t17 = math_exp_approx(_Q1_D3D4_t18);
+                const auto _Q1_D3D4_t21 = math_exp_approx(_Q1_D3D4_t22);
+                const auto _Q1_D3D4_t33 = math_exp_approx(_Q1_D3D4_t34);
                 const auto _Q1_D3D4_t35 = (1.0 / _Q1_D3D4_t33);
                 const auto _Q1_D3D4_t47 = (_Q1_D3D4_t17 - _Q1_D3D4_t21);
                 const auto _Q1_D3D4_t91 = (Q2N5089_Is * _Q1_D3D4_t17);
@@ -361,10 +391,10 @@ static void compute (const float* const* input, float** output, int num_channels
                 
             }
 
-            const auto _t1 = exp((vBEQ1 / Q2N5089_vt));
-            const auto _t2 = exp((vBCQ1 / Q2N5089_vt));
+            const auto _t1 = math_exp_approx((vBEQ1 / Q2N5089_vt));
+            const auto _t2 = math_exp_approx((vBCQ1 / Q2N5089_vt));
             const auto _t4 = (_t2 - 1.0);
-            const auto _t6 = exp((vD3D4 / D1N914_vt));
+            const auto _t6 = math_exp_approx((vD3D4 / D1N914_vt));
             const auto _t3 = (_t4 / Q2N5089_BetaR);
             const auto _t5 = (D1N914_Is * (_t6 - (1.0 / _t6)));
             const auto _t12 = (zCout * _t8);
@@ -488,10 +518,10 @@ static float reset (Params params, State* state, int num_channels, float sample_
         const auto _Q1_D3D4_t20 = (vBEQ1 / Q2N5089_vt);
         const auto _Q1_D3D4_t22 = (vBCQ1 / Q2N5089_vt);
         const auto _Q1_D3D4_t28 = (vD3D4 / D1N914_vt);
-        const auto _Q1_D3D4_t19 = exp(_Q1_D3D4_t20);
-        const auto _Q1_D3D4_t21 = exp(_Q1_D3D4_t22);
+        const auto _Q1_D3D4_t19 = math_exp_approx(_Q1_D3D4_t20);
+        const auto _Q1_D3D4_t21 = math_exp_approx(_Q1_D3D4_t22);
         const auto _Q1_D3D4_t24 = (_Q1_D3D4_t21 - 1.0);
-        const auto _Q1_D3D4_t27 = exp(_Q1_D3D4_t28);
+        const auto _Q1_D3D4_t27 = math_exp_approx(_Q1_D3D4_t28);
         const auto _Q1_D3D4_t29 = (1.0 / _Q1_D3D4_t27);
         const auto _Q1_D3D4_t38 = (_Q1_D3D4_t19 - 1.0);
         const auto _Q1_D3D4_t64 = (_Q1_D3D4_t27 / D1N914_vt);
@@ -627,10 +657,10 @@ static float reset (Params params, State* state, int num_channels, float sample_
             break;
         
     }
-    const auto zCout = (-((gCout * ((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))) + (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17)))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))));
-    const auto zR19C5 = (-(gR19C5 * ((((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) + vi)));
-    const auto zC6 = (gC6 * (((((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17)) - (((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) - (((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))))))));
-    const auto zR17C12 = ((gzR17C12 * ((((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))) + (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) - (((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((exp((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((exp((vBEQ1 / Q2N5089_vt)) - exp((vBCQ1 / Q2N5089_vt))) - ((exp((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (exp((vD3D4 / D1N914_vt)) - (1.0 / exp((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))))) / 2.0);
+    const auto zCout = (-((gCout * ((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - ((((Q2N5089_Is * ((math_exp_approx((vBEQ1 / Q2N5089_vt)) - math_exp_approx((vBCQ1 / Q2N5089_vt))) - ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (math_exp_approx((vD3D4 / D1N914_vt)) - (1.0 / math_exp_approx((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))) + (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((math_exp_approx((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17)))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))));
+    const auto zR19C5 = (-(gR19C5 * ((((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((math_exp_approx((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((math_exp_approx((vBEQ1 / Q2N5089_vt)) - math_exp_approx((vBCQ1 / Q2N5089_vt))) - ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (math_exp_approx((vD3D4 / D1N914_vt)) - (1.0 / math_exp_approx((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) + vi)));
+    const auto zC6 = (gC6 * (((((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((math_exp_approx((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17)) - (((Q2N5089_Is * ((math_exp_approx((vBEQ1 / Q2N5089_vt)) - math_exp_approx((vBCQ1 / Q2N5089_vt))) - ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (math_exp_approx((vD3D4 / D1N914_vt)) - (1.0 / math_exp_approx((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) - (((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((math_exp_approx((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((math_exp_approx((vBEQ1 / Q2N5089_vt)) - math_exp_approx((vBCQ1 / Q2N5089_vt))) - ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (math_exp_approx((vD3D4 / D1N914_vt)) - (1.0 / math_exp_approx((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))))))));
+    const auto zR17C12 = ((gzR17C12 * ((((gR18 * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp)))) - ((((Q2N5089_Is * ((math_exp_approx((vBEQ1 / Q2N5089_vt)) - math_exp_approx((vBCQ1 / Q2N5089_vt))) - ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (math_exp_approx((vD3D4 / D1N914_vt)) - (1.0 / math_exp_approx((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))) + (((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((math_exp_approx((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0)))) / R17))) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))) - (((((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * ((Q2N5089_Is * (((math_exp_approx((vBEQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaF) + ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) * (gR21 + (1.0 / 1000000000.0))))) - ((((Q2N5089_Is * ((math_exp_approx((vBEQ1 / Q2N5089_vt)) - math_exp_approx((vBCQ1 / Q2N5089_vt))) - ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0) / Q2N5089_BetaR))) - (D1N914_Is * (math_exp_approx((vD3D4 / D1N914_vt)) - (1.0 / math_exp_approx((vD3D4 / D1N914_vt)))))) * ((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0)))) / R17)) + ((gR18 * ((gRout + (1.0 / 1000000000.0)) * ((gR21 + (1.0 / 1000000000.0)) * Vp))) / R17)) / (((((gRout + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))) / R17) / R17) + ((((-1.0 / R17) - gR18) - (1.0 / 1000000000.0)) * ((gRout + (1.0 / 1000000000.0)) * (((gR20 + (1.0 / R17)) + (1.0 / 1000000000.0)) * (gR21 + (1.0 / 1000000000.0))))))))) / 2.0);
 
     const auto vo_dc_out = 0.0;
 

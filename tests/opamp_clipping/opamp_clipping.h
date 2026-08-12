@@ -1,9 +1,10 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h
 
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 
 [[maybe_unused]] static auto clamp_opamp_output = [](auto v_new, auto v_prev, auto slew_max_step, auto vsat_n, auto vsat_p)
 {

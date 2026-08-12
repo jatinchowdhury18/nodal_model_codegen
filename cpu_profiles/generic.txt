@@ -1,0 +1,30 @@
+# Generic CPU profile, not tied to any real chip. Round, order-of-magnitude
+# numbers so relative comparisons between op types (mul costs more than add,
+# div costs a lot more than either) still make sense without claiming to
+# model any specific microarchitecture. Used as the default when no -cpu is
+# given, and as a template for writing your own profile.
+#
+# No separate exp/log/pow bucket: transcendentals are generated as inline
+# add/mul approximations by default (see Transcendental_Approx in
+# codegen.jai), so their cost already falls out of the add/mul numbers below.
+#
+# Format: `key = value`, one per line. `#` starts a comment. Units are
+# abstract "cycles"; only relative magnitude matters for scheduling
+# decisions, so these don't need to be calibrated against a real clock.
+
+num_registers = 16
+
+add.latency     = 3.0
+add.throughput  = 1.0
+
+mul.latency     = 4.0
+mul.throughput  = 1.0
+
+div.latency     = 12.0
+div.throughput  = 6.0
+
+load.latency    = 3.0
+load.throughput = 1.0
+
+store.latency    = 1.0
+store.throughput = 1.0

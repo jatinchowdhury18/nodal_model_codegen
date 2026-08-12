@@ -1,9 +1,39 @@
-// Auto-generated with netlist_codegen version d79a711.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen common_emitter.net common_emitter.h
 
 #pragma once
 
 #include <cmath>
+#include <cstdint>
+
+static int32_t math_bits_from_float(float x) { union { float f; int32_t i; } u; u.f = x; return u.i; }
+static float math_float_from_bits(int32_t i) { union { int32_t i; float f; } u; u.i = i; return u.f; }
+
+static float math_exp_approx(float x) {
+    x *= 1.4426950408889634f;
+    if (x < -126.0f) x = -126.0f;
+    const int32_t xi = (int32_t) x;
+    const int32_t l = x < (float) 0 ? xi - 1 : xi;
+    const float f = x - (float) l;
+    const float f_sq = f * f;
+    const int32_t vi = (l + 127) << 23;
+    return math_float_from_bits(vi) * ((((1.0f + 0.69314718056000002f * f) + f_sq * ((0.24022825068600001f + 0.0554875633068f * f))) + (f_sq * f_sq) * (((0.00967475272129f + 0.00124453797252f * f) + f_sq * (0.000217714753229f)))));
+}
+
+static float math_log_approx(float x) {
+    const int32_t vi = math_bits_from_float(x);
+    const int32_t ex = vi & 0x7f800000;
+    const int32_t e = (ex >> 23) - 127;
+    const int32_t vfi = (vi - ex) | 0x3f800000;
+    const float vf = math_float_from_bits(vfi);
+    const float vf_sq = vf * vf;
+    return 0.6931471805599453f * ((float) e + ((((-3.06081857306000015f + 6.19242937535999972f * vf) + vf_sq * ((-5.46521465639999971f + 3.38542517474999994f * vf))) + (vf_sq * vf_sq) * (((-1.3100709077499999f + 0.28479443750200001f * vf) + vf_sq * (-0.0265448504094f))))));
+}
+
+static float math_pow_approx(float x, float y) {
+    return math_exp_approx(y * math_log_approx(x));
+}
+
 
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -12,11 +42,11 @@
         if (v_old > 0)
         {
             const auto arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
+            v_new = arg > 0 ? v_old + vt * math_log_approx(arg) : vcrit;
         }
         else
         {
-            v_new = vt * std::log(v_new / vt);
+            v_new = vt * math_log_approx(v_new / vt);
         }
     }
     else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
@@ -24,11 +54,11 @@
         if (v_old < 0)
         {
             const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
         }
         else
         {
-            v_new = -vt * std::log(-v_new / vt);
+            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -134,8 +164,8 @@ static void compute (const float* const* input, float** output, int num_channels
             {
                 const auto _Q1_t10 = (vBEQ1 / Q2N5089_vt);
                 const auto _Q1_t14 = (vBCQ1 / Q2N5089_vt);
-                const auto _Q1_t9 = std::exp(_Q1_t10);
-                const auto _Q1_t13 = std::exp(_Q1_t14);
+                const auto _Q1_t9 = math_exp_approx(_Q1_t10);
+                const auto _Q1_t13 = math_exp_approx(_Q1_t14);
                 const auto _Q1_t22 = (_Q1_t9 - _Q1_t13);
                 const auto _Q1_t31 = (Q2N5089_Is * _Q1_t9);
                 const auto _Q1_t33 = (_Q1_t31 / Q2N5089_vt);
@@ -188,8 +218,8 @@ static void compute (const float* const* input, float** output, int num_channels
             }
 
             const auto _t2 = (zC2 * 128.0f);
-            const auto _t4 = std::exp((vBEQ1 / Q2N5089_vt));
-            const auto _t5 = std::exp((vBCQ1 / Q2N5089_vt));
+            const auto _t4 = math_exp_approx((vBEQ1 / Q2N5089_vt));
+            const auto _t5 = math_exp_approx((vBCQ1 / Q2N5089_vt));
             const auto _t7 = (_t5 - 1.0f);
             const auto _t6 = (_t7 / Q2N5089_BetaR);
             const auto _t3 = (((Q2N5089_Is * ((_t4 - _t5) - _t6)) - zC2) * 128.0f);
@@ -260,8 +290,8 @@ static float reset (Params params, State* state, int num_channels, float sample_
     {
         const auto _Q1_t9 = (vBEQ1 / Q2N5089_vt);
         const auto _Q1_t13 = (vBCQ1 / Q2N5089_vt);
-        const auto _Q1_t8 = std::exp(_Q1_t9);
-        const auto _Q1_t12 = std::exp(_Q1_t13);
+        const auto _Q1_t8 = math_exp_approx(_Q1_t9);
+        const auto _Q1_t12 = math_exp_approx(_Q1_t13);
         const auto _Q1_t19 = (_Q1_t8 - _Q1_t12);
         const auto _Q1_t25 = (Q2N5089_Is * _Q1_t8);
         const auto _Q1_t27 = (_Q1_t25 / Q2N5089_vt);
@@ -312,8 +342,8 @@ static float reset (Params params, State* state, int num_channels, float sample_
             break;
         
     }
-    const auto zC1 = (gC1 * (vi - (((gR1 * VCC) - (Q2N5089_Is * (((std::exp((vBEQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaF) + ((std::exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR)))) / ((gR1 + gR2) + (1.0f / 1000000000.0f)))));
-    const auto zC2 = (-((gC2 * ((Q2N5089_Is * ((std::exp((vBEQ1 / Q2N5089_vt)) - std::exp((vBCQ1 / Q2N5089_vt))) - ((std::exp((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR))) - (VCC * gRC))) / (gRC + (1.0f / 1000000000.0f))));
+    const auto zC1 = (gC1 * (vi - (((gR1 * VCC) - (Q2N5089_Is * (((math_exp_approx((vBEQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaF) + ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR)))) / ((gR1 + gR2) + (1.0f / 1000000000.0f)))));
+    const auto zC2 = (-((gC2 * ((Q2N5089_Is * ((math_exp_approx((vBEQ1 / Q2N5089_vt)) - math_exp_approx((vBCQ1 / Q2N5089_vt))) - ((math_exp_approx((vBCQ1 / Q2N5089_vt)) - 1.0f) / Q2N5089_BetaR))) - (VCC * gRC))) / (gRC + (1.0f / 1000000000.0f))));
 
     const auto vo_dc_out = 0.0f;
 

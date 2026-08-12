@@ -1,0 +1,27 @@
+# Apple M1 (Firestorm), scalar single-precision FP/NEON.
+# add/mul/load/store: https://dougallj.github.io/applecpu/firestorm.html
+# div: NOT from that table, it's a rough placeholder. TODO verify against
+# measured numbers (Firestorm FDIV latency is data-dependent, and doesn't
+# reduce to one constant the way ADD/MUL do).
+#
+# No separate exp/log/pow bucket: transcendentals are generated as inline
+# add/mul approximations by default (see Transcendental_Approx in
+# codegen.jai), so their cost already falls out of the add/mul numbers below.
+
+num_registers = 32
+
+add.latency     = 3.0
+add.throughput  = 0.25
+
+mul.latency     = 4.0
+mul.throughput  = 0.25
+
+# TODO: placeholder, not from dougallj's tables.
+div.latency     = 10.0
+div.throughput  = 4.0
+
+load.latency    = 2.5
+load.throughput = 0.333
+
+store.latency    = 0.5
+store.throughput = 1.0

@@ -1,14 +1,15 @@
 #import "Basic";
-File    :: #import "File";
 Command_Line :: #import "Command_Line";
 Process :: #import "Process";
 
 #import "netlist_codegen";
+#import "backend"; // File, resolve_cpu_profile, CPU_Profile
 
 Args :: struct {
     lang:      string = "cpp";   @"?Output language for generated code. Supports: cpp (default), c."
     type_name: string = "float"; @"?Numeric type to use for generated code. (Default: float)"
     namespace: string = "";      @"?Wrap generated code in a namespace (C++ only, disabled by default)."
+    cpu:       string = "generic"; @"?Target CPU profile for the scheduling/extraction cost model. Built-in: generic (default), m1, zen4, cortex_a8. Or a path to a custom cpu_profiles/*.txt file."
 }
 
 argument_flags :: Command_Line.Default_Argument_Flags;
@@ -40,16 +41,22 @@ main :: () {
         exit(1);
     }
 
+    cpu_profile, cpu_found := resolve_cpu_profile(args.cpu);
+    if !cpu_found {
+        print("Unknown CPU profile '%' (not a built-in name, and not a readable file path)!\n", args.cpu);
+        exit(1);
+    }
+
     netlist_file := free_args[0];
     header_file  := free_args[1];
 
-    print("Converting netlist file % to % (lang: %, type: %, namespace: '%')\n",
-          netlist_file, header_file, args.lang, args.type_name, args.namespace);
+    print("Converting netlist file % to % (lang: %, type: %, namespace: '%', cpu: '%')\n",
+          netlist_file, header_file, args.lang, args.type_name, args.namespace, cpu_profile.name);
 
     netlist_file_str, fread_success := File.read_entire_file(netlist_file);
     assert(fread_success, "Unable to open file!");
 
-    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file);
+    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file, cpu_profile);
 
     // Prepend auto-generated header comment with version and full CLI invocation.
     cli_args := get_command_line_arguments();

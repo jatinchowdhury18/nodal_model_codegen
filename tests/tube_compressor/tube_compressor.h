@@ -1,9 +1,39 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen tube_compressor.net tube_compressor.h -type_name double
 
 #pragma once
 
 #include <cmath>
+#include <cstdint>
+
+static int64_t math_bits_from_float(double x) { union { double f; int64_t i; } u; u.f = x; return u.i; }
+static double math_float_from_bits(int64_t i) { union { int64_t i; double f; } u; u.i = i; return u.f; }
+
+static double math_exp_approx(double x) {
+    x *= 1.4426950408889634074;
+    if (x < -1022.0) x = -1022.0;
+    const int64_t xi = (int64_t) x;
+    const int64_t l = x < (double) 0 ? xi - 1 : xi;
+    const double f = x - (double) l;
+    const double f_sq = f * f;
+    const int64_t vi = (l + 1023) << 52;
+    return math_float_from_bits(vi) * ((((1.0 + 0.69314718056000002 * f) + f_sq * ((0.24022825068600001 + 0.0554875633068 * f))) + (f_sq * f_sq) * (((0.00967475272129 + 0.00124453797252 * f) + f_sq * (0.000217714753229)))));
+}
+
+static double math_log_approx(double x) {
+    const int64_t vi = math_bits_from_float(x);
+    const int64_t ex = vi & 0x7ff0000000000000LL;
+    const int64_t e = (ex >> 52) - 1023;
+    const int64_t vfi = (vi - ex) | 0x3ff0000000000000LL;
+    const double vf = math_float_from_bits(vfi);
+    const double vf_sq = vf * vf;
+    return 0.69314718055994530942 * ((double) e + ((((-3.06081857306000015 + 6.19242937535999972 * vf) + vf_sq * ((-5.46521465639999971 + 3.38542517474999994 * vf))) + (vf_sq * vf_sq) * (((-1.3100709077499999 + 0.28479443750200001 * vf) + vf_sq * (-0.0265448504094))))));
+}
+
+static double math_pow_approx(double x, double y) {
+    return math_exp_approx(y * math_log_approx(x));
+}
+
 
 [[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
@@ -12,11 +42,11 @@
         if (v_old > 0)
         {
             const auto arg = 1 + (v_new - v_old) / vt;
-            v_new = arg > 0 ? v_old + vt * std::log(arg) : vcrit;
+            v_new = arg > 0 ? v_old + vt * math_log_approx(arg) : vcrit;
         }
         else
         {
-            v_new = vt * std::log(v_new / vt);
+            v_new = vt * math_log_approx(v_new / vt);
         }
     }
     else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
@@ -24,11 +54,11 @@
         if (v_old < 0)
         {
             const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * std::log(arg) : -vcrit;
+            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
         }
         else
         {
-            v_new = -vt * std::log(-v_new / vt);
+            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -273,9 +303,9 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_X2_D1_t81 = (vD1 / D1N914_vt);
                 const auto _X1_X2_D1_t118 = (vPKX2 / _12AX7_DEMPWOLF_Mu);
                 const auto _X1_X2_D1_t14 = (_X1_X2_D1_t15 + vGKX1);
-                const auto _X1_X2_D1_t22 = exp(_X1_X2_D1_t23);
-                const auto _X1_X2_D1_t48 = exp(_X1_X2_D1_t49);
-                const auto _X1_X2_D1_t80 = exp(_X1_X2_D1_t81);
+                const auto _X1_X2_D1_t22 = math_exp_approx(_X1_X2_D1_t23);
+                const auto _X1_X2_D1_t48 = math_exp_approx(_X1_X2_D1_t49);
+                const auto _X1_X2_D1_t80 = math_exp_approx(_X1_X2_D1_t81);
                 const auto _X1_X2_D1_t95 = (D1N914_Is * _X1_X2_D1_t80);
                 const auto _X1_X2_D1_t117 = (_X1_X2_D1_t118 + vGKX2);
                 const auto _X1_X2_D1_t233 = (gCout * _X1_X2_D1_t95);
@@ -289,11 +319,11 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_X2_D1_t232 = (gRk2Ck2 * _X1_X2_D1_t233);
                 const auto _X1_X2_D1_t236 = (gRk2Ck2 * _X1_X2_D1_t237);
                 const auto _X1_X2_D1_t249 = (gRk2Ck2 * _X1_X2_D1_t250);
-                const auto _X1_X2_D1_t12 = exp(_X1_X2_D1_t13);
-                const auto _X1_X2_D1_t20 = log(_X1_X2_D1_t21);
-                const auto _X1_X2_D1_t46 = log(_X1_X2_D1_t47);
+                const auto _X1_X2_D1_t12 = math_exp_approx(_X1_X2_D1_t13);
+                const auto _X1_X2_D1_t20 = math_log_approx(_X1_X2_D1_t21);
+                const auto _X1_X2_D1_t46 = math_log_approx(_X1_X2_D1_t47);
                 const auto _X1_X2_D1_t78 = (D1N914_Is * _X1_X2_D1_t79);
-                const auto _X1_X2_D1_t115 = exp(_X1_X2_D1_t116);
+                const auto _X1_X2_D1_t115 = math_exp_approx(_X1_X2_D1_t116);
                 const auto _X1_X2_D1_t231 = (gCout * _X1_X2_D1_t232);
                 const auto _X1_X2_D1_t235 = (_X1_X2_D1_t29 * _X1_X2_D1_t236);
                 const auto _X1_X2_D1_t248 = (gCout * _X1_X2_D1_t249);
@@ -304,8 +334,8 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_X2_D1_t19 = (_X1_X2_D1_t20 / _12AX7_DEMPWOLF_Cg);
                 const auto _X1_X2_D1_t45 = (_X1_X2_D1_t46 / _12AX7_DEMPWOLF_Cg);
                 const auto _X1_X2_D1_t114 = (1.0 + _X1_X2_D1_t115);
-                const auto _X1_X2_D1_t124 = pow(_X1_X2_D1_t45, _X1_X2_D1_t125);
-                const auto _X1_X2_D1_t161 = pow(_X1_X2_D1_t19, _X1_X2_D1_t125);
+                const auto _X1_X2_D1_t124 = math_pow_approx(_X1_X2_D1_t45, _X1_X2_D1_t125);
+                const auto _X1_X2_D1_t161 = math_pow_approx(_X1_X2_D1_t19, _X1_X2_D1_t125);
                 const auto _X1_X2_D1_t169 = (_12AX7_DEMPWOLF_Mu * _X1_X2_D1_t114);
                 const auto _X1_X2_D1_t230 = (_X1_X2_D1_t231 / D1N914_vt);
                 const auto _X1_X2_D1_t234 = (_X1_X2_D1_t235 / D1N914_vt);
@@ -315,10 +345,10 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_X2_D1_t314 = (_X1_X2_D1_t315 + _X1_X2_D1_t316);
                 const auto _X1_X2_D1_t344 = (_X1_X2_D1_t316 + _X1_X2_D1_t345);
                 const auto _X1_X2_D1_t378 = (_12AX7_DEMPWOLF_Mu * _X1_X2_D1_t11);
-                const auto _X1_X2_D1_t10 = log(_X1_X2_D1_t11);
-                const auto _X1_X2_D1_t18 = pow(_X1_X2_D1_t19, _12AX7_DEMPWOLF_Xi);
-                const auto _X1_X2_D1_t44 = pow(_X1_X2_D1_t45, _12AX7_DEMPWOLF_Xi);
-                const auto _X1_X2_D1_t113 = log(_X1_X2_D1_t114);
+                const auto _X1_X2_D1_t10 = math_log_approx(_X1_X2_D1_t11);
+                const auto _X1_X2_D1_t18 = math_pow_approx(_X1_X2_D1_t19, _12AX7_DEMPWOLF_Xi);
+                const auto _X1_X2_D1_t44 = math_pow_approx(_X1_X2_D1_t45, _12AX7_DEMPWOLF_Xi);
+                const auto _X1_X2_D1_t113 = math_log_approx(_X1_X2_D1_t114);
                 const auto _X1_X2_D1_t123 = (_X1_X2_D1_t124 * _X1_X2_D1_t48);
                 const auto _X1_X2_D1_t160 = (_X1_X2_D1_t161 * _X1_X2_D1_t22);
                 const auto _X1_X2_D1_t229 = (_X1_X2_D1_t230 - _X1_X2_D1_t234);
@@ -336,25 +366,25 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_X2_D1_t98 = (gCc12 * _X1_X2_D1_t94);
                 const auto _X1_X2_D1_t112 = (_X1_X2_D1_t113 / _12AX7_DEMPWOLF_Ck);
                 const auto _X1_X2_D1_t122 = (_12AX7_DEMPWOLF_Xi * _X1_X2_D1_t123);
-                const auto _X1_X2_D1_t156 = pow(_X1_X2_D1_t9, _X1_X2_D1_t119);
+                const auto _X1_X2_D1_t156 = math_pow_approx(_X1_X2_D1_t9, _X1_X2_D1_t119);
                 const auto _X1_X2_D1_t159 = (_12AX7_DEMPWOLF_Xi * _X1_X2_D1_t160);
                 const auto _X1_X2_D1_t228 = (gRatt * _X1_X2_D1_t229);
                 const auto _X1_X2_D1_t239 = (_X1_X2_D1_t25 * _X1_X2_D1_t228);
                 const auto _X1_X2_D1_t245 = (_X1_X2_D1_t62 * _X1_X2_D1_t246);
                 const auto _X1_X2_D1_t251 = (_X1_X2_D1_t252 / D1N914_vt);
-                const auto _X1_X2_D1_t290 = pow(_X1_X2_D1_t112, _12AX7_DEMPWOLF_Gamma);
+                const auto _X1_X2_D1_t290 = math_pow_approx(_X1_X2_D1_t112, _12AX7_DEMPWOLF_Gamma);
                 const auto _X1_X2_D1_t308 = (gCout * _X1_X2_D1_t309);
                 const auto _X1_X2_D1_t312 = (_X1_X2_D1_t29 * _X1_X2_D1_t313);
                 const auto _X1_X2_D1_t342 = (gCout * _X1_X2_D1_t343);
                 const auto _X1_X2_D1_t383 = (_X1_X2_D1_t384 * _X1_X2_D1_t156);
-                const auto _X1_X2_D1_t8 = pow(_X1_X2_D1_t9, _12AX7_DEMPWOLF_Gamma);
+                const auto _X1_X2_D1_t8 = math_pow_approx(_X1_X2_D1_t9, _12AX7_DEMPWOLF_Gamma);
                 const auto _X1_X2_D1_t16 = (_X1_X2_D1_t17 + _12AX7_DEMPWOLF_Ig0);
                 const auto _X1_X2_D1_t42 = (_X1_X2_D1_t43 + _12AX7_DEMPWOLF_Ig0);
                 const auto _X1_X2_D1_t76 = (_X1_X2_D1_t25 * _X1_X2_D1_t77);
                 const auto _X1_X2_D1_t82 = (gCc12 * _X1_X2_D1_t83);
                 const auto _X1_X2_D1_t93 = (_X1_X2_D1_t25 * _X1_X2_D1_t94);
                 const auto _X1_X2_D1_t97 = (gCc12 * _X1_X2_D1_t98);
-                const auto _X1_X2_D1_t111 = pow(_X1_X2_D1_t112, _X1_X2_D1_t119);
+                const auto _X1_X2_D1_t111 = math_pow_approx(_X1_X2_D1_t112, _X1_X2_D1_t119);
                 const auto _X1_X2_D1_t121 = (_12AX7_DEMPWOLF_Gg * _X1_X2_D1_t122);
                 const auto _X1_X2_D1_t155 = (_X1_X2_D1_t156 * _X1_X2_D1_t12);
                 const auto _X1_X2_D1_t158 = (_12AX7_DEMPWOLF_Gg * _X1_X2_D1_t159);
@@ -668,18 +698,18 @@ static void compute (const float* const* input, float** output, int num_channels
             }
 
             const auto _t13 = (zCout - zCsc);
-            const auto _t16 = (D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0));
-            const auto _t21 = (_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi));
-            const auto _t49 = (_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi));
+            const auto _t16 = (D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0));
+            const auto _t21 = (_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi));
+            const auto _t49 = (_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi));
             const auto _t12 = (_t13 * gCsc);
             const auto _t15 = (zCsc + _t16);
             const auto _t20 = (_t21 + _12AX7_DEMPWOLF_Ig0);
             const auto _t48 = (_t49 + _12AX7_DEMPWOLF_Ig0);
-            const auto _t51 = ((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - _t48);
+            const auto _t51 = ((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - _t48);
             const auto _t64 = (_t51 - zCc12);
             const auto _t67 = (zCc12 + _t20);
             const auto _t14 = (gCsc * _t15);
-            const auto _t19 = ((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - _t20);
+            const auto _t19 = ((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - _t20);
             const auto _t50 = ((zRk1Ck1 + _t51) + _t48);
             const auto _t107 = ((zRk2Ck2 + _t19) + _t20);
             const auto _t11 = (_t12 + _t14);
@@ -894,25 +924,25 @@ static float reset (Params params, State* state, int num_channels, float sample_
         const auto _X1_D1_t31 = (_12AX7_DEMPWOLF_Cg * vGKX1);
         const auto _X1_D1_t63 = (vD1 / D1N914_vt);
         const auto _X1_D1_t22 = (_X1_D1_t23 + vGKX1);
-        const auto _X1_D1_t30 = exp(_X1_D1_t31);
-        const auto _X1_D1_t62 = exp(_X1_D1_t63);
+        const auto _X1_D1_t30 = math_exp_approx(_X1_D1_t31);
+        const auto _X1_D1_t62 = math_exp_approx(_X1_D1_t63);
         const auto _X1_D1_t129 = (D1N914_Is * _X1_D1_t62);
         const auto _X1_D1_t21 = (_12AX7_DEMPWOLF_Ck * _X1_D1_t22);
         const auto _X1_D1_t29 = (1.0 + _X1_D1_t30);
         const auto _X1_D1_t61 = (_X1_D1_t62 - 1.0);
-        const auto _X1_D1_t20 = exp(_X1_D1_t21);
-        const auto _X1_D1_t28 = log(_X1_D1_t29);
+        const auto _X1_D1_t20 = math_exp_approx(_X1_D1_t21);
+        const auto _X1_D1_t28 = math_log_approx(_X1_D1_t29);
         const auto _X1_D1_t60 = (D1N914_Is * _X1_D1_t61);
         const auto _X1_D1_t128 = (_X1_D1_t129 * _X1_D1_t8);
         const auto _X1_D1_t19 = (1.0 + _X1_D1_t20);
         const auto _X1_D1_t27 = (_X1_D1_t28 / _12AX7_DEMPWOLF_Cg);
         const auto _X1_D1_t59 = (_X1_D1_t60 * _X1_D1_t8);
         const auto _X1_D1_t71 = (_X1_D1_t72 * _X1_D1_t62);
-        const auto _X1_D1_t101 = pow(_X1_D1_t27, _X1_D1_t102);
+        const auto _X1_D1_t101 = math_pow_approx(_X1_D1_t27, _X1_D1_t102);
         const auto _X1_D1_t127 = (_X1_D1_t6 * _X1_D1_t128);
         const auto _X1_D1_t146 = (_12AX7_DEMPWOLF_Mu * _X1_D1_t19);
-        const auto _X1_D1_t18 = log(_X1_D1_t19);
-        const auto _X1_D1_t26 = pow(_X1_D1_t27, _12AX7_DEMPWOLF_Xi);
+        const auto _X1_D1_t18 = math_log_approx(_X1_D1_t19);
+        const auto _X1_D1_t26 = math_pow_approx(_X1_D1_t27, _12AX7_DEMPWOLF_Xi);
         const auto _X1_D1_t58 = (_X1_D1_t6 * _X1_D1_t59);
         const auto _X1_D1_t70 = (_X1_D1_t71 * _X1_D1_t9);
         const auto _X1_D1_t100 = (_X1_D1_t101 * _X1_D1_t30);
@@ -922,14 +952,14 @@ static float reset (Params params, State* state, int num_channels, float sample_
         const auto _X1_D1_t25 = (_12AX7_DEMPWOLF_Gg * _X1_D1_t26);
         const auto _X1_D1_t57 = (_X1_D1_t48 * _X1_D1_t58);
         const auto _X1_D1_t69 = (_X1_D1_t70 * _X1_D1_t11);
-        const auto _X1_D1_t95 = pow(_X1_D1_t17, _X1_D1_t96);
+        const auto _X1_D1_t95 = math_pow_approx(_X1_D1_t17, _X1_D1_t96);
         const auto _X1_D1_t99 = (_12AX7_DEMPWOLF_Xi * _X1_D1_t100);
         const auto _X1_D1_t113 = (_X1_D1_t32 * _X1_D1_t57);
         const auto _X1_D1_t115 = (gRfb * _X1_D1_t57);
         const auto _X1_D1_t125 = (_X1_D1_t32 * _X1_D1_t126);
         const auto _X1_D1_t131 = (gRfb * _X1_D1_t132);
         const auto _X1_D1_t144 = (_X1_D1_t145 * _X1_D1_t95);
-        const auto _X1_D1_t16 = pow(_X1_D1_t17, _12AX7_DEMPWOLF_Gamma);
+        const auto _X1_D1_t16 = math_pow_approx(_X1_D1_t17, _12AX7_DEMPWOLF_Gamma);
         const auto _X1_D1_t24 = (_X1_D1_t25 + _12AX7_DEMPWOLF_Ig0);
         const auto _X1_D1_t56 = (gRatt * _X1_D1_t57);
         const auto _X1_D1_t68 = (_X1_D1_t69 * _X1_D1_t13);
@@ -1080,23 +1110,23 @@ static float reset (Params params, State* state, int num_channels, float sample_
         const auto _X2_t22 = (vPKX2 / _12AX7_DEMPWOLF_Mu);
         const auto _X2_t30 = (_12AX7_DEMPWOLF_Cg * vGKX2);
         const auto _X2_t21 = (_X2_t22 + vGKX2);
-        const auto _X2_t29 = exp(_X2_t30);
+        const auto _X2_t29 = math_exp_approx(_X2_t30);
         const auto _X2_t20 = (_12AX7_DEMPWOLF_Ck * _X2_t21);
         const auto _X2_t28 = (1.0 + _X2_t29);
-        const auto _X2_t19 = exp(_X2_t20);
-        const auto _X2_t27 = log(_X2_t28);
+        const auto _X2_t19 = math_exp_approx(_X2_t20);
+        const auto _X2_t27 = math_log_approx(_X2_t28);
         const auto _X2_t18 = (1.0 + _X2_t19);
         const auto _X2_t26 = (_X2_t27 / _12AX7_DEMPWOLF_Cg);
-        const auto _X2_t83 = pow(_X2_t26, _X2_t84);
+        const auto _X2_t83 = math_pow_approx(_X2_t26, _X2_t84);
         const auto _X2_t131 = (_12AX7_DEMPWOLF_Mu * _X2_t18);
-        const auto _X2_t17 = log(_X2_t18);
-        const auto _X2_t25 = pow(_X2_t26, _12AX7_DEMPWOLF_Xi);
+        const auto _X2_t17 = math_log_approx(_X2_t18);
+        const auto _X2_t25 = math_pow_approx(_X2_t26, _12AX7_DEMPWOLF_Xi);
         const auto _X2_t82 = (_X2_t83 * _X2_t29);
         const auto _X2_t16 = (_X2_t17 / _12AX7_DEMPWOLF_Ck);
         const auto _X2_t24 = (_12AX7_DEMPWOLF_Gg * _X2_t25);
         const auto _X2_t81 = (_12AX7_DEMPWOLF_Xi * _X2_t82);
-        const auto _X2_t101 = pow(_X2_t16, _X2_t102);
-        const auto _X2_t15 = pow(_X2_t16, _12AX7_DEMPWOLF_Gamma);
+        const auto _X2_t101 = math_pow_approx(_X2_t16, _X2_t102);
+        const auto _X2_t15 = math_pow_approx(_X2_t16, _12AX7_DEMPWOLF_Gamma);
         const auto _X2_t23 = (_X2_t24 + _12AX7_DEMPWOLF_Ig0);
         const auto _X2_t80 = (_12AX7_DEMPWOLF_Gg * _X2_t81);
         const auto _X2_t100 = (_X2_t101 * _X2_t19);
@@ -1204,13 +1234,13 @@ static float reset (Params params, State* state, int num_channels, float sample_
             break;
         
     }
-    const auto zCin = (gCin * (vi + (((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) / (gRg1 + (1.0 / 1000000000.0)))));
-    const auto zRk1Ck1 = (-(((gzRk1Ck1 * ((gRfb * (gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / 2.0));
-    const auto zCc12 = (gCc12 * (((((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((VCC * (gRp1 * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((VCC * (gRp1 * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) + (gRfb * (gRfb * ((VCC * (gRp1 * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) + (((gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * (((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (gRatt * ((gRp1 + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))))));
-    const auto zRrelCenv = (-(((gzRrelCenv * (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * (gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) + ((((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / 2.0));
-    const auto zCout = ((gCout * (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((VCC * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * (gRp2 * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((VCC * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (gRp2 * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) + (gRfb * (gRfb * ((VCC * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (gRp2 * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))));
-    const auto zCsc = ((gCsc * ((((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (exp((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + ((((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))));
-    const auto zRk2Ck2 = (((gzRk2Ck2 * (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * ((((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * ((((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * ((((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / 2.0);
+    const auto zCin = (gCin * (vi + (((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) / (gRg1 + (1.0 / 1000000000.0)))));
+    const auto zRk1Ck1 = (-(((gzRk1Ck1 * ((gRfb * (gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / 2.0));
+    const auto zCc12 = (gCc12 * (((((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((VCC * (gRp1 * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((VCC * (gRp1 * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) + (gRfb * (gRfb * ((VCC * (gRp1 * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) + (((gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * (((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - (gRatt * ((gRp1 + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))))));
+    const auto zRrelCenv = (-(((gzRrelCenv * (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * (gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) + ((((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / 2.0));
+    const auto zCout = ((gCout * (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((VCC * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * (gRp2 * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((VCC * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (gRp2 * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) + (gRfb * (gRfb * ((VCC * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (gRp2 * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))));
+    const auto zCsc = ((gCsc * ((((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))) - (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((D1N914_Is * (math_exp_approx((vD1 / D1N914_vt)) - 1.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + ((((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))));
+    const auto zRk2Ck2 = (((gzRk2Ck2 * (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * ((((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * ((((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * ((((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX2 / _12AX7_DEMPWOLF_Mu) + vGKX2))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX2)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) * (gRL + (1.0 / 1000000000.0))))))))))) / (((((1.0 / Rk1) + gRfb) + (1.0 / 1000000000.0)) * ((gRatt * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * (gRatt * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))) - ((((gRfb + gRatt) + (1.0 / Rrel)) + (1.0 / 1000000000.0)) * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0)))))))))) + (gRfb * (gRfb * ((gRp1 + (1.0 / 1000000000.0)) * ((gRg2 + (1.0 / 1000000000.0)) * ((gRatt + (1.0 / 1000000000.0)) * ((gRp2 + (1.0 / 1000000000.0)) * (((1.0 / Rk2) + (1.0 / 1000000000.0)) * (gRL + (1.0 / 1000000000.0))))))))))) / 2.0);
 
     const auto vo_dc_out = 0.0;
 

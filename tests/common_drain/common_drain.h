@@ -1,9 +1,10 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen common_drain.net common_drain.h -type_name double
 
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 
 [[maybe_unused]] static auto limit_jfet_vgs = [](auto v_new, auto vp)
 {

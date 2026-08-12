@@ -1,9 +1,39 @@
-// Auto-generated with netlist_codegen version ce593e9.
+// Auto-generated with netlist_codegen version 720cc46.
 // Command: netlist_codegen common_cathode.net common_cathode.h -type_name double
 
 #pragma once
 
 #include <cmath>
+#include <cstdint>
+
+static int64_t math_bits_from_float(double x) { union { double f; int64_t i; } u; u.f = x; return u.i; }
+static double math_float_from_bits(int64_t i) { union { int64_t i; double f; } u; u.i = i; return u.f; }
+
+static double math_exp_approx(double x) {
+    x *= 1.4426950408889634074;
+    if (x < -1022.0) x = -1022.0;
+    const int64_t xi = (int64_t) x;
+    const int64_t l = x < (double) 0 ? xi - 1 : xi;
+    const double f = x - (double) l;
+    const double f_sq = f * f;
+    const int64_t vi = (l + 1023) << 52;
+    return math_float_from_bits(vi) * ((((1.0 + 0.69314718056000002 * f) + f_sq * ((0.24022825068600001 + 0.0554875633068 * f))) + (f_sq * f_sq) * (((0.00967475272129 + 0.00124453797252 * f) + f_sq * (0.000217714753229)))));
+}
+
+static double math_log_approx(double x) {
+    const int64_t vi = math_bits_from_float(x);
+    const int64_t ex = vi & 0x7ff0000000000000LL;
+    const int64_t e = (ex >> 52) - 1023;
+    const int64_t vfi = (vi - ex) | 0x3ff0000000000000LL;
+    const double vf = math_float_from_bits(vfi);
+    const double vf_sq = vf * vf;
+    return 0.69314718055994530942 * ((double) e + ((((-3.06081857306000015 + 6.19242937535999972 * vf) + vf_sq * ((-5.46521465639999971 + 3.38542517474999994 * vf))) + (vf_sq * vf_sq) * (((-1.3100709077499999 + 0.28479443750200001 * vf) + vf_sq * (-0.0265448504094))))));
+}
+
+static double math_pow_approx(double x, double y) {
+    return math_exp_approx(y * math_log_approx(x));
+}
+
 
 static constexpr auto newton_tol_sq = 0.00001;
 static constexpr int newton_max_iter = 20;
@@ -110,24 +140,24 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_t10 = (vPKX1 / _12AX7_DEMPWOLF_Mu);
                 const auto _X1_t18 = (_12AX7_DEMPWOLF_Cg * vGKX1);
                 const auto _X1_t9 = (_X1_t10 + vGKX1);
-                const auto _X1_t17 = exp(_X1_t18);
+                const auto _X1_t17 = math_exp_approx(_X1_t18);
                 const auto _X1_t8 = (_12AX7_DEMPWOLF_Ck * _X1_t9);
                 const auto _X1_t16 = (1.0 + _X1_t17);
-                const auto _X1_t7 = exp(_X1_t8);
-                const auto _X1_t15 = log(_X1_t16);
+                const auto _X1_t7 = math_exp_approx(_X1_t8);
+                const auto _X1_t15 = math_log_approx(_X1_t16);
                 const auto _X1_t6 = (1.0 + _X1_t7);
                 const auto _X1_t14 = (_X1_t15 / _12AX7_DEMPWOLF_Cg);
-                const auto _X1_t36 = pow(_X1_t14, _X1_t37);
+                const auto _X1_t36 = math_pow_approx(_X1_t14, _X1_t37);
                 const auto _X1_t54 = (_X1_t36 * _X1_t17);
                 const auto _X1_t66 = (_12AX7_DEMPWOLF_Mu * _X1_t6);
-                const auto _X1_t5 = log(_X1_t6);
-                const auto _X1_t13 = pow(_X1_t14, _12AX7_DEMPWOLF_Xi);
+                const auto _X1_t5 = math_log_approx(_X1_t6);
+                const auto _X1_t13 = math_pow_approx(_X1_t14, _12AX7_DEMPWOLF_Xi);
                 const auto _X1_t53 = (_12AX7_DEMPWOLF_Xi * _X1_t54);
                 const auto _X1_t4 = (_X1_t5 / _12AX7_DEMPWOLF_Ck);
                 const auto _X1_t12 = (_12AX7_DEMPWOLF_Gg * _X1_t13);
-                const auto _X1_t49 = pow(_X1_t4, _X1_t50);
+                const auto _X1_t49 = math_pow_approx(_X1_t4, _X1_t50);
                 const auto _X1_t52 = (_12AX7_DEMPWOLF_Gg * _X1_t53);
-                const auto _X1_t3 = pow(_X1_t4, _12AX7_DEMPWOLF_Gamma);
+                const auto _X1_t3 = math_pow_approx(_X1_t4, _12AX7_DEMPWOLF_Gamma);
                 const auto _X1_t11 = (_X1_t12 + _12AX7_DEMPWOLF_Ig0);
                 const auto _X1_t48 = (_X1_t49 * _X1_t7);
                 const auto _X1_t51 = (_X1_t52 / _X1_t16);
@@ -189,9 +219,9 @@ static void compute (const float* const* input, float** output, int num_channels
             }
 
             const auto _t1 = (zCout * gRkCk);
-            const auto _t5 = (_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi));
+            const auto _t5 = (_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi));
             const auto _t4 = (_t5 + _12AX7_DEMPWOLF_Ig0);
-            const auto _t3 = ((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - _t4);
+            const auto _t3 = ((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - _t4);
             const auto _t11 = ((zRkCk + _t3) + _t4);
             const auto _t2 = (_t3 - zCout);
             const auto vo = ((((_t0 * _t1) + (_t2 * _t6)) - _t12) * _t8);
@@ -270,24 +300,24 @@ static float reset (Params params, State* state, int num_channels, float sample_
         const auto _X1_t11 = (vPKX1 / _12AX7_DEMPWOLF_Mu);
         const auto _X1_t19 = (_12AX7_DEMPWOLF_Cg * vGKX1);
         const auto _X1_t10 = (_X1_t11 + vGKX1);
-        const auto _X1_t18 = exp(_X1_t19);
+        const auto _X1_t18 = math_exp_approx(_X1_t19);
         const auto _X1_t9 = (_12AX7_DEMPWOLF_Ck * _X1_t10);
         const auto _X1_t17 = (1.0 + _X1_t18);
-        const auto _X1_t8 = exp(_X1_t9);
-        const auto _X1_t16 = log(_X1_t17);
+        const auto _X1_t8 = math_exp_approx(_X1_t9);
+        const auto _X1_t16 = math_log_approx(_X1_t17);
         const auto _X1_t7 = (1.0 + _X1_t8);
         const auto _X1_t15 = (_X1_t16 / _12AX7_DEMPWOLF_Cg);
-        const auto _X1_t38 = pow(_X1_t15, _X1_t39);
+        const auto _X1_t38 = math_pow_approx(_X1_t15, _X1_t39);
         const auto _X1_t52 = (_12AX7_DEMPWOLF_Mu * _X1_t7);
-        const auto _X1_t6 = log(_X1_t7);
-        const auto _X1_t14 = pow(_X1_t15, _12AX7_DEMPWOLF_Xi);
+        const auto _X1_t6 = math_log_approx(_X1_t7);
+        const auto _X1_t14 = math_pow_approx(_X1_t15, _12AX7_DEMPWOLF_Xi);
         const auto _X1_t37 = (_X1_t38 * _X1_t18);
         const auto _X1_t5 = (_X1_t6 / _12AX7_DEMPWOLF_Ck);
         const auto _X1_t13 = (_12AX7_DEMPWOLF_Gg * _X1_t14);
-        const auto _X1_t32 = pow(_X1_t5, _X1_t33);
+        const auto _X1_t32 = math_pow_approx(_X1_t5, _X1_t33);
         const auto _X1_t36 = (_12AX7_DEMPWOLF_Xi * _X1_t37);
         const auto _X1_t50 = (_X1_t51 * _X1_t32);
-        const auto _X1_t4 = pow(_X1_t5, _12AX7_DEMPWOLF_Gamma);
+        const auto _X1_t4 = math_pow_approx(_X1_t5, _12AX7_DEMPWOLF_Gamma);
         const auto _X1_t12 = (_X1_t13 + _12AX7_DEMPWOLF_Ig0);
         const auto _X1_t31 = (_X1_t32 * _X1_t8);
         const auto _X1_t35 = (_12AX7_DEMPWOLF_Gg * _X1_t36);
@@ -332,9 +362,9 @@ static float reset (Params params, State* state, int num_channels, float sample_
             break;
         
     }
-    const auto zCin = (gCin * (vi + (((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) / (gRg + (1.0 / 1000000000.0)))));
-    const auto zCout = (-((gCout * (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) - (gRp * VCC))) / (gRp + (1.0 / 1000000000.0))));
-    const auto zRkCk = (((gzRkCk * (((_12AX7_DEMPWOLF_Gk * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * pow((log((1.0 + exp((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0))) / ((1.0 / Rk) + (1.0 / 1000000000.0))) / 2.0);
+    const auto zCin = (gCin * (vi + (((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0) / (gRg + (1.0 / 1000000000.0)))));
+    const auto zCout = (-((gCout * (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) - (gRp * VCC))) / (gRp + (1.0 / 1000000000.0))));
+    const auto zRkCk = (((gzRkCk * (((_12AX7_DEMPWOLF_Gk * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1))))) / _12AX7_DEMPWOLF_Ck), _12AX7_DEMPWOLF_Gamma)) - ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0)) + ((_12AX7_DEMPWOLF_Gg * math_pow_approx((math_log_approx((1.0 + math_exp_approx((_12AX7_DEMPWOLF_Cg * vGKX1)))) / _12AX7_DEMPWOLF_Cg), _12AX7_DEMPWOLF_Xi)) + _12AX7_DEMPWOLF_Ig0))) / ((1.0 / Rk) + (1.0 / 1000000000.0))) / 2.0);
 
     const auto vo_dc_out = 0.0;
 
