@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 720cc46.
+// Auto-generated with netlist_codegen version 03d2306.
 // Command: netlist_codegen pedal_model.net pedal_model.h -type_name double
 
 #pragma once
@@ -216,6 +216,37 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t57 = (_t44 * _t6);
     const auto _t58 = (_t44 * _t50);
     const auto _t59 = (_t44 * _t52);
+    double c0_vRdC5;
+    double c_vRdC5[10];
+    
+    for (int _k = 0; _k <= 10; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0 : 0.0;
+        const auto zC4 = (_k == 2) ? 1.0 : 0.0;
+        const auto zC12 = (_k == 3) ? 1.0 : 0.0;
+        const auto zR7C6 = (_k == 4) ? 1.0 : 0.0;
+        const auto zC13 = (_k == 5) ? 1.0 : 0.0;
+        const auto zR6C3 = (_k == 6) ? 1.0 : 0.0;
+        const auto zC11 = (_k == 7) ? 1.0 : 0.0;
+        const auto zR8C7 = (_k == 8) ? 1.0 : 0.0;
+        const auto zRdC5 = (_k == 9) ? 1.0 : 0.0;
+        const auto zR9C9 = (_k == 10) ? 1.0 : 0.0;
+        const auto _t26 = (zC4 + ((gR6C3 * vi) + zR6C3));
+        const auto _t40 = ((zR7C6 + zR8C7) + zRdC5);
+        const auto _t46 = ((_t4 * (_t40 * _t12)) - (_t26 * _t56));
+        const auto _t47 = ((_t4 * (_t40 * _t6)) - (_t26 * _t57));
+        const auto _t25 = (_t26 * _t5);
+        const auto _t27 = (_t26 * _t11);
+        const auto vneg = (((gC13 * ((gC12 * (gC13 * _t25)) - (_t8 * (gC13 * _t27)))) - (_t24 * ((gC12 * (_t2 * _t25)) - (_t8 * (_t2 * _t27))))) * _t20);
+        const auto v2 = (((gC13 * ((_t8 * (gC13 * _t46)) - (gC12 * (gC13 * _t47)))) - (_t24 * ((_t8 * (_t2 * _t46)) - (gC12 * (_t2 * _t47))))) * _t20);
+        const auto vRdC5 = (vneg - v2);
+        if (_k == 0) {
+            c0_vRdC5 = vRdC5;
+        } else {
+            c_vRdC5[_k - 1] = vRdC5 - c0_vRdC5;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC4 = state[ch].zC4;
@@ -365,6 +396,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 
             }
 
+            const auto vRdC5 = c0_vRdC5 + c_vRdC5[0] * vi + c_vRdC5[1] * zC4 + c_vRdC5[2] * zC12 + c_vRdC5[3] * zR7C6 + c_vRdC5[4] * zC13 + c_vRdC5[5] * zR6C3 + c_vRdC5[6] * zC11 + c_vRdC5[7] * zR8C7 + c_vRdC5[8] * zRdC5 + c_vRdC5[9] * zR9C9;
             const auto _t17 = ((vGSJ1 - _2N5485_vp) + _t55);
             const auto _t26 = (zC4 + ((gR6C3 * vi) + zR6C3));
             const auto _t35 = (zC12 + zC11);
@@ -402,7 +434,6 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto vR6C3 = (vneg - vi);
             const auto tC11 = (gC11 * (vf - 0));
             const auto v2 = (((gC13 * ((_t8 * (gC13 * _t46)) - (gC12 * (gC13 * _t47)))) - (_t24 * ((_t8 * (_t2 * _t46)) - (gC12 * (_t2 * _t47))))) * _t20);
-            const auto vRdC5 = (vneg - v2);
             const auto vdp = (((gC13 * ((zC12 * _t53) - ((_t8 * (gC13 * _t49)) + (gC12 * (gC13 * _t51))))) - (_t24 * ((zC12 * _t54) - ((_t8 * (_t2 * _t49)) + (gC12 * (_t2 * _t51)))))) * _t20);
             const auto vR9C9 = (v2 - vdp);
             const auto _t28 = (vneg - 0);

@@ -595,15 +595,55 @@ generate_amp_clip_active_set_step :: (cluster: Nonlinear_Cluster, builder: *Stri
     for u : others  emit_unknown_update(builder, u, tprint("delta_%_active", u.name));
 }
 
-// Newton-Raphson solve for one cluster, to be inserted inside the per-sample loop.
-generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend, apply_slew := true, max_iter := "newton_max_iter") -> string {
+// Emits one Newton-invariant region (invariant_items / hi_invariant_items /
+// lo_invariant_items). `other_variant_names` poisons linearity for
+// anything that touches them... this shouldn't normally happen since
+// invariant_items are Newton-invariant by construction, but is kept as a
+// defensive guard.
+emit_invariant_region :: (items: [] Gen_Var, exprs: [] Expr, backend: Backend,
+                          enable_extraction: bool, basis_names: [] string, other_variant_names: [] string,
+                          outer_builder: *String_Builder, inner_builder: *String_Builder) {
+    if enable_extraction {
+        // Every item in this list is a potential downstream terminal.
+        item_names: [..] string;
+        for it : items  array_add(*item_names, it.name);
+
+        accepted, region_items := try_extract_region(items, item_names, exprs, backend, basis_names, other_variant_names);
+        if accepted.count > 0 {
+            emit_extracted_region(region_items, accepted, exprs, basis_names, outer_builder, inner_builder, backend);
+
+            // The remainder is "whatever's needed by the non-accepted items".
+            // A CSE temp shared between an accepted and a non-accepted item
+            // needs both: once inside the basis loop, once out here.
+            remaining_items := remaining_region_after_extraction(item_names, accepted, items, exprs);
+            emit_topological_order(remaining_items, exprs, inner_builder, backend);
+            return;
+        }
+    }
+    emit_topological_order(items, exprs, inner_builder, backend);
+}
+
+// Newton-Raphson solve for one cluster, to be inserted inside the per-sample
+// loop. `basis_names` should be extraction_basis_names()'s output (inputs +
+// z-state only; `non_basis_variant_names` should include that function's
+// output, so anything referencing a branch current directly gets correctly
+// excluded from extraction instead of misclassified as basis-independent.
+// Both are only used for the Newton-invariant regions. Invariant extraction
+// can be disabled with enable_extraction=false.
+generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend, apply_slew := true, max_iter := "newton_max_iter",
+                                 enable_extraction := false, basis_names: [] string = .[], non_basis_variant_names: [] string = .[]) -> (outer_code: string, inner_code: string) {
+    outer_builder: String_Builder;
     builder: String_Builder;
     print_to_builder(*builder, "// --- Newton-Raphson solve: %\n", cluster.name);
 
-    emit_topological_order(cluster.invariant_items, exprs, *builder, backend);
+    other_variant_names: [..] string;
+    for u : cluster.unknowns  array_add(*other_variant_names, u.name);
+    for n : non_basis_variant_names  array_add(*other_variant_names, n);
+
+    emit_invariant_region(cluster.invariant_items, exprs, backend, enable_extraction, basis_names, other_variant_names, *outer_builder, *builder);
     if cluster.amp_clip_idx >= 0 {
-        emit_topological_order(cluster.hi_invariant_items, exprs, *builder, backend);
-        emit_topological_order(cluster.lo_invariant_items, exprs, *builder, backend);
+        emit_invariant_region(cluster.hi_invariant_items, exprs, backend, enable_extraction, basis_names, other_variant_names, *outer_builder, *builder);
+        emit_invariant_region(cluster.lo_invariant_items, exprs, backend, enable_extraction, basis_names, other_variant_names, *outer_builder, *builder);
     }
 
     print_to_builder(*builder, "for (int newton_iter = 0; newton_iter < %; ++newton_iter)\n{\n", max_iter);
@@ -647,7 +687,7 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
     append(*builder, indented);
     append(*builder, "\n}\n");
 
-    return builder_to_string(*builder);
+    return builder_to_string(*outer_builder), builder_to_string(*builder);
 }
 
 // Builds and solves the DC-equivalent circuit (see generate_kcl_equations
@@ -722,7 +762,8 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: []
     // reliably on the first try, so it gets a much higher iteration cap
     // than the per-sample solve, still bounded to avoid an infinite loop.
     for c : dc_clusters {
-        newton_code := generate_cluster_newton_code(c, dc_pool.exprs, backend, apply_slew = false, max_iter = "10000");
+        // reset() only runs once (no per-sample loop), so we disable invariant extraction
+        _, newton_code := generate_cluster_newton_code(c, dc_pool.exprs, backend, apply_slew = false, max_iter = "10000", enable_extraction = false);
         append(*builder, indent(newton_code));
     }
 
@@ -804,9 +845,24 @@ generate_expressions :: (elements: [] Element,
     return gen_vars;
 }
 
+// Nonlinear branch-current placeholder symbols (i<suffix><name>),
+// that can't be used as an extraction basis axis.
+nonlinear_branch_current_names :: (elements: [] Element) -> [..] string {
+    names: [..] string;
+    for el : elements {
+        spec := nonlinear_device_spec(el.type);
+        for term : spec.kcl_terms {
+            array_add_if_unique(*names, tprint("i%1%2", term.branch_suffix, el.name));
+        }
+    }
+    return names;
+}
+
 // Build the set of base loop-variant symbol names: inputs + state variables
 // + nonlinear branch currents (free per-sample symbols, not solved-for MNA
-// unknowns; see generate_kcl_equations).
+// unknowns; see generate_kcl_equations). Used for the (purely boolean)
+// loop-variance classification. For extraction's basis axes specifically,
+// use extraction_basis_names instead (branch currents aren't real variables).
 build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
     names: [..] string;
     for inp : inputs  array_add(*names, inp);
@@ -815,9 +871,24 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
            || el.type == .RC_SERIES || el.type == .RC_PARALLEL {
             array_add(*names, tprint("z%", el.name));
         }
-        spec := nonlinear_device_spec(el.type);
-        for term : spec.kcl_terms {
-            array_add_if_unique(*names, tprint("i%1%2", term.branch_suffix, el.name));
+    }
+    for n : nonlinear_branch_current_names(elements)  array_add(*names, n);
+    return names;
+}
+
+// Extraction basis: inputs + z-state only. Unlike build_variant_base, this
+// deliberately excludes nonlinear branch-current placeholders, so they can't
+// be a dot-product axis. Any gen_var/CSE temp that references one directly
+// should be treated as depending on something outside the basis (not extractable),
+// which is why callers also need nonlinear_branch_current_names in their
+// classify_region_for_basis's `other_variant_names`.
+extraction_basis_names :: (elements: [] Element, inputs: [] string) -> [..] string {
+    names: [..] string;
+    for inp : inputs  array_add(*names, inp);
+    for el : elements {
+        if el.type == .CAPACITOR || el.type == .INDUCTOR
+           || el.type == .RC_SERIES || el.type == .RC_PARALLEL {
+            array_add(*names, tprint("z%", el.name));
         }
     }
     return names;
@@ -828,6 +899,7 @@ build_variant_base :: (elements: [] Element, inputs: [] string) -> [..] string {
 // references have already been written.
 emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder, backend: Backend = .{}) {
     literal_suffix := ifx backend.type_name == "float" then "f" else "";
+
     emitted: [..] bool;
     for _ : 0..items.count-1  array_add(*emitted, false);
 
@@ -856,6 +928,295 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
             }
         }
         if !made_progress  break;  // Cycle guard.
+    }
+}
+
+// Register-pressure list scheduling: not used for emission order (see
+// emit_topological_order) -- kept purely as a peak-live-value estimator, a
+// register-pressure proxy that should_extract uses for spill-cost
+// accounting. Greedily picks, among ready items, whichever kills the most
+// already-live deps; once live count is at/above num_registers, ties
+// additionally go to whichever ready item has fewer of its own deps.
+schedule_for_register_pressure :: (items: [] Gen_Var, exprs: [] Expr, num_registers: int) -> (order: [] int, peak_live: int) {
+    deps: [..] [..] string;
+    for i : 0..items.count-1 {
+        d: [..] string;
+        collect_symbol_names(items[i].expr_id, exprs, *d);
+        array_add(*deps, d);
+    }
+
+    // remaining_uses[j]: how many other items in this list still reference items[j].name.
+    remaining_uses: [..] int;
+    for _ : 0..items.count-1  array_add(*remaining_uses, 0);
+    for i : 0..items.count-1 {
+        for dep : deps[i] {
+            for j : 0..items.count-1 {
+                if j != i && items[j].name == dep  remaining_uses[j] += 1;
+            }
+        }
+    }
+
+    emitted: [..] bool;
+    for _ : 0..items.count-1  array_add(*emitted, false);
+
+    order: [..] int;
+    live := 0;
+    peak_live := 0;
+
+    remaining := items.count;
+    while remaining > 0 {
+        best_i := -1;
+        best_kills := -1;
+        best_dep_count := 0;
+        for i : 0..items.count-1 {
+            if emitted[i]  continue;
+            ready := true;
+            for dep : deps[i] {
+                for j : 0..items.count-1 {
+                    if j != i && items[j].name == dep && !emitted[j] {
+                        ready = false;
+                        break;
+                    }
+                }
+                if !ready  break;
+            }
+            if !ready  continue;
+
+            kills := 0;
+            for dep : deps[i] {
+                for j : 0..items.count-1 {
+                    if items[j].name == dep && remaining_uses[j] == 1 {
+                        kills += 1;
+                        break;
+                    }
+                }
+            }
+            if kills > best_kills {
+                best_kills = kills;
+                best_i = i;
+                best_dep_count = deps[i].count;
+            } else if kills == best_kills && live >= num_registers && deps[i].count < best_dep_count {
+                best_i = i;
+                best_dep_count = deps[i].count;
+            }
+        }
+        if best_i == -1  break;  // Cycle guard.
+
+        emitted[best_i] = true;
+        remaining -= 1;
+        live += 1; // best_i's own value is now live
+        for dep : deps[best_i] {
+            for j : 0..items.count-1 {
+                if items[j].name == dep {
+                    remaining_uses[j] -= 1;
+                    if remaining_uses[j] == 0  live -= 1; // that dep just died
+                    break;
+                }
+            }
+        }
+        if live > peak_live  peak_live = live;
+        array_add(*order, best_i);
+    }
+    return order, peak_live;
+}
+
+// Classify every item in a topologically-sorted region against a chosen
+// basis, propagating through the chain the same way the outer/inner CSE
+// split already does for loop-variance. `other_variant_names` is anything
+// sample-variant but not part of the basis.
+classify_region_for_basis :: (items: [] Gen_Var, exprs: [] Expr, basis_names: [] string, other_variant_names: [] string) -> [] Basis_Class {
+    classified: Table(string, Basis_Class);
+    result: [..] Basis_Class;
+    for item : items {
+        cls := classify_expr_for_basis(item.expr_id, exprs, basis_names, other_variant_names, classified);
+        table_add(*classified, item.name, cls);
+        array_add(*result, cls);
+    }
+    return result;
+}
+
+// Backward-reachable subset of `items` feeding `terminal_names`, order
+// preserved (items is already topologically sorted).
+collect_region_closure :: (terminal_names: [] string, items: [] Gen_Var, exprs: [] Expr) -> [] Gen_Var {
+    include: [..] bool;
+    for _ : 0..items.count-1  array_add(*include, false);
+
+    needed: [..] string;
+    for n : terminal_names  array_add(*needed, n);
+
+    changed := true;
+    while changed {
+        changed = false;
+        for item, i : items {
+            if include[i]  continue;
+            is_needed := false;
+            for n : needed  if item.name == n { is_needed = true; break; }
+            if !is_needed  continue;
+
+            include[i] = true;
+            changed = true;
+            deps: [..] string;
+            collect_symbol_names(item.expr_id, exprs, *deps);
+            for d : deps  array_add_if_unique(*needed, d);
+        }
+    }
+
+    result: [..] Gen_Var;
+    for item, i : items  if include[i]  array_add(*result, item);
+    return result;
+}
+
+// After extracting `accepted` terminals out of `items`, returns the
+// transitive closure of items still needed for the straight-line remainder.
+remaining_region_after_extraction :: (all_terminal_names: [] string, accepted: [] string, items: [] Gen_Var, exprs: [] Expr) -> [] Gen_Var {
+    remaining_terminal_names: [..] string;
+    for n : all_terminal_names {
+        already_accepted := false;
+        for a : accepted  if n == a { already_accepted = true; break; }
+        if !already_accepted  array_add(*remaining_terminal_names, n);
+    }
+
+    closure := collect_region_closure(remaining_terminal_names, items, exprs);
+    result: [..] Gen_Var;
+    for it : closure {
+        is_accepted := false;
+        for a : accepted  if it.name == a { is_accepted = true; break; }
+        if !is_accepted  array_add(*result, it);
+    }
+    return result;
+}
+
+// Computes "straight-line" cost vs. "extracted" cost.
+// Accounts for register spill, and accounts for inner-loop
+// vs. outer-loop ops based on ASSUMED_BLOCK_SIZE.
+should_extract :: (region_items: [] Gen_Var, terminal_names: [] string, basis_names: [] string, exprs: [] Expr, backend: Backend) -> bool {
+    if basis_names.count == 0 || region_items.count == 0  return false;
+
+    region_flops := count_flops(region_items, exprs, backend.transcendental_approx);
+    region_cost  := estimate_flop_cost(region_flops, backend.cpu);
+
+    _, peak_live := schedule_for_register_pressure(region_items, exprs, backend.cpu.num_registers);
+    spill_count := max(0, peak_live - backend.cpu.num_registers);
+    spill_cost  := cast(float) spill_count * (backend.cpu.load.latency + backend.cpu.store.latency);
+
+    basis_count := basis_names.count;
+    straightline_cost := region_cost + spill_cost;
+    // Per-sample dot product: basis_count mul-adds (c0 + c[0]*b0 + ... +
+    // c[n-1]*b[n-1] has exactly basis_count '+' ops). See emit_extracted_region.
+    extracted_cost := (cast(float) (basis_count + 1)) * region_cost / ASSUMED_BLOCK_SIZE
+                     + cast(float) (terminal_names.count * basis_count) * (backend.cpu.mul.latency + backend.cpu.add.latency);
+
+    return extracted_cost < straightline_cost;
+}
+
+// Gradual extraction: Greedily grows an accepted set one terminal at
+// a time, most individually expensive first, keeping each addition only
+// if should_extract still favors the resulting bundle. A big terminal
+// can single-handedly justify amortizing the basis loop for several small
+// ones riding along with it, but a lone cheap terminal in an otherwise-cheap
+// region won't force anything to be extracted just because it's technically linear.
+select_extraction_terminals :: (eligible: [] string, full_items: [] Gen_Var, exprs: [] Expr, basis_names: [] string, backend: Backend) -> [] string {
+    costs: [..] float;
+    for t : eligible {
+        solo_closure := collect_region_closure(.[t], full_items, exprs);
+        flops := count_flops(solo_closure, exprs, backend.transcendental_approx);
+        array_add(*costs, estimate_flop_cost(flops, backend.cpu));
+    }
+
+    order: [..] int;
+    for i : 0..eligible.count-1  array_add(*order, i);
+    for i : 1..order.count-1 { // insertion sort by cost descending; eligible.count is always small
+        j := i;
+        while j > 0 && costs[order[j]] > costs[order[j-1]] {
+            tmp := order[j]; order[j] = order[j-1]; order[j-1] = tmp;
+            j -= 1;
+        }
+    }
+
+    accepted: [..] string;
+    for idx : order {
+        trial: [..] string;
+        for a : accepted  array_add(*trial, a);
+        array_add(*trial, eligible[idx]);
+
+        trial_closure := collect_region_closure(trial, full_items, exprs);
+        if should_extract(trial_closure, trial, basis_names, exprs, backend)  accepted = trial;
+    }
+    return accepted;
+}
+
+// Classifies `items` against the basis, restricts eligibility to whichever
+// of `candidate_names` come out linear-in-basis, and greedily selects the
+// accepted subset via select_extraction_terminals. Returns the accepted
+// terminal names and their transitive closure over `items` (both empty if
+// extraction is disabled or nothing gets accepted).
+try_extract_region :: (items: [] Gen_Var, candidate_names: [] string, exprs: [] Expr, backend: Backend,
+                       basis_names: [] string, other_variant_names: [] string) -> (accepted: [] string, region_items: [] Gen_Var) {
+    if !backend.enable_extraction || items.count == 0 || basis_names.count == 0  return .[], .[];
+
+    classes := classify_region_for_basis(items, exprs, basis_names, other_variant_names);
+    eligible: [..] string;
+    for it, i : items {
+        if !classes[i].depends || !classes[i].linear  continue;
+        is_candidate := false;
+        for c : candidate_names  if it.name == c { is_candidate = true; break; }
+        if is_candidate  array_add(*eligible, it.name);
+    }
+    if eligible.count == 0  return .[], .[];
+
+    accepted := select_extraction_terminals(eligible, items, exprs, basis_names, backend);
+    if accepted.count == 0  return .[], .[];
+
+    return accepted, collect_region_closure(accepted, items, exprs);
+}
+
+// Emits a block-level basis-vector coefficient loop, plus per-sample
+// dot-product code (inner_builder) for `terminal_names`, whose closure over
+// `region_items` is affine (not necessarily *homogeneous* since many real
+// circuits have a nonzero DC/bias offset) in `basis_names`. `region_items`
+// must already be topologically sorted.
+//
+// Pure unit-basis-vector superposition (evaluate at each e_i, sum) only
+// reconstructs a HOMOGENEOUS function (f(0) = 0); it silently gives the
+// wrong answer the moment there's a constant term, since that offset
+// would get counted once per nonzero input instead of once total. So
+// this runs basis_count+1 evaluations: _k=0 with every basis var at 0
+// to capture the offset alone, then one per unit vector.
+emit_extracted_region :: (region_items: [] Gen_Var, terminal_names: [] string, exprs: [] Expr,
+                          basis_names: [] string, outer_builder: *String_Builder, inner_builder: *String_Builder, backend: Backend) {
+    basis_count := basis_names.count;
+
+    for t : terminal_names {
+        print_to_builder(outer_builder, "%1 c0_%2;\n", backend.type_name, t);
+        print_to_builder(outer_builder, "%1 c_%2[%3];\n", backend.type_name, t, basis_count);
+    }
+    append(outer_builder, "\n");
+
+    print_to_builder(outer_builder, "for (int _k = 0; _k <= %; ++_k)\n{\n", basis_count);
+    k_builder: String_Builder;
+    literal_suffix := ifx backend.type_name == "float" then "f" else "";
+    one  := tprint("1.0%", literal_suffix);
+    zero := tprint("0.0%", literal_suffix);
+    for bi : 0..basis_count-1 {
+        // _k == 0 is the all-zero offset evaluation; basis[bi] goes to 1 at _k == bi+1.
+        print_to_builder(*k_builder, "const %1 %2 = (_k == %3) ? %4 : %5;\n", backend.decl_type, basis_names[bi], bi + 1, one, zero);
+    }
+    emit_topological_order(region_items, exprs, *k_builder, backend);
+    append(*k_builder, "if (_k == 0) {\n");
+    for t : terminal_names  print_to_builder(*k_builder, "    c0_%1 = %1;\n", t);
+    append(*k_builder, "} else {\n");
+    for t : terminal_names  print_to_builder(*k_builder, "    c_%1[_k - 1] = %1 - c0_%1;\n", t);
+    append(*k_builder, "}\n");
+
+    append(outer_builder, indent(builder_to_string(*k_builder)));
+    append(outer_builder, "}\n\n");
+
+    for t : terminal_names {
+        print_to_builder(inner_builder, "const %1 %2 = c0_%3", backend.decl_type, t, t);
+        for bi : 0..basis_count-1 {
+            print_to_builder(inner_builder, " + c_%1[%2] * %3", t, bi, basis_names[bi]);
+        }
+        append(inner_builder, ";\n");
     }
 }
 
@@ -890,32 +1251,87 @@ codegen :: (elements: [] Element, inputs: [] string,
     // temps (outer) separately; both will be emitted in topological order so
     // that every temporary is declared after all the items it depends on.
     outer_items: [..] Gen_Var;
-    inner_items: [..] Gen_Var;
+    inner_cse_items: [..] Gen_Var;
 
     for cv : cse_vars {
         if expr_is_loop_variant(cv.expr_id, exprs, variant_base, variant_cse_names) {
             array_add(*variant_cse_names, cv.name);
-            array_add(*inner_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+            array_add(*inner_cse_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
         } else {
             array_add(*outer_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
         }
     }
 
-    // Temp count: gen_vars aren't temporaries, so grab the
-    // counts before appending them to inner_items below.
-    outer_temp_count := outer_items.count;
-    inner_temp_count := inner_items.count;
+    // Emit outer_items (block-invariant CSE) first, so the extraction
+    // basis can reference them by name.
+    emit_topological_order(outer_items, exprs, *outer_builder, backend);
 
-    for gv : gen_vars {
-        array_add(*inner_items, gv);
+    active_gen_vars: [..] Gen_Var;
+    for gv : gen_vars  array_add(*active_gen_vars, gv);
+
+    outer_flops: Flop_Count;
+    inner_flops: Flop_Count;
+
+    // Basis-vector extraction: among the gen_vars, find whichever are linear
+    // in inputs/z-state/branch currents and, if the cost model says it's worth
+    // it, replace their per-sample computation with a once-per-block coefficient
+    // loop + a per-sample dot product. Everything not extracted  falls through
+    // to the straight-line path below unchanged.
+    if backend.enable_extraction {
+        full_inner: [..] Gen_Var;
+        for it : inner_cse_items  array_add(*full_inner, it);
+        for gv : active_gen_vars  array_add(*full_inner, gv);
+
+        basis_names := extraction_basis_names(elements, inputs);
+        non_basis_variant_names: [..] string;
+        for n : extra_variant_names  array_add(*non_basis_variant_names, n);
+        for n : nonlinear_branch_current_names(elements)  array_add(*non_basis_variant_names, n);
+
+        // Only the named outputs (gen_vars) are extraction candidates.
+        gen_var_names: [..] string;
+        for gv : gen_vars  array_add(*gen_var_names, gv.name);
+
+        accepted, region_items := try_extract_region(full_inner, gen_var_names, exprs, backend, basis_names, non_basis_variant_names);
+        if accepted.count > 0 {
+            emit_extracted_region(region_items, accepted, exprs, basis_names, *outer_builder, *inner_builder, backend);
+
+            // Straight-line remainder = closure of whatever gen_vars didn't get
+            // accepted, recomputed from scratch.
+            remaining_closure := remaining_region_after_extraction(gen_var_names, accepted, full_inner, exprs);
+
+            new_inner_cse: [..] Gen_Var;
+            new_gen_vars: [..] Gen_Var;
+            for it : remaining_closure {
+                is_gen_var := false;
+                for gv : gen_vars  if gv.name == it.name { is_gen_var = true; break; }
+                if is_gen_var  array_add(*new_gen_vars, it); else  array_add(*new_inner_cse, it);
+            }
+            inner_cse_items = new_inner_cse;
+            active_gen_vars = new_gen_vars;
+
+            // Best-effort stats: the coefficient loop is a one-time
+            // (per-block) cost, folded into outer_flops; the per-sample
+            // cost becomes a dot product instead of the extracted region.
+            region_flops := count_flops(region_items, exprs, backend.transcendental_approx);
+            add_flop_count(*outer_flops, region_flops);
+            inner_flops.muls += accepted.count * basis_names.count;
+            inner_flops.adds += accepted.count * basis_names.count;
+        }
     }
 
-    // Count FLOPs for both groups before emitting.
-    outer_flops := count_flops(outer_items, exprs, backend.transcendental_approx);
-    inner_flops := count_flops(inner_items, exprs, backend.transcendental_approx);
+    // Temp count: gen_vars aren't temporaries.
+    outer_temp_count := outer_items.count;
+    inner_temp_count := inner_cse_items.count;
 
-    // Emit both groups in topological order (dependencies before uses).
-    emit_topological_order(outer_items, exprs, *outer_builder, backend);
+    inner_items: [..] Gen_Var;
+    for it : inner_cse_items  array_add(*inner_items, it);
+    for gv : active_gen_vars  array_add(*inner_items, gv);
+
+    // Count FLOPs for both groups (added on top of whatever extraction
+    // above already accounted for). outer_items were already emitted above.
+    add_flop_count(*outer_flops, count_flops(outer_items, exprs, backend.transcendental_approx));
+    add_flop_count(*inner_flops, count_flops(inner_items, exprs, backend.transcendental_approx));
+
     emit_topological_order(inner_items, exprs, *inner_builder, backend);
     print_to_builder(*inner_builder, "\n");
 

@@ -56,6 +56,7 @@ def generate_header(case):
     header_path = os.path.join(GENERATED_DIR, f"{case['name']}.h")
     cmd = [CODEGEN_EXE, net_path, header_path,
            "-type_name", case["dtype"], "-namespace", case["name"]]
+    cmd += ["-cpu", "m1"] # @TODO: make this a parameter
 
     start = time.perf_counter()
     result = subprocess.run(cmd, capture_output=True, text=True)

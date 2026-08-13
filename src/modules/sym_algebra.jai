@@ -1380,6 +1380,62 @@ expr_is_loop_variant :: (e: Expr_ID, exprs: [] Expr,
         || expr_is_loop_variant(ex.right, exprs, base_variant_names, cse_variant_names);
 }
 
+// depends: does this expr reference the basis at all. linear: if it does,
+// is it an affine combination of it (superposition holds), so a basis-vector
+// loop could extract it into per-output coefficients.
+Basis_Class :: struct {
+    depends: bool;
+    linear:  bool;
+}
+
+// Walk a (topologically-sorted) region's expr and classify it against a
+// chosen basis. `classified` accumulates one entry per already-visited
+// item name in the same region. `other_variant_names` is anything we
+// know is sample-variant but ISN'T part of the chosen basis.
+classify_expr_for_basis :: (e: Expr_ID, exprs: [] Expr,
+                            basis_names: [] string,
+                            other_variant_names: [] string,
+                            classified: Table(string, Basis_Class)) -> Basis_Class {
+    ex := exprs[e];
+    if ex.kind == .CONST || ex.kind == .NULL  return .{false, true};
+
+    if ex.kind == .SYMBOL {
+        for n : basis_names  if ex.name == n  return .{true, true};
+        found, cls := table_find(*classified, ex.name);
+        if found  return cls;
+        for n : other_variant_names  if ex.name == n  return .{true, false};
+        return .{false, true}; // an outer-loop param/constant symbol
+    }
+
+    if ex.kind == .NEG  return classify_expr_for_basis(ex.left, exprs, basis_names, other_variant_names, classified);
+
+    if ex.kind == .EXP || ex.kind == .LOG {
+        child := classify_expr_for_basis(ex.left, exprs, basis_names, other_variant_names, classified);
+        if child.depends  return .{true, false}; // transcendental of a variant arg, never linear
+        return .{false, true};
+    }
+
+    l := classify_expr_for_basis(ex.left,  exprs, basis_names, other_variant_names, classified);
+    r := classify_expr_for_basis(ex.right, exprs, basis_names, other_variant_names, classified);
+
+    if ex.kind == .ADD || ex.kind == .SUB {
+        return .{ l.depends || r.depends, l.linear && r.linear };
+    }
+    if ex.kind == .MUL {
+        if l.depends && r.depends  return .{true, false}; // product of two variants
+        if l.depends  return .{true, l.linear};
+        if r.depends  return .{true, r.linear};
+        return .{false, true};
+    }
+    if ex.kind == .DIV {
+        if r.depends  return .{true, false}; // variant denominator, never linear
+        return .{l.depends, l.linear};
+    }
+    // POW: a variant base or exponent is never linear (even x^2 isn't, no superposition).
+    if l.depends || r.depends  return .{true, false};
+    return .{false, true};
+}
+
 // `prefix` names the generated temps ("_t0", "_t1", ... by default). Pass a
 // distinct prefix if you're emitting more than one cse()'d block into the
 // same C/C++ scope, or their temp names will collide.

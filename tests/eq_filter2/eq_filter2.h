@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 720cc46.
+// Auto-generated with netlist_codegen version 03d2306.
 // Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
 
 #pragma once
@@ -127,6 +127,64 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t38 = (gR24Rq2 * (_t1 * _t29));
     const auto _t39 = ((_t21 * _t32) + (gR22 * (gR24Rq2 * (gR16Rboostp * _t31))));
     const auto _t40 = (gC11 * _t32);
+    double c0_vRf1R18C9;
+    double c_vRf1R18C9[5];
+    double c0_vR19Rf2C10;
+    double c_vR19Rf2C10[5];
+    double c0_tC11;
+    double c_tC11[5];
+    double c0_v13;
+    double c_v13[5];
+    double c0_v15;
+    double c_v15[5];
+    double c0_vR12C8;
+    double c_vR12C8[5];
+    double c0_vo;
+    double c_vo[5];
+    
+    for (int _k = 0; _k <= 5; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0 : 0.0;
+        const auto zR12C8 = (_k == 2) ? 1.0 : 0.0;
+        const auto zRf1R18C9 = (_k == 3) ? 1.0 : 0.0;
+        const auto zC11 = (_k == 4) ? 1.0 : 0.0;
+        const auto zR19Rf2C10 = (_k == 5) ? 1.0 : 0.0;
+        const auto _t10 = (zRf1R18C9 - zR19Rf2C10);
+        const auto _t12 = ((gRboostmR11 * vi) + zRf1R18C9);
+        const auto _t14 = (zR12C8 - (gR50 * vi));
+        const auto _t9 = (_t10 * _t3);
+        const auto _t28 = (_t10 * _t18);
+        const auto _t8 = (_t1 * _t9);
+        const auto _t11 = (_t12 * _t13);
+        const auto _t7 = (_t8 - _t11);
+        const auto vo = (((gR13 * ((zC11 * _t33) - (gC11 * (gR23 * _t7)))) + (_t14 * _t15)) * _t25);
+        const auto vR12C8 = (vo - 0);
+        const auto v13 = (((gR12C8 * (((gC11 * ((gR24Rq2 * ((_t12 * _t17) - (gRf1R18C9 * _t28))) + (gR23 * (gR64 * _t9)))) - ((_t21 * (gR24Rq2 * (_t12 * _t2))) + (zC11 * _t34))) - (gR22 * (gR24Rq2 * (_t12 * _t23))))) - ((gR13 * ((gC11 * (gR23 * (gR16Rboostp * _t9))) - (zC11 * _t35))) - (_t14 * _t36))) * _t25);
+        const auto vn4 = (((_t14 * _t37) + (gR12C8 * ((gC11 * (gR24Rq2 * ((_t12 * _t20) - (_t1 * _t28)))) + (zC11 * _t38)))) * _t25);
+        const auto vRf1R18C9 = (v13 - vn4);
+        const auto v15 = (((gR12C8 * (((zC11 * _t16) - (_t21 * (gR24Rq2 * _t7))) + (gR22 * (gR24Rq2 * ((_t12 * _t31) - (_t1 * (_t10 * _t24))))))) - ((gR13 * (zC11 * _t26)) - (_t14 * _t39))) * _t25);
+        const auto vc11 = (((_t14 * _t40) + (gR12C8 * ((zC11 * _t22) + (gC11 * (gR24Rq2 * (_t11 - _t8)))))) * _t25);
+        const auto tC11 = (gC11 * (v15 - vc11));
+        const auto vR19Rf2C10 = (vn4 - v15);
+        if (_k == 0) {
+            c0_vRf1R18C9 = vRf1R18C9;
+            c0_vR19Rf2C10 = vR19Rf2C10;
+            c0_tC11 = tC11;
+            c0_v13 = v13;
+            c0_v15 = v15;
+            c0_vR12C8 = vR12C8;
+            c0_vo = vo;
+        } else {
+            c_vRf1R18C9[_k - 1] = vRf1R18C9 - c0_vRf1R18C9;
+            c_vR19Rf2C10[_k - 1] = vR19Rf2C10 - c0_vR19Rf2C10;
+            c_tC11[_k - 1] = tC11 - c0_tC11;
+            c_v13[_k - 1] = v13 - c0_v13;
+            c_v15[_k - 1] = v15 - c0_v15;
+            c_vR12C8[_k - 1] = vR12C8 - c0_vR12C8;
+            c_vo[_k - 1] = vo - c0_vo;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zR12C8 = state[ch].zR12C8;
@@ -137,6 +195,13 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
+            const auto vRf1R18C9 = c0_vRf1R18C9 + c_vRf1R18C9[0] * vi + c_vRf1R18C9[1] * zR12C8 + c_vRf1R18C9[2] * zRf1R18C9 + c_vRf1R18C9[3] * zC11 + c_vRf1R18C9[4] * zR19Rf2C10;
+            const auto vR19Rf2C10 = c0_vR19Rf2C10 + c_vR19Rf2C10[0] * vi + c_vR19Rf2C10[1] * zR12C8 + c_vR19Rf2C10[2] * zRf1R18C9 + c_vR19Rf2C10[3] * zC11 + c_vR19Rf2C10[4] * zR19Rf2C10;
+            const auto tC11 = c0_tC11 + c_tC11[0] * vi + c_tC11[1] * zR12C8 + c_tC11[2] * zRf1R18C9 + c_tC11[3] * zC11 + c_tC11[4] * zR19Rf2C10;
+            const auto v13 = c0_v13 + c_v13[0] * vi + c_v13[1] * zR12C8 + c_v13[2] * zRf1R18C9 + c_v13[3] * zC11 + c_v13[4] * zR19Rf2C10;
+            const auto v15 = c0_v15 + c_v15[0] * vi + c_v15[1] * zR12C8 + c_v15[2] * zRf1R18C9 + c_v15[3] * zC11 + c_v15[4] * zR19Rf2C10;
+            const auto vR12C8 = c0_vR12C8 + c_vR12C8[0] * vi + c_vR12C8[1] * zR12C8 + c_vR12C8[2] * zRf1R18C9 + c_vR12C8[3] * zC11 + c_vR12C8[4] * zR19Rf2C10;
+            const auto vo = c0_vo + c_vo[0] * vi + c_vo[1] * zR12C8 + c_vo[2] * zRf1R18C9 + c_vo[3] * zC11 + c_vo[4] * zR19Rf2C10;
             const auto _t10 = (zRf1R18C9 - zR19Rf2C10);
             const auto _t12 = ((gRboostmR11 * vi) + zRf1R18C9);
             const auto _t14 = (zR12C8 - (gR50 * vi));
@@ -144,16 +209,8 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto _t28 = (_t10 * _t18);
             const auto _t8 = (_t1 * _t9);
             const auto _t11 = (_t12 * _t13);
-            const auto _t7 = (_t8 - _t11);
-            const auto vo = (((gR13 * ((zC11 * _t33) - (gC11 * (gR23 * _t7)))) + (_t14 * _t15)) * _t25);
-            const auto vR12C8 = (vo - 0);
-            const auto v13 = (((gR12C8 * (((gC11 * ((gR24Rq2 * ((_t12 * _t17) - (gRf1R18C9 * _t28))) + (gR23 * (gR64 * _t9)))) - ((_t21 * (gR24Rq2 * (_t12 * _t2))) + (zC11 * _t34))) - (gR22 * (gR24Rq2 * (_t12 * _t23))))) - ((gR13 * ((gC11 * (gR23 * (gR16Rboostp * _t9))) - (zC11 * _t35))) - (_t14 * _t36))) * _t25);
             const auto vn4 = (((_t14 * _t37) + (gR12C8 * ((gC11 * (gR24Rq2 * ((_t12 * _t20) - (_t1 * _t28)))) + (zC11 * _t38)))) * _t25);
-            const auto vRf1R18C9 = (v13 - vn4);
-            const auto v15 = (((gR12C8 * (((zC11 * _t16) - (_t21 * (gR24Rq2 * _t7))) + (gR22 * (gR24Rq2 * ((_t12 * _t31) - (_t1 * (_t10 * _t24))))))) - ((gR13 * (zC11 * _t26)) - (_t14 * _t39))) * _t25);
             const auto vc11 = (((_t14 * _t40) + (gR12C8 * ((zC11 * _t22) + (gC11 * (gR24Rq2 * (_t11 - _t8)))))) * _t25);
-            const auto tC11 = (gC11 * (v15 - vc11));
-            const auto vR19Rf2C10 = (vn4 - v15);
             
             zR12C8 = gzR12C8 * vR12C8 - zR12C8; // RC parallel
             zRf1R18C9 = gRf1R18C9 * (1 - gnRf1R18C9) * vRf1R18C9 + gnRf1R18C9 * zRf1R18C9; // RC series

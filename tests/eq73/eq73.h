@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 720cc46.
+// Auto-generated with netlist_codegen version 03d2306.
 // Command: netlist_codegen eq73.net eq73.h -type_name float
 
 #pragma once
@@ -156,6 +156,163 @@ static void compute_shelf (const float* const* input, float** output, int num_ch
     const auto _t139 = (_t33 * _t5);
     const auto _t140 = (_t33 * _t88);
     const auto _t141 = (((_t22 * _t10) + (_t15 * _t23)) + (_t18 * _t27));
+    float c0_tC36;
+    float c_tC36[8];
+    float c0_tC35;
+    float c_tC35[8];
+    float c0_tC45;
+    float c_tC45[8];
+    float c0_v17;
+    float c_v17[8];
+    float c0_vR1mC26;
+    float c_vR1mC26[8];
+    float c0_v14;
+    float c_v14[8];
+    float c0_v45;
+    float c_v45[8];
+    float c0_v18;
+    float c_v18[8];
+    float c0_vR13C25;
+    float c_vR13C25[8];
+    float c0_vch;
+    float c_vch[8];
+    float c0_tC47;
+    float c_tC47[8];
+    float c0_vpl;
+    float c_vpl[8];
+    float c0_tC46;
+    float c_tC46[8];
+    float c0_vib;
+    float c_vib[8];
+    float c0_vph;
+    float c_vph[8];
+    
+    for (int _k = 0; _k <= 8; ++_k)
+    {
+        const auto vis = (_k == 1) ? 1.0f : 0.0f;
+        const auto zC47 = (_k == 2) ? 1.0f : 0.0f;
+        const auto zR13C25 = (_k == 3) ? 1.0f : 0.0f;
+        const auto zC46 = (_k == 4) ? 1.0f : 0.0f;
+        const auto zC35 = (_k == 5) ? 1.0f : 0.0f;
+        const auto zC36 = (_k == 6) ? 1.0f : 0.0f;
+        const auto zC45 = (_k == 7) ? 1.0f : 0.0f;
+        const auto zR1mC26 = (_k == 8) ? 1.0f : 0.0f;
+        const auto _t0 = ((zC46 - zC47) * 512.0f);
+        const auto _t36 = ((zR13C25 - (gR13C25 * vis)) * 2048.0f);
+        const auto _t41 = (zR1mC26 * 512.0f);
+        const auto _t43 = ((zC46 + zR1mC26) * 512.0f);
+        const auto _t53 = (((zC35 + zC36) + zC45) * 128.0f);
+        const auto _t55 = (zC36 * 128.0f);
+        const auto _t58 = (zC45 * 1024.0f);
+        const auto _t61 = (_t55 * _t12);
+        const auto _t62 = (_t13 * _t53);
+        const auto _t64 = (((gR14 * vis) + zC35) * 128.0f);
+        const auto _t68 = (_t58 * _t25);
+        const auto _t71 = (_t55 * _t24);
+        const auto _t98 = (_t58 * _t19);
+        const auto _t99 = (_t55 * _t14);
+        const auto _t100 = (_t11 * _t53);
+        const auto _t111 = (_t58 * _t85);
+        const auto _t113 = (_t84 * _t53);
+        const auto _t119 = (_t100 + _t99);
+        const auto _t52 = (_t17 * _t53);
+        const auto _t54 = (_t55 * _t13);
+        const auto _t57 = (_t58 * _t16);
+        const auto _t60 = (_t61 - _t62);
+        const auto _t70 = (_t9 * _t71);
+        const auto _t112 = (_t9 * _t113);
+        const auto _t115 = ((_t64 * _t86) - (_t7 * (_t112 + _t111)));
+        const auto _t118 = (_t54 - _t52);
+        const auto _t127 = (((_t64 * _t141) - ((_t7 * ((_t18 * _t119) - ((_t15 * _t60) + (_t58 * _t10)))) + (_t20 * (((_t22 * _t60) - (_t58 * _t23)) + (_t18 * _t71))))) - (_t24 * (((_t22 * _t119) + (_t15 * _t71)) + (_t58 * _t27))));
+        const auto _t51 = (_t52 - _t54);
+        const auto _t59 = (_t9 * _t60);
+        const auto _t63 = (_t64 * _t21);
+        const auto _t69 = (_t22 * _t51);
+        const auto _t110 = ((_t64 * _t82) - (_t24 * (_t111 + _t112)));
+        const auto _t114 = (_t30 * _t115);
+        const auto _t117 = (((_t7 * (((_t15 * _t118) + (_t9 * _t119)) + _t98)) - (_t20 * (((_t22 * _t118) - _t70) - _t68))) + (_t64 * _t26));
+        const auto _t124 = (((_t7 * ((_t18 * _t113) - (_t58 * _t83))) - (_t64 * _t125)) + (_t24 * ((_t22 * _t113) + (_t58 * _t87))));
+        const auto _t126 = (_t30 * _t127);
+        const auto _t35 = (_t36 * _t32);
+        const auto _t40 = (_t41 * _t6);
+        const auto _t42 = (_t43 * _t29);
+        const auto _t50 = (_t18 * _t51);
+        const auto _t56 = (_t57 + _t59);
+        const auto _t67 = (_t68 + _t69);
+        const auto _t95 = (_t41 * _t81);
+        const auto _t109 = (_t30 * _t110);
+        const auto _t116 = (_t30 * _t117);
+        const auto _t123 = (_t30 * _t124);
+        const auto _t39 = (_t4 * _t40);
+        const auto _t49 = (_t50 - _t56);
+        const auto _t66 = (_t67 + _t70);
+        const auto _t91 = (_t43 * _t80);
+        const auto _t96 = (_t36 * _t89);
+        const auto _t97 = (((_t64 * _t8) + (_t20 * _t49)) + (_t24 * (((_t15 * _t51) - _t98) - (_t9 * (_t99 + _t100)))));
+        const auto _t101 = (_t30 * _t97);
+        const auto _t38 = (_t39 - _t42);
+        const auto _t48 = (_t7 * _t49);
+        const auto _t65 = (_t24 * _t66);
+        const auto _t132 = ((_t63 - _t48) - (_t24 * ((_t69 + _t68) + _t70)));
+        const auto _t37 = (_t2 * _t38);
+        const auto _t47 = (_t48 - _t63);
+        const auto _t131 = (_t30 * _t132);
+        const auto _t46 = (_t47 + _t65);
+        const auto _t94 = (_t77 * _t46);
+        const auto _t45 = (_t30 * _t46);
+        const auto _t93 = (_t94 - _t95);
+        const auto _t92 = (_t4 * _t93);
+        const auto _t90 = (_t91 + _t92);
+        const auto vib = ((((_t0 * _t1) - (_t34 * (_t35 + _t37))) + (_t44 * ((_t2 * ((_t28 * _t45) - (_t4 * (_t4 * _t46)))) - (_t31 * (_t33 * _t45))))) * _t72);
+        const auto tC47 = (gC47 * (0 - vib));
+        const auto vch = ((((_t34 * (_t36 * _t75)) - ((_t73 * ((_t36 * _t3) - (_t31 * _t38))) + (_t0 * _t134))) + (_t44 * ((_t31 * _t90) - (_t36 * _t79)))) * _t72);
+        const auto vR13C25 = (vis - vch);
+        const auto vph = ((((_t73 * (_t37 + _t35)) - (_t0 * _t74)) + (_t44 * ((_t2 * _t90) - _t96))) * _t72);
+        const auto tC46 = (gC46 * (vph - 0));
+        const auto v14 = (((((_t73 * ((_t2 * ((_t4 * (_t4 * _t97)) - (_t28 * _t101))) + (_t31 * (_t33 * _t101)))) - (_t34 * ((_t2 * ((_t43 * _t102) - (_t4 * ((_t41 * _t103) - (_t77 * _t97))))) - (_t36 * _t108)))) - (_t0 * _t135)) + (_t44 * ((_t2 * ((_t28 * _t109) - (_t4 * (_t4 * _t110)))) - (_t31 * (_t33 * _t109))))) * _t72);
+        const auto v45 = ((((_t44 * ((_t2 * ((_t28 * _t114) - (_t4 * (_t4 * _t115)))) - (_t31 * (_t33 * _t114)))) - ((_t73 * ((_t31 * (_t33 * _t116)) - (_t2 * ((_t28 * _t116) - (_t4 * (_t4 * _t117)))))) + (_t34 * ((_t2 * ((_t43 * _t120) - (_t4 * ((_t77 * _t117) + (_t41 * _t121))))) - (_t36 * _t122))))) + (_t0 * _t136)) * _t72);
+        const auto tC35 = (gC35 * (v14 - v45));
+        const auto v17 = ((((_t44 * ((_t2 * ((_t28 * _t123) - (_t4 * (_t4 * _t124)))) - (_t31 * (_t33 * _t123)))) - ((_t73 * ((_t31 * (_t33 * _t126)) - (_t2 * ((_t28 * _t126) - (_t4 * (_t4 * _t127)))))) + (_t34 * ((_t36 * _t128) - (_t2 * ((_t4 * ((_t77 * _t127) - (_t41 * _t130))) + (_t43 * _t129))))))) - (_t0 * _t137)) * _t72);
+        const auto tC36 = (gC36 * (v17 - v45));
+        const auto vpl = (((_t0 * _t78) - ((_t73 * ((_t31 * (_t33 * _t131)) - (_t2 * ((_t28 * _t131) - (_t4 * (_t4 * _t132)))))) + (_t34 * ((_t2 * (_t91 - (_t4 * ((_t77 * _t132) + _t95)))) - _t96)))) * _t72);
+        const auto tC45 = (gC45 * (vpl - v45));
+        const auto v18 = ((((_t0 * _t138) - ((_t73 * (((_t31 * (_t33 * _t40)) - (_t2 * ((_t28 * _t40) - (_t43 * _t5)))) - (_t36 * _t139))) + (_t34 * ((_t36 * _t133) - (_t2 * (_t43 * _t76)))))) + (_t44 * (((_t2 * ((_t28 * _t93) + (_t43 * _t88))) - (_t31 * (_t33 * _t93))) - (_t36 * _t140)))) * _t72);
+        const auto vR1mC26 = (vph - v18);
+        if (_k == 0) {
+            c0_tC36 = tC36;
+            c0_tC35 = tC35;
+            c0_tC45 = tC45;
+            c0_v17 = v17;
+            c0_vR1mC26 = vR1mC26;
+            c0_v14 = v14;
+            c0_v45 = v45;
+            c0_v18 = v18;
+            c0_vR13C25 = vR13C25;
+            c0_vch = vch;
+            c0_tC47 = tC47;
+            c0_vpl = vpl;
+            c0_tC46 = tC46;
+            c0_vib = vib;
+            c0_vph = vph;
+        } else {
+            c_tC36[_k - 1] = tC36 - c0_tC36;
+            c_tC35[_k - 1] = tC35 - c0_tC35;
+            c_tC45[_k - 1] = tC45 - c0_tC45;
+            c_v17[_k - 1] = v17 - c0_v17;
+            c_vR1mC26[_k - 1] = vR1mC26 - c0_vR1mC26;
+            c_v14[_k - 1] = v14 - c0_v14;
+            c_v45[_k - 1] = v45 - c0_v45;
+            c_v18[_k - 1] = v18 - c0_v18;
+            c_vR13C25[_k - 1] = vR13C25 - c0_vR13C25;
+            c_vch[_k - 1] = vch - c0_vch;
+            c_tC47[_k - 1] = tC47 - c0_tC47;
+            c_vpl[_k - 1] = vpl - c0_vpl;
+            c_tC46[_k - 1] = tC46 - c0_tC46;
+            c_vib[_k - 1] = vib - c0_vib;
+            c_vph[_k - 1] = vph - c0_vph;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC47 = state[ch].zC47;
@@ -169,87 +326,21 @@ static void compute_shelf (const float* const* input, float** output, int num_ch
         {
             const auto vis = input[ch][n];
 
-            const auto _t0 = ((zC46 - zC47) * 512.0f);
-            const auto _t36 = ((zR13C25 - (gR13C25 * vis)) * 2048.0f);
-            const auto _t41 = (zR1mC26 * 512.0f);
-            const auto _t43 = ((zC46 + zR1mC26) * 512.0f);
-            const auto _t53 = (((zC35 + zC36) + zC45) * 128.0f);
-            const auto _t55 = (zC36 * 128.0f);
-            const auto _t58 = (zC45 * 1024.0f);
-            const auto _t61 = (_t55 * _t12);
-            const auto _t62 = (_t13 * _t53);
-            const auto _t64 = (((gR14 * vis) + zC35) * 128.0f);
-            const auto _t68 = (_t58 * _t25);
-            const auto _t71 = (_t55 * _t24);
-            const auto _t98 = (_t58 * _t19);
-            const auto _t99 = (_t55 * _t14);
-            const auto _t100 = (_t11 * _t53);
-            const auto _t111 = (_t58 * _t85);
-            const auto _t113 = (_t84 * _t53);
-            const auto _t119 = (_t100 + _t99);
-            const auto _t52 = (_t17 * _t53);
-            const auto _t54 = (_t55 * _t13);
-            const auto _t57 = (_t58 * _t16);
-            const auto _t60 = (_t61 - _t62);
-            const auto _t70 = (_t9 * _t71);
-            const auto _t112 = (_t9 * _t113);
-            const auto _t115 = ((_t64 * _t86) - (_t7 * (_t112 + _t111)));
-            const auto _t118 = (_t54 - _t52);
-            const auto _t127 = (((_t64 * _t141) - ((_t7 * ((_t18 * _t119) - ((_t15 * _t60) + (_t58 * _t10)))) + (_t20 * (((_t22 * _t60) - (_t58 * _t23)) + (_t18 * _t71))))) - (_t24 * (((_t22 * _t119) + (_t15 * _t71)) + (_t58 * _t27))));
-            const auto _t51 = (_t52 - _t54);
-            const auto _t59 = (_t9 * _t60);
-            const auto _t63 = (_t64 * _t21);
-            const auto _t69 = (_t22 * _t51);
-            const auto _t110 = ((_t64 * _t82) - (_t24 * (_t111 + _t112)));
-            const auto _t114 = (_t30 * _t115);
-            const auto _t117 = (((_t7 * (((_t15 * _t118) + (_t9 * _t119)) + _t98)) - (_t20 * (((_t22 * _t118) - _t70) - _t68))) + (_t64 * _t26));
-            const auto _t124 = (((_t7 * ((_t18 * _t113) - (_t58 * _t83))) - (_t64 * _t125)) + (_t24 * ((_t22 * _t113) + (_t58 * _t87))));
-            const auto _t126 = (_t30 * _t127);
-            const auto _t35 = (_t36 * _t32);
-            const auto _t40 = (_t41 * _t6);
-            const auto _t42 = (_t43 * _t29);
-            const auto _t50 = (_t18 * _t51);
-            const auto _t56 = (_t57 + _t59);
-            const auto _t67 = (_t68 + _t69);
-            const auto _t95 = (_t41 * _t81);
-            const auto _t109 = (_t30 * _t110);
-            const auto _t116 = (_t30 * _t117);
-            const auto _t123 = (_t30 * _t124);
-            const auto _t39 = (_t4 * _t40);
-            const auto _t49 = (_t50 - _t56);
-            const auto _t66 = (_t67 + _t70);
-            const auto _t91 = (_t43 * _t80);
-            const auto _t96 = (_t36 * _t89);
-            const auto _t97 = (((_t64 * _t8) + (_t20 * _t49)) + (_t24 * (((_t15 * _t51) - _t98) - (_t9 * (_t99 + _t100)))));
-            const auto _t101 = (_t30 * _t97);
-            const auto _t38 = (_t39 - _t42);
-            const auto _t48 = (_t7 * _t49);
-            const auto _t65 = (_t24 * _t66);
-            const auto _t132 = ((_t63 - _t48) - (_t24 * ((_t69 + _t68) + _t70)));
-            const auto _t37 = (_t2 * _t38);
-            const auto _t47 = (_t48 - _t63);
-            const auto _t131 = (_t30 * _t132);
-            const auto _t46 = (_t47 + _t65);
-            const auto _t94 = (_t77 * _t46);
-            const auto _t45 = (_t30 * _t46);
-            const auto _t93 = (_t94 - _t95);
-            const auto _t92 = (_t4 * _t93);
-            const auto _t90 = (_t91 + _t92);
-            const auto vib = ((((_t0 * _t1) - (_t34 * (_t35 + _t37))) + (_t44 * ((_t2 * ((_t28 * _t45) - (_t4 * (_t4 * _t46)))) - (_t31 * (_t33 * _t45))))) * _t72);
-            const auto tC47 = (gC47 * (0 - vib));
-            const auto vch = ((((_t34 * (_t36 * _t75)) - ((_t73 * ((_t36 * _t3) - (_t31 * _t38))) + (_t0 * _t134))) + (_t44 * ((_t31 * _t90) - (_t36 * _t79)))) * _t72);
-            const auto vR13C25 = (vis - vch);
-            const auto vph = ((((_t73 * (_t37 + _t35)) - (_t0 * _t74)) + (_t44 * ((_t2 * _t90) - _t96))) * _t72);
-            const auto tC46 = (gC46 * (vph - 0));
-            const auto v14 = (((((_t73 * ((_t2 * ((_t4 * (_t4 * _t97)) - (_t28 * _t101))) + (_t31 * (_t33 * _t101)))) - (_t34 * ((_t2 * ((_t43 * _t102) - (_t4 * ((_t41 * _t103) - (_t77 * _t97))))) - (_t36 * _t108)))) - (_t0 * _t135)) + (_t44 * ((_t2 * ((_t28 * _t109) - (_t4 * (_t4 * _t110)))) - (_t31 * (_t33 * _t109))))) * _t72);
-            const auto v45 = ((((_t44 * ((_t2 * ((_t28 * _t114) - (_t4 * (_t4 * _t115)))) - (_t31 * (_t33 * _t114)))) - ((_t73 * ((_t31 * (_t33 * _t116)) - (_t2 * ((_t28 * _t116) - (_t4 * (_t4 * _t117)))))) + (_t34 * ((_t2 * ((_t43 * _t120) - (_t4 * ((_t77 * _t117) + (_t41 * _t121))))) - (_t36 * _t122))))) + (_t0 * _t136)) * _t72);
-            const auto tC35 = (gC35 * (v14 - v45));
-            const auto v17 = ((((_t44 * ((_t2 * ((_t28 * _t123) - (_t4 * (_t4 * _t124)))) - (_t31 * (_t33 * _t123)))) - ((_t73 * ((_t31 * (_t33 * _t126)) - (_t2 * ((_t28 * _t126) - (_t4 * (_t4 * _t127)))))) + (_t34 * ((_t36 * _t128) - (_t2 * ((_t4 * ((_t77 * _t127) - (_t41 * _t130))) + (_t43 * _t129))))))) - (_t0 * _t137)) * _t72);
-            const auto tC36 = (gC36 * (v17 - v45));
-            const auto vpl = (((_t0 * _t78) - ((_t73 * ((_t31 * (_t33 * _t131)) - (_t2 * ((_t28 * _t131) - (_t4 * (_t4 * _t132)))))) + (_t34 * ((_t2 * (_t91 - (_t4 * ((_t77 * _t132) + _t95)))) - _t96)))) * _t72);
-            const auto tC45 = (gC45 * (vpl - v45));
-            const auto v18 = ((((_t0 * _t138) - ((_t73 * (((_t31 * (_t33 * _t40)) - (_t2 * ((_t28 * _t40) - (_t43 * _t5)))) - (_t36 * _t139))) + (_t34 * ((_t36 * _t133) - (_t2 * (_t43 * _t76)))))) + (_t44 * (((_t2 * ((_t28 * _t93) + (_t43 * _t88))) - (_t31 * (_t33 * _t93))) - (_t36 * _t140)))) * _t72);
-            const auto vR1mC26 = (vph - v18);
+            const auto tC36 = c0_tC36 + c_tC36[0] * vis + c_tC36[1] * zC47 + c_tC36[2] * zR13C25 + c_tC36[3] * zC46 + c_tC36[4] * zC35 + c_tC36[5] * zC36 + c_tC36[6] * zC45 + c_tC36[7] * zR1mC26;
+            const auto tC35 = c0_tC35 + c_tC35[0] * vis + c_tC35[1] * zC47 + c_tC35[2] * zR13C25 + c_tC35[3] * zC46 + c_tC35[4] * zC35 + c_tC35[5] * zC36 + c_tC35[6] * zC45 + c_tC35[7] * zR1mC26;
+            const auto tC45 = c0_tC45 + c_tC45[0] * vis + c_tC45[1] * zC47 + c_tC45[2] * zR13C25 + c_tC45[3] * zC46 + c_tC45[4] * zC35 + c_tC45[5] * zC36 + c_tC45[6] * zC45 + c_tC45[7] * zR1mC26;
+            const auto v17 = c0_v17 + c_v17[0] * vis + c_v17[1] * zC47 + c_v17[2] * zR13C25 + c_v17[3] * zC46 + c_v17[4] * zC35 + c_v17[5] * zC36 + c_v17[6] * zC45 + c_v17[7] * zR1mC26;
+            const auto vR1mC26 = c0_vR1mC26 + c_vR1mC26[0] * vis + c_vR1mC26[1] * zC47 + c_vR1mC26[2] * zR13C25 + c_vR1mC26[3] * zC46 + c_vR1mC26[4] * zC35 + c_vR1mC26[5] * zC36 + c_vR1mC26[6] * zC45 + c_vR1mC26[7] * zR1mC26;
+            const auto v14 = c0_v14 + c_v14[0] * vis + c_v14[1] * zC47 + c_v14[2] * zR13C25 + c_v14[3] * zC46 + c_v14[4] * zC35 + c_v14[5] * zC36 + c_v14[6] * zC45 + c_v14[7] * zR1mC26;
+            const auto v45 = c0_v45 + c_v45[0] * vis + c_v45[1] * zC47 + c_v45[2] * zR13C25 + c_v45[3] * zC46 + c_v45[4] * zC35 + c_v45[5] * zC36 + c_v45[6] * zC45 + c_v45[7] * zR1mC26;
+            const auto v18 = c0_v18 + c_v18[0] * vis + c_v18[1] * zC47 + c_v18[2] * zR13C25 + c_v18[3] * zC46 + c_v18[4] * zC35 + c_v18[5] * zC36 + c_v18[6] * zC45 + c_v18[7] * zR1mC26;
+            const auto vR13C25 = c0_vR13C25 + c_vR13C25[0] * vis + c_vR13C25[1] * zC47 + c_vR13C25[2] * zR13C25 + c_vR13C25[3] * zC46 + c_vR13C25[4] * zC35 + c_vR13C25[5] * zC36 + c_vR13C25[6] * zC45 + c_vR13C25[7] * zR1mC26;
+            const auto vch = c0_vch + c_vch[0] * vis + c_vch[1] * zC47 + c_vch[2] * zR13C25 + c_vch[3] * zC46 + c_vch[4] * zC35 + c_vch[5] * zC36 + c_vch[6] * zC45 + c_vch[7] * zR1mC26;
+            const auto tC47 = c0_tC47 + c_tC47[0] * vis + c_tC47[1] * zC47 + c_tC47[2] * zR13C25 + c_tC47[3] * zC46 + c_tC47[4] * zC35 + c_tC47[5] * zC36 + c_tC47[6] * zC45 + c_tC47[7] * zR1mC26;
+            const auto vpl = c0_vpl + c_vpl[0] * vis + c_vpl[1] * zC47 + c_vpl[2] * zR13C25 + c_vpl[3] * zC46 + c_vpl[4] * zC35 + c_vpl[5] * zC36 + c_vpl[6] * zC45 + c_vpl[7] * zR1mC26;
+            const auto tC46 = c0_tC46 + c_tC46[0] * vis + c_tC46[1] * zC47 + c_tC46[2] * zR13C25 + c_tC46[3] * zC46 + c_tC46[4] * zC35 + c_tC46[5] * zC36 + c_tC46[6] * zC45 + c_tC46[7] * zR1mC26;
+            const auto vib = c0_vib + c_vib[0] * vis + c_vib[1] * zC47 + c_vib[2] * zR13C25 + c_vib[3] * zC46 + c_vib[4] * zC35 + c_vib[5] * zC36 + c_vib[6] * zC45 + c_vib[7] * zR1mC26;
+            const auto vph = c0_vph + c_vph[0] * vis + c_vph[1] * zC47 + c_vph[2] * zR13C25 + c_vph[3] * zC46 + c_vph[4] * zC35 + c_vph[5] * zC36 + c_vph[6] * zC45 + c_vph[7] * zR1mC26;
             
             zC47 = 2 * tC47 - zC47;
             zR13C25 = gR13C25 * (1 - gnR13C25) * vR13C25 + gnR13C25 * zR13C25; // RC series
@@ -409,6 +500,70 @@ static void compute_bell (const float* const* input, float** output, int num_cha
     const auto _t38 = (_t24 * _t30);
     const auto _t39 = (_t24 * _t35);
     const auto _t40 = (_t24 * _t27);
+    float c0_tCf;
+    float c_tCf[4];
+    float c0_tLf;
+    float c_tLf[4];
+    float c0_vpt;
+    float c_vpt[4];
+    float c0_vc;
+    float c_vc[4];
+    float c0_vl;
+    float c_vl[4];
+    float c0_tC60;
+    float c_tC60[4];
+    float c0_vb;
+    float c_vb[4];
+    
+    for (int _k = 0; _k <= 4; ++_k)
+    {
+        const auto vib = (_k == 1) ? 1.0f : 0.0f;
+        const auto zC60 = (_k == 2) ? 1.0f : 0.0f;
+        const auto zCf = (_k == 3) ? 1.0f : 0.0f;
+        const auto zLf = (_k == 4) ? 1.0f : 0.0f;
+        const auto _t5 = ((zCf + zLf) * 64.0f);
+        const auto _t9 = (zLf * 4096.0f);
+        const auto _t11 = (((gR3m * vib) + zCf) * 64.0f);
+        const auto _t15 = (_t13 * _t9);
+        const auto _t16 = (zC60 * 4096.0f);
+        const auto _t22 = ((gR21 * vib) * 8192.0f);
+        const auto _t33 = (_t21 * _t9);
+        const auto _t34 = (_t5 * _t19);
+        const auto _t4 = (_t5 * _t6);
+        const auto _t7 = (_t8 * _t9);
+        const auto _t14 = (_t13 * _t15);
+        const auto _t32 = (_t33 - _t34);
+        const auto _t36 = ((_t2 * _t32) + (_t11 * _t18));
+        const auto _t3 = (_t4 - _t7);
+        const auto _t10 = (_t11 * _t12);
+        const auto _t31 = ((_t11 * _t20) + (_t13 * _t32));
+        const auto _t37 = ((_t14 - (_t2 * (_t7 - _t4))) - _t10);
+        const auto vb = (-(((_t0 * ((_t1 * (((_t2 * _t3) - _t10) + _t14)) - (_t16 * _t17))) + (_t22 * _t23)) * _t25));
+        const auto tC60 = (gC60 * (vb - 0));
+        const auto vpt = (((_t22 * _t38) - ((_t0 * (((_t29 * _t31) + (_t16 * _t30)) + (_t1 * (_t28 * _t3)))) + (_t26 * (_t24 * _t31)))) * _t25);
+        const auto vc = (((_t22 * _t39) - ((_t0 * (((_t29 * _t36) + (_t16 * _t35)) - (_t1 * (_t28 * _t15)))) + (_t26 * (_t24 * _t36)))) * _t25);
+        const auto tCf = (gCf * (vpt - vc));
+        const auto vl = ((((_t26 * (_t24 * _t37)) - (_t0 * ((_t16 * _t27) - (_t29 * _t37)))) + (_t22 * _t40)) * _t25);
+        const auto tLf = (gLf * (vc - vl));
+        if (_k == 0) {
+            c0_tCf = tCf;
+            c0_tLf = tLf;
+            c0_vpt = vpt;
+            c0_vc = vc;
+            c0_vl = vl;
+            c0_tC60 = tC60;
+            c0_vb = vb;
+        } else {
+            c_tCf[_k - 1] = tCf - c0_tCf;
+            c_tLf[_k - 1] = tLf - c0_tLf;
+            c_vpt[_k - 1] = vpt - c0_vpt;
+            c_vc[_k - 1] = vc - c0_vc;
+            c_vl[_k - 1] = vl - c0_vl;
+            c_tC60[_k - 1] = tC60 - c0_tC60;
+            c_vb[_k - 1] = vb - c0_vb;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC60 = state[ch].zC60;
@@ -418,30 +573,13 @@ static void compute_bell (const float* const* input, float** output, int num_cha
         {
             const auto vib = input[ch][n];
 
-            const auto _t5 = ((zCf + zLf) * 64.0f);
-            const auto _t9 = (zLf * 4096.0f);
-            const auto _t11 = (((gR3m * vib) + zCf) * 64.0f);
-            const auto _t15 = (_t13 * _t9);
-            const auto _t16 = (zC60 * 4096.0f);
-            const auto _t22 = ((gR21 * vib) * 8192.0f);
-            const auto _t33 = (_t21 * _t9);
-            const auto _t34 = (_t5 * _t19);
-            const auto _t4 = (_t5 * _t6);
-            const auto _t7 = (_t8 * _t9);
-            const auto _t14 = (_t13 * _t15);
-            const auto _t32 = (_t33 - _t34);
-            const auto _t36 = ((_t2 * _t32) + (_t11 * _t18));
-            const auto _t3 = (_t4 - _t7);
-            const auto _t10 = (_t11 * _t12);
-            const auto _t31 = ((_t11 * _t20) + (_t13 * _t32));
-            const auto _t37 = ((_t14 - (_t2 * (_t7 - _t4))) - _t10);
-            const auto vb = (-(((_t0 * ((_t1 * (((_t2 * _t3) - _t10) + _t14)) - (_t16 * _t17))) + (_t22 * _t23)) * _t25));
-            const auto tC60 = (gC60 * (vb - 0));
-            const auto vpt = (((_t22 * _t38) - ((_t0 * (((_t29 * _t31) + (_t16 * _t30)) + (_t1 * (_t28 * _t3)))) + (_t26 * (_t24 * _t31)))) * _t25);
-            const auto vc = (((_t22 * _t39) - ((_t0 * (((_t29 * _t36) + (_t16 * _t35)) - (_t1 * (_t28 * _t15)))) + (_t26 * (_t24 * _t36)))) * _t25);
-            const auto tCf = (gCf * (vpt - vc));
-            const auto vl = ((((_t26 * (_t24 * _t37)) - (_t0 * ((_t16 * _t27) - (_t29 * _t37)))) + (_t22 * _t40)) * _t25);
-            const auto tLf = (gLf * (vc - vl));
+            const auto tCf = c0_tCf + c_tCf[0] * vib + c_tCf[1] * zC60 + c_tCf[2] * zCf + c_tCf[3] * zLf;
+            const auto tLf = c0_tLf + c_tLf[0] * vib + c_tLf[1] * zC60 + c_tLf[2] * zCf + c_tLf[3] * zLf;
+            const auto vpt = c0_vpt + c_vpt[0] * vib + c_vpt[1] * zC60 + c_vpt[2] * zCf + c_vpt[3] * zLf;
+            const auto vc = c0_vc + c_vc[0] * vib + c_vc[1] * zC60 + c_vc[2] * zCf + c_vc[3] * zLf;
+            const auto vl = c0_vl + c_vl[0] * vib + c_vl[1] * zC60 + c_vl[2] * zCf + c_vl[3] * zLf;
+            const auto tC60 = c0_tC60 + c_tC60[0] * vib + c_tC60[1] * zC60 + c_tC60[2] * zCf + c_tC60[3] * zLf;
+            const auto vb = c0_vb + c_vb[0] * vib + c_vb[1] * zC60 + c_vb[2] * zCf + c_vb[3] * zLf;
             
             zC60 = 2 * tC60 - zC60;
             zCf = 2 * tCf - zCf;
@@ -538,6 +676,30 @@ static void compute_hpf (const float* const* input, float** output, int num_chan
     const auto _t9 = (gRll + gR10);
     const auto _t10 = (1.0f / (gRll * _t7));
     const auto _t11 = (1.0f / _t7);
+    float c0_tC22;
+    float c_tC22[4];
+    
+    for (int _k = 0; _k <= 4; ++_k)
+    {
+        const auto vb = (_k == 1) ? 1.0f : 0.0f;
+        const auto zC22 = (_k == 2) ? 1.0f : 0.0f;
+        const auto zL1 = (_k == 3) ? 1.0f : 0.0f;
+        const auto zR27C21 = (_k == 4) ? 1.0f : 0.0f;
+        const auto _t2 = (zC22 * 4.0f);
+        const auto _t6 = (((zC22 - zL1) + ((gR27C21 * vb) - zR27C21)) * 4.0f);
+        const auto _t1 = (_t2 * _t3);
+        const auto _t4 = (_t5 * _t6);
+        const auto _t0 = (_t1 - _t4);
+        const auto vl2 = (((_t2 * _t5) - (_t8 * _t6)) * _t11);
+        const auto vnh = (_t0 * _t11);
+        const auto tC22 = (gC22 * (vl2 - vnh));
+        if (_k == 0) {
+            c0_tC22 = tC22;
+        } else {
+            c_tC22[_k - 1] = tC22 - c0_tC22;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC22 = state[ch].zC22;
@@ -547,6 +709,7 @@ static void compute_hpf (const float* const* input, float** output, int num_chan
         {
             const auto vb = input[ch][n];
 
+            const auto tC22 = c0_tC22 + c_tC22[0] * vb + c_tC22[1] * zC22 + c_tC22[2] * zL1 + c_tC22[3] * zR27C21;
             const auto _t2 = (zC22 * 4.0f);
             const auto _t6 = (((zC22 - zL1) + ((gR27C21 * vb) - zR27C21)) * 4.0f);
             const auto _t1 = (_t2 * _t3);
@@ -555,7 +718,6 @@ static void compute_hpf (const float* const* input, float** output, int num_chan
             const auto vo = ((_t9 * _t0) * _t10);
             const auto vl2 = (((_t2 * _t5) - (_t8 * _t6)) * _t11);
             const auto vnh = (_t0 * _t11);
-            const auto tC22 = (gC22 * (vl2 - vnh));
             const auto tL1 = (gL1 * (vl2 - 0));
             const auto vR27C21 = (vb - vl2);
             

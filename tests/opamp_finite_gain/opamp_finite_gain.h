@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 720cc46.
+// Auto-generated with netlist_codegen version 03d2306.
 // Command: netlist_codegen opamp_finite_gain.net opamp_finite_gain.h
 
 #pragma once
@@ -24,13 +24,27 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto gRF = 1.0f / params.RF;
     
     const auto _t0 = (1.0f / (((gR1 + gRF) * 1024.0f) + ((gRF * 1024.0f) * Eop_Aol)));
+    float c0_vo;
+    float c_vo[1];
+    
+    for (int _k = 0; _k <= 1; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0f : 0.0f;
+        const auto vo = (-((((gR1 * vi) * 1024.0f) * Eop_Aol) * _t0));
+        if (_k == 0) {
+            c0_vo = vo;
+        } else {
+            c_vo[_k - 1] = vo - c0_vo;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
 
-            const auto vo = (-((((gR1 * vi) * 1024.0f) * Eop_Aol) * _t0));
+            const auto vo = c0_vo + c_vo[0] * vi;
             
 
             output[ch][n] = vo;

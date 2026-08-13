@@ -6,10 +6,11 @@ Process :: #import "Process";
 #import "backend"; // File, resolve_cpu_profile, CPU_Profile
 
 Args :: struct {
-    lang:      string = "cpp";   @"?Output language for generated code. Supports: cpp (default), c."
-    type_name: string = "float"; @"?Numeric type to use for generated code. (Default: float)"
-    namespace: string = "";      @"?Wrap generated code in a namespace (C++ only, disabled by default)."
-    cpu:       string = "generic"; @"?Target CPU profile for the scheduling/extraction cost model. Built-in: generic (default), m1, zen4, cortex_a8. Or a path to a custom cpu_profiles/*.txt file."
+    lang:      string = "cpp";     @"?Output language for generated code. Supports: cpp (default), c."
+    type_name: string = "float";   @"?Numeric type to use for generated code. (Default: float)"
+    namespace: string = "";        @"?Wrap generated code in a namespace (C++ only, disabled by default)."
+    cpu:       string = "generic"; @"?Target CPU profile for the extraction cost model. Built-in: generic (default), m1, zen4, cortex_a8. Or a path to a custom cpu_profiles/*.txt file."
+    opt_extract:  bool = true;     @"?Enable basis-vector linear coefficient extraction (enabled by default)."
 }
 
 argument_flags :: Command_Line.Default_Argument_Flags;
@@ -56,7 +57,7 @@ main :: () {
     netlist_file_str, fread_success := File.read_entire_file(netlist_file);
     assert(fread_success, "Unable to open file!");
 
-    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file, cpu_profile);
+    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file, cpu_profile, args.opt_extract);
 
     // Prepend auto-generated header comment with version and full CLI invocation.
     cli_args := get_command_line_arguments();

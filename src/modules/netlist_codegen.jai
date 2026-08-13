@@ -876,9 +876,25 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     print_to_builder(*builder, "int num_channels, int num_samples, Params% params, State%* state, float sample_rate)\n", suffix, suffix);
     append(*builder, "{\n");
 
+    // basis_names for basis-vector extraction per-cluster: inputs + z-state only.
+    // Anything referencing a branch current directly still needs to be excluded
+    // from extraction, not treated as basis-independent, so pass those along too.
+    basis_names := extraction_basis_names(elements_copy, inputs);
+    branch_current_names := nonlinear_branch_current_names(elements_copy);
+    cluster_newton_outer: [..] string;
+    cluster_newton_inner: [..] string;
+    if has_nonlinear {
+        for c : clusters {
+            c_outer, c_inner := generate_cluster_newton_code(c, cluster_exprs, backend, enable_extraction = true, basis_names = basis_names, non_basis_variant_names = branch_current_names);
+            array_add(*cluster_newton_outer, c_outer);
+            array_add(*cluster_newton_inner, c_inner);
+        }
+    }
+
     append(*builder, indent(generate_impedance_defs(elements_copy, backend)));
     if has_nonlinear  append(*builder, indent(generate_vcrit_defs(clusters, backend)));
     if outer_code.count > 0  append(*builder, indent(outer_code));
+    for c_outer : cluster_newton_outer  if c_outer.count > 0  append(*builder, indent(c_outer));
 
     append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
     for state : states  append(*builder, tprint("        %1 %2 = state[ch].%2;\n", backend.decl_type, state));
@@ -893,8 +909,7 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     }
 
     if has_nonlinear {
-        for c : clusters {
-            newton_code := generate_cluster_newton_code(c, cluster_exprs, backend);
+        for newton_code : cluster_newton_inner {
             append(*builder, tprint("%\n", indent(newton_code, "            ")));
         }
     }
@@ -961,12 +976,13 @@ generate_joined_unit :: (decls: [] Sub_Circuit_Decl, backend: Backend) -> string
 }
 
 // Main entry point!
-netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "", cpu_profile: CPU_Profile = CPU_PROFILE_GENERIC) -> string {
+netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "", cpu_profile: CPU_Profile = CPU_PROFILE_GENERIC,
+                    enable_extraction := false) -> string {
     // parse the netlist into our internal structure
     net := parse_netlist(netlist_str);
 
     // choose the language backend (C, C++, ...)
-    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx);
+    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx, enable_extraction);
 
     if net.outputs.count == 0 {
         log("Adding output node: vo\n");

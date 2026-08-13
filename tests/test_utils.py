@@ -50,7 +50,7 @@ def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace
     cmd = [
         codegen_exe,
         netlist_file,
-        header_file
+        header_file,
     ]
     if lang != "cpp":
         cmd += ["-lang", lang]

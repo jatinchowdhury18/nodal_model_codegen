@@ -1,10 +1,5 @@
 # AMD Zen4, scalar single-precision FP (SSE).
 # add/mul/load/store: https://www.agner.org/optimize/instruction_tables.pdf
-# div: NOT from that table, it's a rough placeholder. TODO verify.
-#
-# No separate exp/log/pow bucket: transcendentals are generated as inline
-# add/mul approximations by default (see Transcendental_Approx in
-# codegen.jai), so their cost already falls out of the add/mul numbers below.
 
 num_registers = 16
 
@@ -14,9 +9,8 @@ add.throughput  = 0.5
 mul.latency     = 3.0
 mul.throughput  = 0.5
 
-# TODO: placeholder, not from Agner's tables (DIVSS is data-dependent).
-div.latency     = 8.0
-div.throughput  = 4.0
+div.latency     = 13.0
+div.throughput  = 4.0 # DIVSS -> 3, DIVSD -> 5, so we take the middle
 
 load.latency    = 5.0
 load.throughput = 0.5

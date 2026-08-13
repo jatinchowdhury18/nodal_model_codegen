@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 720cc46.
+// Auto-generated with netlist_codegen version 03d2306.
 // Command: netlist_codegen sk_lpf.net sk_lpf.h
 
 #pragma once
@@ -46,6 +46,38 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t5 = (_t6 * _t3);
     const auto _t8 = (((gR2 + gC1) * 128.0f) * _t9);
     const auto _t7 = (1.0f / (((_t0 * _t8) - (_t10 * _t5)) - (_t6 * _t11)));
+    float c0_tC2;
+    float c_tC2[3];
+    float c0_n1;
+    float c_n1[3];
+    float c0_tC1;
+    float c_tC1[3];
+    
+    for (int _k = 0; _k <= 3; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0f : 0.0f;
+        const auto zC1 = (_k == 2) ? 1.0f : 0.0f;
+        const auto zC2 = (_k == 3) ? 1.0f : 0.0f;
+        const auto _t2 = (zC1 * 128.0f);
+        const auto _t4 = ((zC2 - (gR1 * vi)) * 128.0f);
+        const auto _t12 = (_t2 * _t9);
+        const auto _t1 = (_t2 * _t3);
+        const auto vo = (((_t0 * _t1) - (_t4 * _t5)) * _t7);
+        const auto n3 = (((_t0 * _t12) - (_t4 * _t11)) * _t7);
+        const auto tC1 = (gC1 * (n3 - 0));
+        const auto n1 = ((((_t10 * _t1) - (_t4 * _t8)) + (_t6 * _t12)) * _t7);
+        const auto tC2 = (gC2 * (vo - n1));
+        if (_k == 0) {
+            c0_tC2 = tC2;
+            c0_n1 = n1;
+            c0_tC1 = tC1;
+        } else {
+            c_tC2[_k - 1] = tC2 - c0_tC2;
+            c_n1[_k - 1] = n1 - c0_n1;
+            c_tC1[_k - 1] = tC1 - c0_tC1;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC1 = state[ch].zC1;
@@ -54,15 +86,15 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
+            const auto tC2 = c0_tC2 + c_tC2[0] * vi + c_tC2[1] * zC1 + c_tC2[2] * zC2;
+            const auto n1 = c0_n1 + c_n1[0] * vi + c_n1[1] * zC1 + c_n1[2] * zC2;
+            const auto tC1 = c0_tC1 + c_tC1[0] * vi + c_tC1[1] * zC1 + c_tC1[2] * zC2;
             const auto _t2 = (zC1 * 128.0f);
             const auto _t4 = ((zC2 - (gR1 * vi)) * 128.0f);
             const auto _t12 = (_t2 * _t9);
             const auto _t1 = (_t2 * _t3);
             const auto vo = (((_t0 * _t1) - (_t4 * _t5)) * _t7);
             const auto n3 = (((_t0 * _t12) - (_t4 * _t11)) * _t7);
-            const auto tC1 = (gC1 * (n3 - 0));
-            const auto n1 = ((((_t10 * _t1) - (_t4 * _t8)) + (_t6 * _t12)) * _t7);
-            const auto tC2 = (gC2 * (vo - n1));
             
             zC1 = 2 * tC1 - zC1;
             zC2 = 2 * tC2 - zC2;

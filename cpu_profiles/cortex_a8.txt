@@ -9,10 +9,6 @@
 # replace with real numbers (measured cycle counts, or even your own
 # estimate from the hand-optimization work) before trusting any -cpu=cortex_a8
 # decision this system makes.
-#
-# No separate exp/log/pow bucket: transcendentals are generated as inline
-# add/mul approximations by default (see Transcendental_Approx in
-# codegen.jai), so their cost already falls out of the add/mul numbers below.
 
 # TODO: real number. Effective usable register count under the in-order
 # VFPLite pipeline may be much lower than the architectural 16 D-regs once

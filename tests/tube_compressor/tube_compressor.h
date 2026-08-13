@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 720cc46.
+// Auto-generated with netlist_codegen version 03d2306.
 // Command: netlist_codegen tube_compressor.net tube_compressor.h -type_name double
 
 #pragma once
@@ -216,6 +216,47 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t36 = ((gRatt * _t37) - (_t34 * _t37));
     const auto _t35 = (1.0 / ((_t0 * _t36) + (gRfb * _t47)));
     const auto _t110 = (1.0 / (gCin + gRg1));
+    double c0__X1_X2_D1_t84;
+    double c__X1_X2_D1_t84[8];
+    
+    for (int _k = 0; _k <= 8; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0 : 0.0;
+        const auto zCin = (_k == 2) ? 1.0 : 0.0;
+        const auto zRk1Ck1 = (_k == 3) ? 1.0 : 0.0;
+        const auto zCc12 = (_k == 4) ? 1.0 : 0.0;
+        const auto zRrelCenv = (_k == 5) ? 1.0 : 0.0;
+        const auto zCout = (_k == 6) ? 1.0 : 0.0;
+        const auto zCsc = (_k == 7) ? 1.0 : 0.0;
+        const auto zRk2Ck2 = (_k == 8) ? 1.0 : 0.0;
+        const auto _X1_X2_D1_t25 = (gCc12 + gRg2);
+        const auto _X1_X2_D1_t29 = (gRp2 + gCout);
+        const auto _X1_X2_D1_t34 = (gCout + gRL);
+        const auto _X1_X2_D1_t35 = (gCsc * gCsc);
+        const auto _X1_X2_D1_t38 = (gCout * gCsc);
+        const auto _X1_X2_D1_t62 = (gRp1 + gCc12);
+        const auto _X1_X2_D1_t33 = (_X1_X2_D1_t34 + gCsc);
+        const auto _X1_X2_D1_t37 = (gRk2Ck2 * _X1_X2_D1_t38);
+        const auto _X1_X2_D1_t32 = (_X1_X2_D1_t33 * gCsc);
+        const auto _X1_X2_D1_t36 = (gCout * _X1_X2_D1_t37);
+        const auto _X1_X2_D1_t31 = (_X1_X2_D1_t32 - _X1_X2_D1_t35);
+        const auto _X1_X2_D1_t30 = (gRk2Ck2 * _X1_X2_D1_t31);
+        const auto _X1_X2_D1_t28 = (_X1_X2_D1_t29 * _X1_X2_D1_t30);
+        const auto _X1_X2_D1_t27 = (_X1_X2_D1_t28 - _X1_X2_D1_t36);
+        const auto _X1_X2_D1_t26 = (gRatt * _X1_X2_D1_t27);
+        const auto _X1_X2_D1_t60 = (gCc12 * _X1_X2_D1_t26);
+        const auto _X1_X2_D1_t24 = (_X1_X2_D1_t25 * _X1_X2_D1_t26);
+        const auto _X1_X2_D1_t59 = (gCc12 * _X1_X2_D1_t60);
+        const auto _X1_X2_D1_t61 = (_X1_X2_D1_t62 * _X1_X2_D1_t24);
+        const auto _X1_X2_D1_t58 = (_X1_X2_D1_t59 - _X1_X2_D1_t61);
+        const auto _X1_X2_D1_t84 = (zRrelCenv * _X1_X2_D1_t58);
+        if (_k == 0) {
+            c0__X1_X2_D1_t84 = _X1_X2_D1_t84;
+        } else {
+            c__X1_X2_D1_t84[_k - 1] = _X1_X2_D1_t84 - c0__X1_X2_D1_t84;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zCin = state[ch].zCin;
@@ -235,6 +276,7 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto vi = input[ch][n];
 
             // --- Newton-Raphson solve: X1_X2_D1
+            const auto _X1_X2_D1_t84 = c0__X1_X2_D1_t84 + c__X1_X2_D1_t84[0] * vi + c__X1_X2_D1_t84[1] * zCin + c__X1_X2_D1_t84[2] * zRk1Ck1 + c__X1_X2_D1_t84[3] * zCc12 + c__X1_X2_D1_t84[4] * zRrelCenv + c__X1_X2_D1_t84[5] * zCout + c__X1_X2_D1_t84[6] * zCsc + c__X1_X2_D1_t84[7] * zRk2Ck2;
             const auto _X1_X2_D1_t1 = (gRk1Ck1 + gRfb);
             const auto _X1_X2_D1_t25 = (gCc12 + gRg2);
             const auto _X1_X2_D1_t29 = (gRp2 + gCout);
@@ -286,7 +328,6 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto _X1_X2_D1_t58 = (_X1_X2_D1_t59 - _X1_X2_D1_t61);
             const auto _X1_X2_D1_t63 = (_X1_X2_D1_t52 * _X1_X2_D1_t58);
             const auto _X1_X2_D1_t65 = (gRfb * _X1_X2_D1_t58);
-            const auto _X1_X2_D1_t84 = (zRrelCenv * _X1_X2_D1_t58);
             const auto _X1_X2_D1_t348 = (VCC * _X1_X2_D1_t349);
             const auto _X1_X2_D1_t57 = (gRatt * _X1_X2_D1_t58);
             const auto _X1_X2_D1_t64 = (gRfb * _X1_X2_D1_t65);

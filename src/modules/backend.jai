@@ -18,18 +18,24 @@ indent :: (in: string, prefix := "    ") -> string {
     return out;
 }
 
-// Every language-specific decision the emitters below need computed once only.
-// `Backend.{}` still means "C++, float" for callers that don't build one via make_backend().
+// "Global" properties that inform the code generation.
 Backend :: struct {
+    // language-specifics
     is_cpp:    bool   = true;
     type_name: string = "float";     // numeric type used for variable declarations
     decl_type: string = "auto";      // "auto" (C++, type inference) or type_name (C)
     const_kw:  string = "static constexpr"; // vs "static const" (C)
-    cpu: CPU_Profile = CPU_PROFILE_GENERIC;  // target CPU for scheduling/extraction cost model
+
+    // math stuff
     transcendental_approx: Transcendental_Approx; // exp/log/pow approximation settings
+
+    // optimization stuff
+    cpu: CPU_Profile = CPU_PROFILE_GENERIC;  // target CPU for scheduling/extraction cost model
+    enable_extraction: bool; // basis-vector linear coefficient extraction
 }
 
-make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE_GENERIC, transcendental_approx: Transcendental_Approx = .{}) -> Backend {
+make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE_GENERIC, transcendental_approx: Transcendental_Approx = .{},
+                 enable_extraction := false) -> Backend {
     is_cpp := lang != "c";
     return .{
         is_cpp    = is_cpp,
@@ -38,7 +44,17 @@ make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE
         const_kw  = ifx is_cpp then "static constexpr" else "static const",
         cpu       = cpu,
         transcendental_approx = transcendental_approx,
+        enable_extraction = enable_extraction,
     };
+}
+
+// Used for cost modelling... maybe make this a parameter later on?
+ASSUMED_BLOCK_SIZE :: 64;
+
+// Rough weighted op-cost estimate for a Flop_Count, using a CPU_Profile's
+// per-op latencies. Transcendentals aren't included, but that shouldn't matter.
+estimate_flop_cost :: (flops: Flop_Count, cpu: CPU_Profile) -> float {
+    return flops.muls * cpu.mul.latency + flops.divs * cpu.div.latency + flops.adds * cpu.add.latency;
 }
 
 // exp/log/pow approximation settings, overridable per netlist via

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 720cc46.
+// Auto-generated with netlist_codegen version 03d2306.
 // Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2.h -type_name float
 
 #pragma once
