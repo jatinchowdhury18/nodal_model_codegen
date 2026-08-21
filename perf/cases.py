@@ -10,6 +10,8 @@ CASES = [
     # pedal_drive needs double -- the coupled 3-unknown cluster's Cramer's-rule
     # closed forms lose too much precision in float.
     {"name": "pedal_drive",    "net": "pedal_drive/pedal_drive.net",       "dtype": "double"},
+    # Tests nonlinear cluster de-coupling.
+    {"name": "pedal_model",    "net": "pedal_model/pedal_model.net",       "dtype": "double"},
     # Big, fully-linear circuit (1073-style EQ, split into shelf/bell/hpf
     # sub-circuits). This is the one that needed hand-rewriting for register
     # pressure; see scratch/PERF_PLAN.md.

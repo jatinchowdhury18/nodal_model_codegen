@@ -28,6 +28,7 @@
 #include "generated/diode_clipper.h"
 #include "generated/common_emitter.h"
 #include "generated/pedal_drive.h"
+#include "generated/pedal_model.h"
 #include "generated/eq73.h"
 
 static constexpr int N_WARMUP = 2;
@@ -86,6 +87,16 @@ struct PedalDriveTraits {
     static constexpr float vi_dc = 0.0f;
     static constexpr auto compute = pedal_drive::compute;
     static constexpr auto reset   = pedal_drive::reset;
+};
+
+struct PedalModelTraits {
+    static constexpr const char* name = "pedal_model";
+    using Params = pedal_model::Params;
+    using State  = pedal_model::State;
+    static constexpr bool has_reset = true;
+    static constexpr float vi_dc = 0.0f;
+    static constexpr auto compute = pedal_model::compute;
+    static constexpr auto reset   = pedal_model::reset;
 };
 
 struct Eq73Traits {
@@ -246,6 +257,7 @@ int main(int argc, char** argv) {
     if (run_all || cases.count("diode_clipper"))  run_case<DiodeClipperTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("common_emitter")) run_case<CommonEmitterTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("pedal_drive"))    run_case<PedalDriveTraits>(ec, out_dir, input_buf);
+    if (run_all || cases.count("pedal_model"))    run_case<PedalModelTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("eq73"))           run_case<Eq73Traits>(ec, out_dir, input_buf);
 
     return 0;
