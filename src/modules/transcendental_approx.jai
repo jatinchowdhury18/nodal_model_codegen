@@ -35,6 +35,9 @@ transcendental_fn_name :: (backend: Backend, name: string) -> string {
 // so here we replace them with the proper C/C++ equivalent (or the
 // generated approximation, see transcendental_fn_name()).
 resolve_math_fns :: (code: string, backend: Backend) -> string {
+    found := String.contains(code, "math_fn_");
+    if !found  return code;
+
     result := code;
     result = String.replace(result, "math_fn_exp", transcendental_fn_name(backend, "exp"));
     result = String.replace(result, "math_fn_log", transcendental_fn_name(backend, "log"));
@@ -124,6 +127,8 @@ log2_approx_coeffs :: (order: int, c1_continuous: bool) -> [] float64 {
 // needs the same number this actually costs at runtime, not a
 // hand-maintained estimate.
 emit_poly_estrin :: (coeffs: [] float64, x_var: string, xsq_var: string, suffix: string) -> (text: string, flops: Flop_Count) {
+    assert(coeffs.count > 0, "emit_poly_estrin: coeffs must be non-empty");
+
     // formatFloat's trailing_width reserves a fixed column count and pads
     // with spaces once zero_removal strips trailing zeros short of it, so
     // the result needs trimming before it's usable as a literal.
@@ -188,17 +193,32 @@ add_flop_count :: (dst: *Flop_Count, src: Flop_Count) {
     dst.transcendentals += src.transcendentals;
 }
 
+// Caching exp/log flop flop counts per approximation order
+Flop_Cache_Entry :: struct { key: int; flops: Flop_Count; }
+exp_flop_cache: [..] Flop_Cache_Entry;
+log_flop_cache: [..] Flop_Cache_Entry;
+
+flop_cache_key :: (approx: Transcendental_Approx) -> int {
+    return approx.order * 2 + cast(int) approx.c1_continuous;
+}
+
 exp_approx_flop_count :: (approx: Transcendental_Approx) -> Flop_Count {
+    key := flop_cache_key(approx);
+    for e : exp_flop_cache  if e.key == key  return e.flops;
     _, poly_flops := emit_poly_estrin(pow2_approx_coeffs(approx.order, approx.c1_continuous), "f", "f_sq", "");
     result := EXP_APPROX_WRAPPER_FLOPS;
     add_flop_count(*result, poly_flops);
+    array_add(*exp_flop_cache, .{ key = key, flops = result });
     return result;
 }
 
 log_approx_flop_count :: (approx: Transcendental_Approx) -> Flop_Count {
+    key := flop_cache_key(approx);
+    for e : log_flop_cache  if e.key == key  return e.flops;
     _, poly_flops := emit_poly_estrin(log2_approx_coeffs(approx.order, approx.c1_continuous), "vf", "vf_sq", "");
     result := LOG_APPROX_WRAPPER_FLOPS;
     add_flop_count(*result, poly_flops);
+    array_add(*log_flop_cache, .{ key = key, flops = result });
     return result;
 }
 

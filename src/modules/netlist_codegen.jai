@@ -1,4 +1,5 @@
 #import "Basic";
+#import "Hash_Table";
 Math :: #import "Math";
 
 #import "nodal_analysis";
@@ -169,11 +170,12 @@ ident_safe_name :: (name: string) -> string {
 }
 
 // Look up a parsed .model card by name, falling back to a default-parameter model.
-find_model :: (model_defs: [] Model_Def, name: string) -> Model_Def {
-    for m : model_defs  if m.name == name  return m;
-    model := default_model();
-    model.name = name;
-    return model;
+find_model :: (model_defs: *Table(string, Model_Def), name: string) -> Model_Def {
+    found, model := table_find(model_defs, name);
+    if found  return model;
+    result := default_model();
+    result.name = name;
+    return result;
 }
 
 // Peek at a `.model <name> <kind> ...` line's kind token
@@ -252,22 +254,27 @@ parse_opamp_model_line :: (line: string) -> Opamp_Model_Def {
 
 // Look up a parsed .model OPAMP card by name.
 // Falls back to an ideal model if not found.
-find_opamp_model :: (model_defs: [] Opamp_Model_Def, name: string) -> Opamp_Model_Def {
-    for m : model_defs  if m.name == name  return m;
-    model: Opamp_Model_Def;
-    model.name = name;
-    return model;
+find_opamp_model :: (model_defs: *Table(string, Opamp_Model_Def), name: string) -> Opamp_Model_Def {
+    found, model := table_find(model_defs, name);
+    if found  return model;
+    result: Opamp_Model_Def;
+    result.name = name;
+    return result;
 }
 
-// Register a (name, value) pair in `values` at most once.
-add_value_once :: (values: *[..] Element_Value, name: string, value: float32) {
-    for v : values.*  if v.name == name  return;
+// Register a (name, value) pair in `values` at most once. `value_index`
+// mirrors `values` (name -> index into it) so this and find_element_value()
+// don't have to linear-scan `values` on every call.
+add_value_once :: (values: *[..] Element_Value, value_index: *Table(string, int), name: string, value: float32) {
+    if table_contains(value_index, name)  return;
+    table_add(value_index, name, values.count);
     array_add(values, Element_Value.{ name = name, value = value });
 }
 
 Netlist_Info :: struct {
     elements : [..] Element;
     values : [..] Element_Value;
+    value_index : Table(string, int); // name -> index into `values`
 
     inputs : [..] string;
     outputs : [..] string;
@@ -321,7 +328,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
     // Registers "<base_name>_<suffix>" = val in `values` and returns its name.
     reg_param :: (base_name: string, suffix: string, val: float32) -> string #expand {
         pname := tprint("%_%", base_name, suffix);
-        add_value_once(*values, pname, val);
+        add_value_once(*values, *value_index, pname, val);
         return pname;
     }
 
@@ -364,7 +371,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
     // completely ignores whatever else the line says. out/pos/neg default to
     // that line's tokens[1]/[3]/[4] unless overridden in `ref`.
     handle_nodal_model_element :: (name: string, tokens: [] string, ref: Nodal_Model_Ref) #expand {
-        model := find_opamp_model(opamp_model_defs, ref.name);
+        model := find_opamp_model(*opamp_model_defs, ref.name);
         out_node := ifx ref.out_override.count > 0 then ref.out_override else tokens[1];
         pos_node := ifx ref.pos_override.count > 0 then ref.pos_override else tokens[3];
         neg_node := ifx ref.neg_override.count > 0 then ref.neg_override else tokens[4];
@@ -458,8 +465,8 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
     // has no native op-amp or triode primitive, but (like TRIODE) an OPAMP
     // .model card is still just an ordinary line. A `.SUBCKT ... .ENDS` block
     // is skipped entirely here.
-    model_defs: [..] Model_Def;
-    opamp_model_defs: [..] Opamp_Model_Def;
+    model_defs: Table(string, Model_Def);
+    opamp_model_defs: Table(string, Opamp_Model_Def);
     {
         in_subckt := false;
         for line_raw : lines {
@@ -475,9 +482,11 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
             if !String.begins_with(line, "model")  continue;
             line = strip_comment(line);
             if peek_model_kind(line) == .OPAMP {
-                array_add(*opamp_model_defs, parse_opamp_model_line(line));
+                model := parse_opamp_model_line(line);
+                if !table_contains(*opamp_model_defs, model.name)  table_add(*opamp_model_defs, model.name, model);
             } else {
-                array_add(*model_defs, parse_model_line(line));
+                model := parse_model_line(line);
+                if !table_contains(*model_defs, model.name)  table_add(*model_defs, model.name, model);
             }
         }
     }
@@ -542,6 +551,16 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                         case "EXACT"; transcendental_approx.exact = kv.val != 0;
                     }
                 }
+                // pow2_approx_coeffs() supports orders 1-7 (3-7 if c1) and
+                // log2_approx_coeffs() supports orders 1-6 (3-6 if c1), so
+                // the valid range is the intersection of those ranges.
+                min_order := ifx transcendental_approx.c1_continuous then 3 else 1;
+                max_order := 6;
+                if !transcendental_approx.exact && (transcendental_approx.order < min_order || transcendental_approx.order > max_order) {
+                    log("Warning: exp_approx order=% is out of range (supported: %-% given c1=%); falling back to order=6.\n",
+                        transcendental_approx.order, min_order, max_order, cast(int) transcendental_approx.c1_continuous);
+                    transcendental_approx.order = 6;
+                }
             }
 
             continue;
@@ -560,7 +579,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
         name := tokens[0];
         n1, n2 := tokens[1], tokens[2];
         value := parse_spice_value(tokens[3]);
-        if ! Math.is_nan_is_inf(value)  array_add(*values, Element_Value.{ name, value }); // unparsed value (e.g. input voltage source) defaults to 0
+        if ! Math.is_nan_is_inf(value)  add_value_once(*values, *value_index, name, value); // unparsed value (e.g. input voltage source) defaults to 0
 
         if nodal_model_ref.name.count > 0  handle_nodal_model_element(name, tokens, nodal_model_ref);
 
@@ -589,7 +608,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 if tokens.count > 4 && String.to_upper_copy(tokens[3]) == "DC" {
                     is_fixed = true;
                     dc_value := parse_spice_value(tokens[4]);
-                    if !Math.is_nan_is_inf(dc_value)  add_value_once(*values, name, dc_value);
+                    if !Math.is_nan_is_inf(dc_value)  add_value_once(*values, *value_index, name, dc_value);
                 }
 
                 if is_fixed {
@@ -600,11 +619,11 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 }
             case "D";
                 // D<name> <anode> <cathode> <model>
-                model := find_model(model_defs, tokens[3]);
+                model := find_model(*model_defs, tokens[3]);
                 is_name := tprint("%_Is", ident_safe_name(model.name));
                 vt_name := tprint("%_vt", ident_safe_name(model.name));
-                add_value_once(*values, is_name, model.is_val);
-                add_value_once(*values, vt_name, cast(float32)(model.n_val * VT_ROOM));
+                add_value_once(*values, *value_index, is_name, model.is_val);
+                add_value_once(*values, *value_index, vt_name, cast(float32)(model.n_val * VT_ROOM));
 
                 element := Element.{ name = name, type = .DIODE, no_combine = has_no_combine };
                 array_add(*element.terminals, n1); // anode
@@ -615,7 +634,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
             case "Q";
                 // Q<name> <collector> <base> <emitter> <model>.
                 emitter    := tokens[3];
-                model      := find_model(model_defs, tokens[4]);
+                model      := find_model(*model_defs, tokens[4]);
                 if model.kind == {
                     case .NPN; #through;
                     case .PNP;
@@ -623,10 +642,10 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                         vt_name    := tprint("%_vt", ident_safe_name(model.name));
                         betaf_name := tprint("%_BetaF", ident_safe_name(model.name));
                         betar_name := tprint("%_BetaR", ident_safe_name(model.name));
-                        add_value_once(*values, is_name, model.is_val);
-                        add_value_once(*values, vt_name, cast(float32)(model.n_val * VT_ROOM));
-                        add_value_once(*values, betaf_name, model.betaf_val);
-                        add_value_once(*values, betar_name, model.betar_val);
+                        add_value_once(*values, *value_index, is_name, model.is_val);
+                        add_value_once(*values, *value_index, vt_name, cast(float32)(model.n_val * VT_ROOM));
+                        add_value_once(*values, *value_index, betaf_name, model.betaf_val);
+                        add_value_once(*values, *value_index, betar_name, model.betar_val);
 
                         bjt_type := ifx model.kind == .PNP then Element_Type.PNP else Element_Type.NPN;
                         element := Element.{ name = name, type = bjt_type };
@@ -640,14 +659,14 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
             case "J";
                 // J<name> <drain> <gate> <source> <model>. PJF mirrors NJF.
                 source := tokens[3];
-                model  := find_model(model_defs, tokens[4]);
+                model  := find_model(*model_defs, tokens[4]);
                 if model.kind == {
                     case .NJF; #through;
                     case .PJF;
                         beta_name := tprint("%_Beta", ident_safe_name(model.name));
                         vp_name   := tprint("%_vp", ident_safe_name(model.name));
-                        add_value_once(*values, beta_name, model.beta_val);
-                        add_value_once(*values, vp_name, model.vp_val);
+                        add_value_once(*values, *value_index, beta_name, model.beta_val);
+                        add_value_once(*values, *value_index, vp_name, model.vp_val);
 
                         jfet_type := ifx model.kind == .PJF then Element_Type.PJF else Element_Type.NJF;
                         element := Element.{ name = name, type = jfet_type };
@@ -663,7 +682,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 ctrl_pos := tokens[3];
                 ctrl_neg := tokens[4];
                 gm_value := parse_spice_value(tokens[5]);
-                if !Math.is_nan_is_inf(gm_value)  add_value_once(*values, name, gm_value);
+                if !Math.is_nan_is_inf(gm_value)  add_value_once(*values, *value_index, name, gm_value);
 
                 element := Element.{ name = name, type = .VCCS };
                 array_add(*element.terminals, n1);
@@ -686,7 +705,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                     log("Warning: malformed X-line '%'; ignoring.\n", name);
                     continue;
                 }
-                model     := find_model(model_defs, tokens[tokens.count - 1]);
+                model     := find_model(*model_defs, tokens[tokens.count - 1]);
                 terminals := array_view(tokens, 1, tokens.count - 2);
                 if model.kind == {
                     case .TRIODE;
@@ -703,14 +722,14 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                         xi_name    := tprint("%_Xi", ident_safe_name(model.name));
                         cg_name    := tprint("%_Cg", ident_safe_name(model.name));
                         ig0_name   := tprint("%_Ig0", ident_safe_name(model.name));
-                        add_value_once(*values, gk_name,    model.gk_val);
-                        add_value_once(*values, mu_name,    model.mu_val);
-                        add_value_once(*values, gamma_name, model.gamma_val);
-                        add_value_once(*values, ck_name,    model.ck_val);
-                        add_value_once(*values, gg_name,    model.gg_val);
-                        add_value_once(*values, xi_name,    model.xi_val);
-                        add_value_once(*values, cg_name,    model.cg_val);
-                        add_value_once(*values, ig0_name,   model.ig0_val);
+                        add_value_once(*values, *value_index, gk_name,    model.gk_val);
+                        add_value_once(*values, *value_index, mu_name,    model.mu_val);
+                        add_value_once(*values, *value_index, gamma_name, model.gamma_val);
+                        add_value_once(*values, *value_index, ck_name,    model.ck_val);
+                        add_value_once(*values, *value_index, gg_name,    model.gg_val);
+                        add_value_once(*values, *value_index, xi_name,    model.xi_val);
+                        add_value_once(*values, *value_index, cg_name,    model.cg_val);
+                        add_value_once(*values, *value_index, ig0_name,   model.ig0_val);
 
                         element := Element.{ name = name, type = .TRIODE };
                         array_add(*element.terminals, terminals[0]); // plate

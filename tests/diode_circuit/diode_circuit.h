@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen diode_circuit.net diode_circuit.h
 
 #pragma once
@@ -104,16 +104,16 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto vi = input[ch][n];
 
             // --- Newton-Raphson solve: D1
-            const auto _D1_t4 = (1.0f / (gR1 + gC1));
+            const auto _D1_t2 = (1.0f / (gR1 + gC1));
             const auto _D1_t5 = ((gR1 * vi) + zC1);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const auto _D1_t3 = (vD1 / D1N914_vt);
-                const auto _D1_t2 = math_exp_approx(_D1_t3);
-                const auto _D1_t1 = (((D1N914_Is * (_D1_t2 - 1.0f)) - _D1_t5) * _D1_t4);
-                const auto _D1_t0 = (_D1_t1 + vD1);
-                const auto res_vD1 = (-_D1_t0);
-                const auto delta_vD1 = (-(_D1_t0 / ((((D1N914_Is * _D1_t2) / D1N914_vt) * _D1_t4) + 1.0f)));
+                const auto _D1_t1 = (vD1 / D1N914_vt);
+                const auto _D1_t4 = math_exp_approx(_D1_t1);
+                const auto _D1_t0 = (((D1N914_Is * (_D1_t4 - 1.0f)) - _D1_t5) * _D1_t2);
+                const auto _D1_t3 = (_D1_t0 + vD1);
+                const auto res_vD1 = (-_D1_t3);
+                const auto delta_vD1 = (-(_D1_t3 / ((((D1N914_Is * _D1_t4) / D1N914_vt) * _D1_t2) + 1.0f)));
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD1 * res_vD1;
@@ -158,16 +158,16 @@ static float reset (Params params, State* state, int num_channels, float sample_
     float vD1 = 0;
 
     // --- Newton-Raphson solve: D1
-    const auto _D1_t4 = (1.0f / (gR1 + (1.0f / 1000000000.0f)));
+    const auto _D1_t3 = (1.0f / (gR1 + (1.0f / 1000000000.0f)));
     const auto _D1_t5 = (gR1 * vi);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _D1_t3 = (vD1 / D1N914_vt);
-        const auto _D1_t2 = math_exp_approx(_D1_t3);
-        const auto _D1_t1 = (((D1N914_Is * (_D1_t2 - 1.0f)) - _D1_t5) * _D1_t4);
-        const auto _D1_t0 = (_D1_t1 + vD1);
-        const auto res_vD1 = (-_D1_t0);
-        const auto delta_vD1 = (-(_D1_t0 / ((((D1N914_Is * _D1_t2) / D1N914_vt) * _D1_t4) + 1.0f)));
+        const auto _D1_t2 = (vD1 / D1N914_vt);
+        const auto _D1_t1 = math_exp_approx(_D1_t2);
+        const auto _D1_t0 = (((D1N914_Is * (_D1_t1 - 1.0f)) - _D1_t5) * _D1_t3);
+        const auto _D1_t4 = (_D1_t0 + vD1);
+        const auto res_vD1 = (-_D1_t4);
+        const auto delta_vD1 = (-(_D1_t4 / ((((D1N914_Is * _D1_t1) / D1N914_vt) * _D1_t3) + 1.0f)));
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1 * res_vD1;

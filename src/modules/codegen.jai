@@ -514,11 +514,11 @@ generate_vcrit_defs :: (clusters: [] Nonlinear_Cluster, backend: Backend) -> str
     emitted: [..] string;
     for c : clusters {
         for u : c.unknowns {
-            if u.limiter_kind != .EXP_JUNCTION  continue;
-            if array_find(emitted, u.vt_name)  continue;
-            array_add(*emitted, u.vt_name);
+            if u.model.limiter_kind != .EXP_JUNCTION  continue;
+            if array_find(emitted, u.model.vt_name)  continue;
+            array_add(*emitted, u.model.vt_name);
             print_to_builder(*builder, "const %1 vcrit_%2 = %2 * %3(%2 / (%4(2.0) * %5));\n",
-                             auto_or_type, u.vt_name, log_fn, sqrt_fn, u.is_name);
+                             auto_or_type, u.model.vt_name, log_fn, sqrt_fn, u.model.is_name);
         }
     }
     if emitted.count > 0  append(*builder, "\n");
@@ -539,12 +539,12 @@ generate_newton_constants :: (newton_tol_sq: float, newton_max_iter: int, backen
 // per-unknown loop below and by the active-set AMP_CLIP path for the
 // *other* unknowns jointly solved with the clip unknown.
 emit_unknown_update :: (builder: *String_Builder, u: Cluster_Unknown, delta_expr: string) {
-    if u.limiter_kind == {
+    if u.model.limiter_kind == {
         case .EXP_JUNCTION;
             print_to_builder(builder, "%1 = limit_junction_voltage(%1 + (%2), %1, %3, vcrit_%3);\n",
-                             u.name, delta_expr, u.vt_name);
+                             u.name, delta_expr, u.model.vt_name);
         case .JFET_PINCHOFF;
-            print_to_builder(builder, "%1 = limit_jfet_vgs(%1 + (%2), %3);\n", u.name, delta_expr, u.vp_name);
+            print_to_builder(builder, "%1 = limit_jfet_vgs(%1 + (%2), %3);\n", u.name, delta_expr, u.model.vp_name);
         case;
             print_to_builder(builder, "%1 = %1 + (%2);\n", u.name, delta_expr);
     }
@@ -563,8 +563,8 @@ generate_amp_clip_active_set_step :: (cluster: Nonlinear_Cluster, builder: *Stri
     // slew-limit the unconstrained target first, then check *that*
     // against the rails. If no slew is set, use a permissive slew_max_step
     // that never trips, reusing the target itself as v_prev.
-    v_prev := ifx c.has_slew && apply_slew then c.zslew_name else "_natural";
-    slew_max_step := ifx c.has_slew && apply_slew then tprint("(%/sample_rate)", c.slew_name) else "1.0e30";
+    v_prev := ifx c.model.has_slew && apply_slew then c.model.zslew_name else "_natural";
+    slew_max_step := ifx c.model.has_slew && apply_slew then tprint("(%/sample_rate)", c.model.slew_name) else "1.0e30";
 
     print_to_builder(builder, "const %1 _natural = (%1)(%2 + %3);\n", backend.type_name, c.name, c.delta_name);
     print_to_builder(builder, "%1 _v = _natural;\n", backend.decl_type);
@@ -574,11 +574,11 @@ generate_amp_clip_active_set_step :: (cluster: Nonlinear_Cluster, builder: *Stri
     print_to_builder(builder, "%1 res_%2_active = 0.0, delta_%2_active = 0.0;\n", backend.decl_type, c.name);
     for u : others  print_to_builder(builder, "%1 res_%2_active = 0.0, delta_%2_active = 0.0;\n", backend.decl_type, u.name);
 
-    print_to_builder(builder, "if (_v > %1) {\n", c.vsat_p_name);
-    print_to_builder(builder, "    delta_%1_active = %2 - %1;\n    %1 = %2;\n", c.name, c.vsat_p_name);
+    print_to_builder(builder, "if (_v > %1) {\n", c.model.vsat_p_name);
+    print_to_builder(builder, "    delta_%1_active = %2 - %1;\n    %1 = %2;\n", c.name, c.model.vsat_p_name);
     for u : others  print_to_builder(builder, "    res_%1_active = %2; delta_%1_active = %3;\n", u.name, u.residual_name_hi, u.delta_name_hi);
-    print_to_builder(builder, "} else if (_v < %1) {\n", c.vsat_n_name);
-    print_to_builder(builder, "    delta_%1_active = %2 - %1;\n    %1 = %2;\n", c.name, c.vsat_n_name);
+    print_to_builder(builder, "} else if (_v < %1) {\n", c.model.vsat_n_name);
+    print_to_builder(builder, "    delta_%1_active = %2 - %1;\n    %1 = %2;\n", c.name, c.model.vsat_n_name);
     for u : others  print_to_builder(builder, "    res_%1_active = %2; delta_%1_active = %3;\n", u.name, u.residual_name_lo, u.delta_name_lo);
     append(builder, "} else {\n");
     print_to_builder(builder, "    res_%1_active = %2; delta_%1_active = _v - %1;\n    %1 = _v;\n", c.name, c.residual_name);
@@ -623,6 +623,20 @@ emit_invariant_region :: (items: [] Gen_Var, exprs: [] Expr, backend: Backend,
     emit_topological_order(items, exprs, inner_builder, backend);
 }
 
+// Indents every line of `text`, except a blank line stays blank.
+indent_lines :: (text: string, indent: string) -> string {
+    builder: String_Builder;
+    for i : 0..text.count-1 {
+        c := text[i];
+        append(*builder, c);
+        if c == #char "\n" {
+            next_is_newline := (i + 1 < text.count) && (text[i + 1] == #char "\n");
+            if !next_is_newline  append(*builder, indent);
+        }
+    }
+    return builder_to_string(*builder);
+}
+
 // Newton-Raphson solve for one cluster, to be inserted inside the per-sample
 // loop. `basis_names` should be extraction_basis_names()'s output (inputs +
 // z-state only; `non_basis_variant_names` should include that function's
@@ -664,15 +678,15 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
         for u : cluster.unknowns  print_to_builder(*inner_builder, "step_norm_sq += %1 * %1;\n", u.delta_name);
         append(*inner_builder, "\n");
         for u : cluster.unknowns {
-            if u.limiter_kind == .AMP_CLIP {
+            if u.model.limiter_kind == .AMP_CLIP {
                 // Plain post-step clamp, only reached for 0 or 2+ AMP_CLIP
                 // unknowns per cluster, which is unsupported by the active-set
                 // path above. Every real circuit here has amp_clip_idx >= 0 instead,
                 // so this is untested against an actual C fixture.
-                v_prev := ifx u.has_slew && apply_slew then u.zslew_name else "_v";
-                slew_max_step := ifx u.has_slew && apply_slew then tprint("(%/sample_rate)", u.slew_name) else "1.0e30";
+                v_prev := ifx u.model.has_slew && apply_slew then u.model.zslew_name else "_v";
+                slew_max_step := ifx u.model.has_slew && apply_slew then tprint("(%/sample_rate)", u.model.slew_name) else "1.0e30";
                 print_to_builder(*inner_builder, "const %8 _v = (%5)(%1 + %2);\n%1 = clamp_opamp_output(_v, %6, %7, %3, %4);\n",
-                                 u.name, u.delta_name, u.vsat_n_name, u.vsat_p_name, backend.type_name, v_prev, slew_max_step, backend.decl_type);
+                                 u.name, u.delta_name, u.model.vsat_n_name, u.model.vsat_p_name, backend.type_name, v_prev, slew_max_step, backend.decl_type);
             } else {
                 emit_unknown_update(*inner_builder, u, u.delta_name);
             }
@@ -681,8 +695,7 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
     append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");
 
     inner_text := builder_to_string(*inner_builder);
-    indented := String.replace(inner_text, "\n", "\n    ");
-    indented, _ = String.replace(indented, "\n    \n", "\n\n"); // don't indent blank lines
+    indented := indent_lines(inner_text, "    ");
     append(*builder, "    ");
     append(*builder, indented);
     append(*builder, "\n}\n");
@@ -778,7 +791,7 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: []
         for u : c.unknowns {
             print_to_builder(*builder, "        state[ch].%1 = %1;\n", u.name);
             // zslew_<name> starts at the same DC-settled value.
-            if u.has_slew  print_to_builder(*builder, "        state[ch].%1 = %2;\n", u.zslew_name, u.name);
+            if u.model.has_slew  print_to_builder(*builder, "        state[ch].%1 = %2;\n", u.model.zslew_name, u.name);
         }
     }
     for zv : z_init_vars  print_to_builder(*builder, "        state[ch].%1 = %1;\n", zv.name);
@@ -900,25 +913,32 @@ extraction_basis_names :: (elements: [] Element, inputs: [] string) -> [..] stri
 emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_Builder, backend: Backend = .{}) {
     literal_suffix := ifx backend.type_name == "float" then "f" else "";
 
+    name_to_idx: Table(string, int);
+    for item, i : items  table_add(*name_to_idx, item.name, i);
+
+    // Every item name must be unique to avoid C/C++ duplicate variable names
+    assert(name_to_idx.count == items.count, "emit_topological_order: duplicate Gen_Var name in items");
+
     emitted: [..] bool;
     for _ : 0..items.count-1  array_add(*emitted, false);
+
+    expr_ids: [..] Expr_ID;
+    expr_ids.allocator = temp;
+    for item : items  array_add(*expr_ids, item.expr_id);
+    deps_flat, deps_offsets := collect_symbol_names_csr(expr_ids, exprs);
 
     remaining := items.count;
     while remaining > 0 {
         made_progress := false;
         for i : 0..items.count-1 {
             if emitted[i]  continue;
-            deps: [..] string;
-            collect_symbol_names(items[i].expr_id, exprs, *deps);
             ready := true;
-            for dep : deps {
-                for j : 0..items.count-1 {
-                    if j != i && items[j].name == dep && !emitted[j] {
-                        ready = false;
-                        break;
-                    }
+            for dep : deps_csr_slice(deps_flat, deps_offsets, i) {
+                found, j := table_find(*name_to_idx, dep);
+                if found && j != i && !emitted[j] {
+                    ready = false;
+                    break;
                 }
-                if !ready  break;
             }
             if ready {
                 emitted[i]  = true;
@@ -932,27 +952,29 @@ emit_topological_order :: (items: [] Gen_Var, exprs: [] Expr, builder: *String_B
 }
 
 // Register-pressure list scheduling: not used for emission order (see
-// emit_topological_order) -- kept purely as a peak-live-value estimator, a
+// emit_topological_order), kept purely as a peak-live-value estimator, a
 // register-pressure proxy that should_extract uses for spill-cost
 // accounting. Greedily picks, among ready items, whichever kills the most
 // already-live deps; once live count is at/above num_registers, ties
 // additionally go to whichever ready item has fewer of its own deps.
 schedule_for_register_pressure :: (items: [] Gen_Var, exprs: [] Expr, num_registers: int) -> (order: [] int, peak_live: int) {
-    deps: [..] [..] string;
-    for i : 0..items.count-1 {
-        d: [..] string;
-        collect_symbol_names(items[i].expr_id, exprs, *d);
-        array_add(*deps, d);
-    }
+    name_to_idx: Table(string, int);
+    for item, i : items  table_add(*name_to_idx, item.name, i);
+    // No duplicate var names!
+    assert(name_to_idx.count == items.count, "schedule_for_register_pressure: duplicate Gen_Var name in items");
+
+    expr_ids: [..] Expr_ID;
+    expr_ids.allocator = temp;
+    for item : items  array_add(*expr_ids, item.expr_id);
+    deps_flat, deps_offsets := collect_symbol_names_csr(expr_ids, exprs);
 
     // remaining_uses[j]: how many other items in this list still reference items[j].name.
     remaining_uses: [..] int;
     for _ : 0..items.count-1  array_add(*remaining_uses, 0);
     for i : 0..items.count-1 {
-        for dep : deps[i] {
-            for j : 0..items.count-1 {
-                if j != i && items[j].name == dep  remaining_uses[j] += 1;
-            }
+        for dep : deps_csr_slice(deps_flat, deps_offsets, i) {
+            found, j := table_find(*name_to_idx, dep);
+            if found && j != i  remaining_uses[j] += 1;
         }
     }
 
@@ -970,34 +992,29 @@ schedule_for_register_pressure :: (items: [] Gen_Var, exprs: [] Expr, num_regist
         best_dep_count := 0;
         for i : 0..items.count-1 {
             if emitted[i]  continue;
+            i_deps := deps_csr_slice(deps_flat, deps_offsets, i);
             ready := true;
-            for dep : deps[i] {
-                for j : 0..items.count-1 {
-                    if j != i && items[j].name == dep && !emitted[j] {
-                        ready = false;
-                        break;
-                    }
+            for dep : i_deps {
+                found, j := table_find(*name_to_idx, dep);
+                if found && j != i && !emitted[j] {
+                    ready = false;
+                    break;
                 }
-                if !ready  break;
             }
             if !ready  continue;
 
             kills := 0;
-            for dep : deps[i] {
-                for j : 0..items.count-1 {
-                    if items[j].name == dep && remaining_uses[j] == 1 {
-                        kills += 1;
-                        break;
-                    }
-                }
+            for dep : i_deps {
+                found, j := table_find(*name_to_idx, dep);
+                if found && remaining_uses[j] == 1  kills += 1;
             }
             if kills > best_kills {
                 best_kills = kills;
                 best_i = i;
-                best_dep_count = deps[i].count;
-            } else if kills == best_kills && live >= num_registers && deps[i].count < best_dep_count {
+                best_dep_count = i_deps.count;
+            } else if kills == best_kills && live >= num_registers && i_deps.count < best_dep_count {
                 best_i = i;
-                best_dep_count = deps[i].count;
+                best_dep_count = i_deps.count;
             }
         }
         if best_i == -1  break;  // Cycle guard.
@@ -1005,13 +1022,11 @@ schedule_for_register_pressure :: (items: [] Gen_Var, exprs: [] Expr, num_regist
         emitted[best_i] = true;
         remaining -= 1;
         live += 1; // best_i's own value is now live
-        for dep : deps[best_i] {
-            for j : 0..items.count-1 {
-                if items[j].name == dep {
-                    remaining_uses[j] -= 1;
-                    if remaining_uses[j] == 0  live -= 1; // that dep just died
-                    break;
-                }
+        for dep : deps_csr_slice(deps_flat, deps_offsets, best_i) {
+            found, j := table_find(*name_to_idx, dep);
+            if found {
+                remaining_uses[j] -= 1;
+                if remaining_uses[j] == 0  live -= 1; // that dep just died
             }
         }
         if live > peak_live  peak_live = live;
@@ -1026,6 +1041,7 @@ schedule_for_register_pressure :: (items: [] Gen_Var, exprs: [] Expr, num_regist
 // sample-variant but not part of the basis.
 classify_region_for_basis :: (items: [] Gen_Var, exprs: [] Expr, basis_names: [] string, other_variant_names: [] string) -> [] Basis_Class {
     classified: Table(string, Basis_Class);
+    classified.allocator = temp;
     result: [..] Basis_Class;
     for item : items {
         cls := classify_expr_for_basis(item.expr_id, exprs, basis_names, other_variant_names, classified);
@@ -1039,25 +1055,26 @@ classify_region_for_basis :: (items: [] Gen_Var, exprs: [] Expr, basis_names: []
 // preserved (items is already topologically sorted).
 collect_region_closure :: (terminal_names: [] string, items: [] Gen_Var, exprs: [] Expr) -> [] Gen_Var {
     include: [..] bool;
+    include.allocator = temp;
     for _ : 0..items.count-1  array_add(*include, false);
 
-    needed: [..] string;
-    for n : terminal_names  array_add(*needed, n);
+    needed_set: Table(string, bool);
+    needed_set.allocator = temp;
+    for n : terminal_names  table_add(*needed_set, n, true);
 
     changed := true;
     while changed {
         changed = false;
         for item, i : items {
             if include[i]  continue;
-            is_needed := false;
-            for n : needed  if item.name == n { is_needed = true; break; }
-            if !is_needed  continue;
+            if !table_contains(*needed_set, item.name)  continue;
 
             include[i] = true;
             changed = true;
             deps: [..] string;
+            deps.allocator = temp;
             collect_symbol_names(item.expr_id, exprs, *deps);
-            for d : deps  array_add_if_unique(*needed, d);
+            for d : deps  if !table_contains(*needed_set, d)  table_add(*needed_set, d, true);
         }
     }
 
@@ -1069,20 +1086,17 @@ collect_region_closure :: (terminal_names: [] string, items: [] Gen_Var, exprs: 
 // After extracting `accepted` terminals out of `items`, returns the
 // transitive closure of items still needed for the straight-line remainder.
 remaining_region_after_extraction :: (all_terminal_names: [] string, accepted: [] string, items: [] Gen_Var, exprs: [] Expr) -> [] Gen_Var {
+    accepted_set: Table(string, bool);
+    accepted_set.allocator = temp;
+    for a : accepted  table_add(*accepted_set, a, true);
+
     remaining_terminal_names: [..] string;
-    for n : all_terminal_names {
-        already_accepted := false;
-        for a : accepted  if n == a { already_accepted = true; break; }
-        if !already_accepted  array_add(*remaining_terminal_names, n);
-    }
+    remaining_terminal_names.allocator = temp;
+    for n : all_terminal_names  if !table_contains(*accepted_set, n)  array_add(*remaining_terminal_names, n);
 
     closure := collect_region_closure(remaining_terminal_names, items, exprs);
     result: [..] Gen_Var;
-    for it : closure {
-        is_accepted := false;
-        for a : accepted  if it.name == a { is_accepted = true; break; }
-        if !is_accepted  array_add(*result, it);
-    }
+    for it : closure  if !table_contains(*accepted_set, it.name)  array_add(*result, it);
     return result;
 }
 
@@ -1117,6 +1131,7 @@ should_extract :: (region_items: [] Gen_Var, terminal_names: [] string, basis_na
 // region won't force anything to be extracted just because it's technically linear.
 select_extraction_terminals :: (eligible: [] string, full_items: [] Gen_Var, exprs: [] Expr, basis_names: [] string, backend: Backend) -> [] string {
     costs: [..] float;
+    costs.allocator = temp;
     for t : eligible {
         solo_closure := collect_region_closure(.[t], full_items, exprs);
         flops := count_flops(solo_closure, exprs, backend.transcendental_approx);
@@ -1124,6 +1139,7 @@ select_extraction_terminals :: (eligible: [] string, full_items: [] Gen_Var, exp
     }
 
     order: [..] int;
+    order.allocator = temp;
     for i : 0..eligible.count-1  array_add(*order, i);
     for i : 1..order.count-1 { // insertion sort by cost descending; eligible.count is always small
         j := i;
@@ -1156,6 +1172,7 @@ try_extract_region :: (items: [] Gen_Var, candidate_names: [] string, exprs: [] 
 
     classes := classify_region_for_basis(items, exprs, basis_names, other_variant_names);
     eligible: [..] string;
+    eligible.allocator = temp;
     for it, i : items {
         if !classes[i].depends || !classes[i].linear  continue;
         is_candidate := false;

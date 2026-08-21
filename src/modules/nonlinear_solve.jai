@@ -19,22 +19,30 @@
 // control flow. Those concerns are handled in netlist_codegen.jai.
 
 #import "Basic";
+#import "Hash_Table";
 #import "backend";
 #import "sym_algebra";
 #import "nodal_analysis";
 
+// Which limiter/junction model a Newton unknown uses, and that model's
+// Params/State field names. Shared shape between a device's raw unknown
+// (Raw_Unknown) and its cluster-assigned counterpart (Cluster_Unknown).
+Unknown_Model :: struct {
+    limiter_kind: Limiter_Kind;
+    vt_name:      string; // valid when limiter_kind == .EXP_JUNCTION; Params field for thermal voltage
+    is_name:      string; // valid when limiter_kind == .EXP_JUNCTION; Params field for saturation current
+    vp_name:      string; // valid when limiter_kind == .JFET_PINCHOFF; Params field for pinch-off voltage
+    vsat_p_name:  string; // valid when limiter_kind == .AMP_CLIP; Params field for positive output rail
+    vsat_n_name:  string; // valid when limiter_kind == .AMP_CLIP; Params field for negative output rail
+    has_slew:     bool;   // valid when limiter_kind == .AMP_CLIP; true if this op-amp also has slew set
+    slew_name:    string; // valid when has_slew; Params field for max |dVout/dt|, V/s
+    zslew_name:   string; // valid when has_slew; State field for the previous sample's output
+}
+
 // One Newton unknown belonging to a cluster (a device's junction voltage).
 Cluster_Unknown :: struct {
     name:          string;       // e.g. "vBCQ1"; also the State field name
-    limiter_kind:  Limiter_Kind;
-    vt_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for thermal voltage
-    is_name:       string;       // valid when limiter_kind == .EXP_JUNCTION; Params field for saturation current
-    vp_name:       string;       // valid when limiter_kind == .JFET_PINCHOFF; Params field for pinch-off voltage
-    vsat_p_name:   string;       // valid when limiter_kind == .AMP_CLIP; Params field for positive output rail
-    vsat_n_name:   string;       // valid when limiter_kind == .AMP_CLIP; Params field for negative output rail
-    has_slew:      bool;         // valid when limiter_kind == .AMP_CLIP; true if this op-amp also has slew set
-    slew_name:     string;       // valid when has_slew; Params field for max |dVout/dt|, V/s
-    zslew_name:    string;       // valid when has_slew; State field for the previous sample's output
+    model:         Unknown_Model;
     residual_name: string;       // Gen_Var name holding this unknown's residual f_j
     delta_name:    string;       // Gen_Var name holding this unknown's Newton delta
 
@@ -55,7 +63,7 @@ Nonlinear_Cluster :: struct {
     name:     string; // diagnostic name, e.g. "Q1_D1D2" (joined device names)
     unknowns: [..] Cluster_Unknown;
 
-    // Newton-invariant CSE temps (don't depend on this cluster's unknowns) --
+    // Newton-invariant CSE temps (don't depend on this cluster's unknowns),
     // emitted once before the per-sample Newton loop.
     invariant_items: [..] Gen_Var;
 
@@ -282,15 +290,7 @@ uf_union :: (uf: *Union_Find, a: int, b: int) {
 // unknown(s), before clustering/I-V substitution.
 Raw_Unknown :: struct {
     name:         string; // e.g. "vBCQ1"
-    limiter_kind: Limiter_Kind;
-    vt_name:      string;
-    is_name:      string;
-    vp_name:      string;
-    vsat_p_name:  string;
-    vsat_n_name:  string;
-    has_slew:     bool;
-    slew_name:    string;
-    zslew_name:   string;
+    model:        Unknown_Model;
     linear_form:  Expr_ID; // closed-form node-voltage-difference; still references raw branch-current symbols
     device_idx:   int;     // index into `devices`
 }
@@ -346,6 +346,7 @@ derive_amp_clip_reduced_system :: (
 
     k := other_names.count;
     jacobian: [..] Expr_ID;
+    array_reserve(*jacobian, k * k);
     for j : 0..k-1 {
         for m : 0..k-1 {
             unknown_m := expr_symbol(other_names[m], pool);
@@ -434,8 +435,8 @@ build_nonlinear_clusters :: (elements: [] Element,
             neg_v := copy_expr(lookup_node_voltage(el.terminals[u.neg_terminal], solve_vars, solutions, pool), pool);
             v := simplify(expr_sub(pos_v, neg_v, pool), pool);
             vt_name, is_name, vp_name := device_limiter_names(u.limiter, el.nonlinear);
-            array_add(*raw_unknowns, .{ name = tprint("%1%2", u.name_prefix, el.name), limiter_kind = u.limiter,
-                                         vt_name = vt_name, is_name = is_name, vp_name = vp_name,
+            model := Unknown_Model.{ limiter_kind = u.limiter, vt_name = vt_name, is_name = is_name, vp_name = vp_name };
+            array_add(*raw_unknowns, .{ name = tprint("%1%2", u.name_prefix, el.name), model = model,
                                          linear_form = v, device_idx = device_idx });
         }
     }
@@ -457,10 +458,11 @@ build_nonlinear_clusters :: (elements: [] Element,
         array_add(*devices, el);
         v := copy_expr(lookup_node_voltage(opamp_bandwidth_node(el), solve_vars, solutions, pool), pool);
         simplify(v, pool);
-        array_add(*raw_unknowns, .{ name = tprint("vclip_%", el.name), limiter_kind = .AMP_CLIP,
-                                     vsat_p_name = el.opamp.vsat_p_name, vsat_n_name = el.opamp.vsat_n_name,
-                                     has_slew = el.opamp.has_slew, slew_name = el.opamp.slew_name,
-                                     zslew_name = tprint("zslew_%", el.name),
+        model := Unknown_Model.{ limiter_kind = .AMP_CLIP,
+                                  vsat_p_name = el.opamp.vsat_p_name, vsat_n_name = el.opamp.vsat_n_name,
+                                  has_slew = el.opamp.has_slew, slew_name = el.opamp.slew_name,
+                                  zslew_name = tprint("zslew_%", el.name) };
+        array_add(*raw_unknowns, .{ name = tprint("vclip_%", el.name), model = model,
                                      linear_form = v, device_idx = device_idx });
     }
 
@@ -469,27 +471,53 @@ build_nonlinear_clusters :: (elements: [] Element,
         return empty;
     }
 
+    // device_idx -> indices into raw_unknowns, CSR-style: device d's indices
+    // are device_to_ru_flat[device_to_ru_offsets[d] .. device_to_ru_offsets[d+1]-1].
+    device_to_ru_counts: [..] int;
+    array_resize(*device_to_ru_counts, devices.count);
+    for ru : raw_unknowns  device_to_ru_counts[ru.device_idx] += 1;
+
+    device_to_ru_offsets: [..] int;
+    array_resize(*device_to_ru_offsets, devices.count + 1);
+    for d : 0..devices.count-1  device_to_ru_offsets[d + 1] = device_to_ru_offsets[d] + device_to_ru_counts[d];
+
+    device_to_ru_flat: [..] int;
+    array_resize(*device_to_ru_flat, raw_unknowns.count);
+    cursor := array_copy(device_to_ru_offsets);
+    for ru, i : raw_unknowns {
+        device_to_ru_flat[cursor[ru.device_idx]] = i;
+        cursor[ru.device_idx] += 1;
+    }
+
+    device_to_ru :: (flat: [] int, offsets: [] int, d: int) -> [] int {
+        return array_view(flat, offsets[d], offsets[d + 1] - offsets[d]);
+    }
+
+    // name -> index into raw_unknowns.
+    raw_unknown_by_name: Table(string, int);
+    for ru, i : raw_unknowns  table_set(*raw_unknown_by_name, ru.name, i);
+
     // Union devices whose branch-current symbols appear in each other's
     // linear_form (checked both directions; see module comment).
+    device_refs: [..] Table(string, bool);
+    for d : 0..devices.count-1 {
+        refs_set: Table(string, bool);
+        for ru_i : device_to_ru(device_to_ru_flat, device_to_ru_offsets, d) {
+            refs: [..] string;
+            collect_symbol_names(raw_unknowns[ru_i].linear_form, pool.exprs, *refs);
+            for n : refs  if !table_contains(*refs_set, n)  table_add(*refs_set, n, true);
+        }
+        array_add(*device_refs, refs_set);
+    }
+
     uf := uf_make(devices.count);
     for a : 0..devices.count-1 {
         a_names := branch_current_names(devices[a]);
         for b : a+1..devices.count-1 {
             b_names := branch_current_names(devices[b]);
             coupled := false;
-
-            for ru : raw_unknowns {
-                if ru.device_idx != a  continue;
-                refs: [..] string;
-                collect_symbol_names(ru.linear_form, pool.exprs, *refs);
-                for n : b_names  if array_find(refs, n)  coupled = true;
-            }
-            for ru : raw_unknowns {
-                if ru.device_idx != b  continue;
-                refs: [..] string;
-                collect_symbol_names(ru.linear_form, pool.exprs, *refs);
-                for n : a_names  if array_find(refs, n)  coupled = true;
-            }
+            for n : b_names  if table_contains(*device_refs[a], n)  coupled = true;
+            for n : a_names  if table_contains(*device_refs[b], n)  coupled = true;
 
             if coupled  uf_union(*uf, a, b);
         }
@@ -516,7 +544,7 @@ build_nonlinear_clusters :: (elements: [] Element,
     iv_law_names: [..] string;  // ...and the symbol name it replaces
     for d, idx : devices {
         unknown_names: [..] string;
-        for ru : raw_unknowns  if ru.device_idx == idx  array_add(*unknown_names, ru.name);
+        for ru_i : device_to_ru(device_to_ru_flat, device_to_ru_offsets, idx)  array_add(*unknown_names, raw_unknowns[ru_i].name);
 
         for bc : device_iv_law(d, unknown_names, pool) {
             array_add(*iv_law_ids,   bc.expr);
@@ -542,17 +570,17 @@ build_nonlinear_clusters :: (elements: [] Element,
         cluster.name = String.join(..name_parts, separator = "_");
 
         // Collect this cluster's unknowns (all raw_unknowns whose device is a member).
+        members_set: Table(int, bool);
+        for m : members  table_add(*members_set, m, true);
         cluster_unknown_names: [..] string;
         for ru : raw_unknowns {
-            is_member := array_find(members, ru.device_idx);
-            if !is_member  continue;
+            if !table_contains(*members_set, ru.device_idx)  continue;
             array_add(*cluster_unknown_names, ru.name);
         }
 
         f_ids:     [..] Expr_ID; // parallel to cluster_unknown_names
         for name : cluster_unknown_names {
-            ru_idx := -1;
-            for ru, i : raw_unknowns  if ru.name == name  ru_idx = i;
+            _, ru_idx := table_find(*raw_unknown_by_name, name);
             closed_form := copy_expr(raw_unknowns[ru_idx].linear_form, pool);
             simplify(closed_form, pool);
             unknown_symbol := expr_symbol(name, pool);
@@ -564,6 +592,7 @@ build_nonlinear_clusters :: (elements: [] Element,
 
         // Jacobian: J[j][m] = d(f_j)/d(unknown_m)
         jacobian: [..] Expr_ID; // row-major, k*k
+        array_reserve(*jacobian, k * k);
         for j : 0..k-1 {
             for m : 0..k-1 {
                 unknown_m := expr_symbol(cluster_unknown_names[m], pool);
@@ -596,24 +625,10 @@ build_nonlinear_clusters :: (elements: [] Element,
             array_add(*gen_vars, Gen_Var.{ name = residual_name, expr_id = f_ids[j] });
             array_add(*gen_vars, Gen_Var.{ name = delta_name,    expr_id = delta_solutions[j] });
 
-            limiter_kind: Limiter_Kind; vt_name := ""; is_name := ""; vp_name := ""; vsat_p_name := ""; vsat_n_name := "";
-            has_slew := false; slew_name := ""; zslew_name := "";
-            for ru : raw_unknowns {
-                if ru.name != name  continue;
-                limiter_kind = ru.limiter_kind;
-                vt_name = ru.vt_name;
-                is_name = ru.is_name;
-                vp_name = ru.vp_name;
-                vsat_p_name = ru.vsat_p_name;
-                vsat_n_name = ru.vsat_n_name;
-                has_slew = ru.has_slew;
-                slew_name = ru.slew_name;
-                zslew_name = ru.zslew_name;
-            }
+            _, name_ru_idx := table_find(*raw_unknown_by_name, name);
+            ru := raw_unknowns[name_ru_idx];
             array_add(*cluster.unknowns, Cluster_Unknown.{
-                name = name, limiter_kind = limiter_kind, vt_name = vt_name, is_name = is_name, vp_name = vp_name,
-                vsat_p_name = vsat_p_name, vsat_n_name = vsat_n_name,
-                has_slew = has_slew, slew_name = slew_name, zslew_name = zslew_name,
+                name = name, model = ru.model,
                 residual_name = residual_name, delta_name = delta_name });
         }
 
@@ -628,7 +643,7 @@ build_nonlinear_clusters :: (elements: [] Element,
         amp_clip_idx := -1;
         amp_clip_count := 0;
         for u, i : cluster.unknowns {
-            if u.limiter_kind != .AMP_CLIP  continue;
+            if u.model.limiter_kind != .AMP_CLIP  continue;
             amp_clip_count += 1;
             amp_clip_idx = i;
         }
@@ -637,9 +652,9 @@ build_nonlinear_clusters :: (elements: [] Element,
             clip_unknown := cluster.unknowns[amp_clip_idx];
 
             hi_other, hi_res, hi_delta, hi_inv, hi_iter := derive_amp_clip_reduced_system(
-                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_p_name, pool, tprint("%1_hi", temp_prefix));
+                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.model.vsat_p_name, pool, tprint("%1_hi", temp_prefix));
             lo_other, lo_res, lo_delta, lo_inv, lo_iter := derive_amp_clip_reduced_system(
-                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.vsat_n_name, pool, tprint("%1_lo", temp_prefix));
+                f_ids, cluster_unknown_names, amp_clip_idx, clip_unknown.model.vsat_n_name, pool, tprint("%1_lo", temp_prefix));
 
             for name, i : hi_other {
                 for *cu : cluster.unknowns {

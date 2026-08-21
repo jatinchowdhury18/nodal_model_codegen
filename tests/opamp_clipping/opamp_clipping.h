@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h
 
 #pragma once
@@ -44,6 +44,20 @@ static void compute (const float* const* input, float** output, int num_channels
     
     const auto gRF = 1.0f / params.RF;
     
+    float c0__Eop_t4;
+    float c__Eop_t4[1];
+    
+    for (int _k = 0; _k <= 1; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0f : 0.0f;
+        const auto _Eop_t4 = ((gR1 * vi) * Eop_Aol);
+        if (_k == 0) {
+            c0__Eop_t4 = _Eop_t4;
+        } else {
+            c__Eop_t4[_k - 1] = _Eop_t4 - c0__Eop_t4;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto vclip_Eop = state[ch].vclip_Eop;
@@ -52,9 +66,9 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto vi = input[ch][n];
 
             // --- Newton-Raphson solve: Eop
+            const auto _Eop_t4 = c0__Eop_t4 + c__Eop_t4[0] * vi;
             const auto _Eop_t2 = (gR1 + gRF);
             const auto _Eop_t3 = (1.0f / (((gRF * Eop_Aol) / _Eop_t2) + 1.0f));
-            const auto _Eop_t4 = ((gR1 * vi) * Eop_Aol);
             const auto _Eop_t5 = (1.0f / _Eop_t2);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
@@ -82,7 +96,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 auto residual_norm_sq = res_vclip_Eop_active * res_vclip_Eop_active;
                 auto step_norm_sq = delta_vclip_Eop_active * delta_vclip_Eop_active;
             
-                
+            
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
                 
@@ -115,16 +129,16 @@ static float reset (Params params, State* state, int num_channels, float sample_
     float vclip_Eop = 0;
 
     // --- Newton-Raphson solve: Eop
-    const auto _Eop_t2 = ((gR1 + gRF) + (1.0f / 1000000000.0f));
-    const auto _Eop_t3 = (1.0f / (((gRF * Eop_Aol) / _Eop_t2) + 1.0f));
+    const auto _Eop_t1 = ((gR1 + gRF) + (1.0f / 1000000000.0f));
+    const auto _Eop_t3 = (1.0f / (((gRF * Eop_Aol) / _Eop_t1) + 1.0f));
     const auto _Eop_t4 = ((gR1 * vi) * Eop_Aol);
-    const auto _Eop_t5 = (1.0f / _Eop_t2);
+    const auto _Eop_t5 = (1.0f / _Eop_t1);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _Eop_t1 = (((gRF * (vclip_Eop * Eop_Aol)) + _Eop_t4) * _Eop_t5);
-        const auto _Eop_t0 = (_Eop_t1 + vclip_Eop);
-        const auto res_vclip_Eop = (-_Eop_t0);
-        const auto delta_vclip_Eop = (-(_Eop_t0 * _Eop_t3));
+        const auto _Eop_t0 = (((gRF * (vclip_Eop * Eop_Aol)) + _Eop_t4) * _Eop_t5);
+        const auto _Eop_t2 = (_Eop_t0 + vclip_Eop);
+        const auto res_vclip_Eop = (-_Eop_t2);
+        const auto delta_vclip_Eop = (-(_Eop_t2 * _Eop_t3));
     
         const float _natural = (float)(vclip_Eop + delta_vclip_Eop);
         auto _v = _natural;
@@ -145,7 +159,7 @@ static float reset (Params params, State* state, int num_channels, float sample_
         auto residual_norm_sq = res_vclip_Eop_active * res_vclip_Eop_active;
         auto step_norm_sq = delta_vclip_Eop_active * delta_vclip_Eop_active;
     
-        
+    
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;
         

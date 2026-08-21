@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen common_drain.net common_drain.h -type_name double
 
 #pragma once
@@ -70,19 +70,19 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto vi = input[ch][n];
 
             // --- Newton-Raphson solve: J1
-            const auto _J1_t4 = (1.0 / 1000.0);
+            const auto _J1_t2 = (1.0 / 1000.0);
             const auto _J1_t5 = (gC13 + gRL);
-            const auto _J1_t6 = (1.0 / (((gR13 + gC13) * _J1_t5) - (gC13 * gC13)));
+            const auto _J1_t4 = (1.0 / (((gR13 + gC13) * _J1_t5) - (gC13 * gC13)));
             const auto _J1_t7 = ((zC12 - (gC12 * vi)) / (gC12 + gR11));
             const auto _J1_t8 = (gC13 * zC13);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const auto _J1_t3 = (vGSJ1 - _2N5485_vp);
-                const auto _J1_t2 = (_J1_t3 + _J1_t4);
-                const auto _J1_t1 = (_J1_t7 + (((((_2N5485_Beta * (_J1_t2 * _J1_t2)) + zC13) * _J1_t5) - _J1_t8) * _J1_t6));
+                const auto _J1_t6 = (_J1_t3 + _J1_t2);
+                const auto _J1_t1 = (_J1_t7 + (((((_2N5485_Beta * (_J1_t6 * _J1_t6)) + zC13) * _J1_t5) - _J1_t8) * _J1_t4));
                 const auto _J1_t0 = (_J1_t1 + vGSJ1);
                 const auto res_vGSJ1 = (-_J1_t0);
-                const auto delta_vGSJ1 = (-(_J1_t0 / ((((_2N5485_Beta * (_J1_t2 + _J1_t2)) * _J1_t5) * _J1_t6) + 1.0)));
+                const auto delta_vGSJ1 = (-(_J1_t0 / ((((_2N5485_Beta * (_J1_t6 + _J1_t6)) * _J1_t5) * _J1_t4) + 1.0)));
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vGSJ1 * res_vGSJ1;
@@ -142,16 +142,16 @@ static float reset (Params params, State* state, int num_channels, float sample_
     double vGSJ1 = 0;
 
     // --- Newton-Raphson solve: J1
-    const auto _J1_t4 = (1.0 / 1000.0);
-    const auto _J1_t5 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
+    const auto _J1_t1 = (1.0 / 1000.0);
+    const auto _J1_t3 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _J1_t3 = (vGSJ1 - _2N5485_vp);
-        const auto _J1_t2 = (_J1_t3 + _J1_t4);
-        const auto _J1_t1 = ((_2N5485_Beta * (_J1_t2 * _J1_t2)) * _J1_t5);
-        const auto _J1_t0 = (_J1_t1 + vGSJ1);
-        const auto res_vGSJ1 = (-_J1_t0);
-        const auto delta_vGSJ1 = (-(_J1_t0 / (((_2N5485_Beta * (_J1_t2 + _J1_t2)) * _J1_t5) + 1.0)));
+        const auto _J1_t2 = (vGSJ1 - _2N5485_vp);
+        const auto _J1_t5 = (_J1_t2 + _J1_t1);
+        const auto _J1_t0 = ((_2N5485_Beta * (_J1_t5 * _J1_t5)) * _J1_t3);
+        const auto _J1_t4 = (_J1_t0 + vGSJ1);
+        const auto res_vGSJ1 = (-_J1_t4);
+        const auto delta_vGSJ1 = (-(_J1_t4 / (((_2N5485_Beta * (_J1_t5 + _J1_t5)) * _J1_t3) + 1.0)));
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vGSJ1 * res_vGSJ1;

@@ -21,6 +21,7 @@
 // recip_hoist(), before print_expr().
 
 #import "Basic";
+#import "Sort";
 #import "Hash_Table";
 Hash :: #import "Hash";
 Math :: #import "Math";
@@ -204,6 +205,8 @@ combine :: (a: Expr_ID, b: Expr_ID, op: Expr_Kind, pool: *Expr_Pool) -> Expr_ID 
 // Asserts if the expression is not linear in the given variables.
 linearize :: (e: Expr_ID, vars: [] Expr_ID, pool: *Expr_Pool) -> Linear {
     result: Linear;
+    result.coeffs.allocator = temp;
+    array_reserve(*result.coeffs, vars.count);
     for i: 0..vars.count-1  array_add(*result.coeffs, NO_EXPR);
     result.constant = NO_EXPR;
 
@@ -392,6 +395,15 @@ fold_dag :: (e: Expr_ID, pool: *Expr_Pool) {
     visited: Table(Expr_ID, bool);
     fold_impl(e, pool, *visited, true);
     deinit(*visited);
+}
+
+// For callers doing several fold_dag() calls in a row (e.g. solve()'s
+// det_A/det_Ai/sol calls): reuses `visited`'s allocated slots across calls
+// instead of allocating a fresh Table per call. Caller owns `visited`'s
+// lifetime (deinit it once, after the last call).
+fold_dag :: (e: Expr_ID, pool: *Expr_Pool, visited: *Table(Expr_ID, bool)) {
+    table_reset(visited);
+    fold_impl(e, pool, visited, true);
 }
 
 fold_impl :: (e: Expr_ID, pool: *Expr_Pool, visited: *Table(Expr_ID, bool), $memoize: bool) {
@@ -752,6 +764,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
     assert(n == solve_for.count, "Need one equation per unknown!");
     assert(n <= 62, "System too large for bitmask Cramer solver (n > 62)");
     print("Solving %1x%1 system\n", n);
+    auto_release_temp();
 
     // -----------------------------------------------------------------------
     // Step 1: Extract coefficient matrix A and RHS vector b.
@@ -760,6 +773,10 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
     // -----------------------------------------------------------------------
     A: [..] Expr_ID;
     b: [..] Expr_ID;
+    A.allocator = temp;
+    b.allocator = temp;
+    array_reserve(*A, n * n);
+    array_reserve(*b, n);
 
     for i: 0..n-1 {
         lin := linearize(equations[i], solve_for, pool);
@@ -803,10 +820,15 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
     // a *sum* of products of conductances, keeping values in float32 range.
     // -----------------------------------------------------------------------
     det_A_cache: [..] Det_Cache_Entry;
+    det_A_cache.allocator = temp;
     det_A := symbolic_det(A, n, all_mask, all_mask, *det_A_cache, pool);
     assert(!(pool.exprs[det_A].kind == .CONST && pool.exprs[det_A].value == 0),
            "System matrix is singular!");
-    fold_dag(det_A, pool);
+
+    // Shared across every fold_dag() call in this function.
+    fold_dag_visited: Table(Expr_ID, bool);
+    defer deinit(*fold_dag_visited);
+    fold_dag(det_A, pool, *fold_dag_visited);
 
     if check.enabled {
         est := estimate_min_magnitude(det_A, pool, check.magnitudes);
@@ -825,10 +847,13 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
     // to recognise shared cofactors across all Cramer determinants.
     // -----------------------------------------------------------------------
     result: [..] Expr_ID;
+    array_reserve(*result, n);
 
     for i: 0..n-1 {
         // Build A_i: same as A but with column i replaced by b.
         A_i: [..] Expr_ID;
+        A_i.allocator = temp;
+        array_reserve(*A_i, n * n);
         for row: 0..n-1 {
             for col: 0..n-1 {
                 array_add(*A_i, ifx col == i then b[row] else A[row*n + col]);
@@ -837,6 +862,8 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
 
         // Pre-populate cache with invariant sub-determinants from det(A).
         det_Ai_cache: [..] Det_Cache_Entry;
+        det_Ai_cache.allocator = temp;
+        array_reserve(*det_Ai_cache, det_A_cache.count);
         col_i_bit := cast(u64)1 << i;
         for e: det_A_cache {
             if (e.cols & col_i_bit) == 0   // sub-matrix doesn't touch col i
@@ -844,7 +871,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
         }
 
         det_Ai := symbolic_det(A_i, n, all_mask, all_mask, *det_Ai_cache, pool);
-        fold_dag(det_Ai, pool);
+        fold_dag(det_Ai, pool, *fold_dag_visited);
 
         // Numerically zero solution: return directly without a division.
         if pool.exprs[det_Ai].kind == .CONST && pool.exprs[det_Ai].value == 0 {
@@ -853,7 +880,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
         }
 
         sol := expr_div(det_Ai, det_A, pool);
-        fold_dag(sol, pool);
+        fold_dag(sol, pool, *fold_dag_visited);
         array_add(*result, sol);
     }
 
@@ -923,6 +950,8 @@ Flat :: struct {
 // ADD/SUB nodes are treated as opaque atomic symbolic factors.
 flatten :: (e: Expr_ID, exprs: [] Expr) -> Flat {
     f: Flat;
+    f.sym_num.allocator   = temp;
+    f.sym_denom.allocator = temp;
     f.int_num   = 1;
     f.int_denom = 1;
     expr := exprs[e];
@@ -1047,6 +1076,10 @@ try_cancel :: (num: Expr_ID, factor: Expr_ID, pool: *Expr_Pool) -> (bool, Expr_I
     // Success condition: every factor that came from df.sym_num must be cancelled.
     combined_n: [..] Expr_ID;
     combined_d: [..] Expr_ID;
+    combined_n.allocator = temp;
+    combined_d.allocator = temp;
+    array_reserve(*combined_n, nf.sym_num.count + df.sym_denom.count);
+    array_reserve(*combined_d, nf.sym_denom.count + df.sym_num.count);
     for s: nf.sym_num    array_add(*combined_n, s);
     for s: df.sym_denom  array_add(*combined_n, s);
     for s: nf.sym_denom  array_add(*combined_d, s);
@@ -1054,6 +1087,10 @@ try_cancel :: (num: Expr_ID, factor: Expr_ID, pool: *Expr_Pool) -> (bool, Expr_I
 
     used_n: [..] bool;
     used_d: [..] bool;
+    used_n.allocator = temp;
+    used_d.allocator = temp;
+    array_reserve(*used_n, combined_n.count);
+    array_reserve(*used_d, combined_d.count);
     for _: 0..combined_n.count-1  array_add(*used_n, false);
     for _: 0..combined_d.count-1  array_add(*used_d, false);
 
@@ -1076,6 +1113,8 @@ try_cancel :: (num: Expr_ID, factor: Expr_ID, pool: *Expr_Pool) -> (bool, Expr_I
     }
 
     result_f: Flat;
+    result_f.sym_num.allocator   = temp;
+    result_f.sym_denom.allocator = temp;
     result_f.int_num   = new_n;
     result_f.int_denom = 1;
     for i: 0..combined_n.count-1  if !used_n[i]  array_add(*result_f.sym_num,   combined_n[i]);
@@ -1103,6 +1142,7 @@ simplify_div :: (e: Expr_ID, pool: *Expr_Pool) {
 
     // Cancel symbolic denominator factors from the numerator one-by-one.
     remaining_sym: [..] Expr_ID;
+    remaining_sym.allocator = temp;
     for sym: den_flat.sym_num {
         ok, new_num := try_cancel(cur_num, sym, pool);
         if ok  cur_num = new_num;
@@ -1187,6 +1227,8 @@ simplify_node :: (e: Expr_ID, pool: *Expr_Pool) {
 
 //==================================================
 simplify :: (e: Expr_ID, pool: *Expr_Pool) -> Expr_ID {
+    auto_release_temp();
+
     fold(e, pool);             // constant-fold and normalise signs
     simplify_node(e, pool);    // cancel common factors (MUL/DIV lifting)
     fold(e, pool);             // clean up any new constant sub-expressions
@@ -1289,12 +1331,16 @@ cse_count_refs :: (e: Expr_ID, exprs: [] Expr,
 
 cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
              pool: *Expr_Pool, counter: *int, prefix: string) -> bool {
+    auto_release_temp();
+
     ids:    [..] Expr_ID;
     counts: [..] int;
+    ids.allocator    = temp;
+    counts.allocator = temp;
     seen: Table(Expr_ID, int);
+    seen.allocator = temp;
     for v  : gen_var_ids  cse_count_refs(v,          pool.exprs, *ids, *counts, *seen);
     for cv : cse_vars.*   cse_count_refs(cv.expr_id, pool.exprs, *ids, *counts, *seen);
-    deinit(*seen);
     if ids.count == 0  return false;
 
     // Union-find: merge structurally-equal nodes into one equivalence class.
@@ -1302,29 +1348,35 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
     // match. `ids` can run into the thousands, so the old all-pairs loop
     // was O(ids^2) per pass, x20 passes.
     hash_cache: Table(Expr_ID, u32);
+    hash_cache.allocator = temp;
     hashes: [..] u32;
+    hashes.allocator = temp;
     array_resize(*hashes, ids.count);
     for i: 0..ids.count-1  hashes[i] = expr_hash(ids[i], pool.exprs, *hash_cache);
-    deinit(*hash_cache);
 
-    buckets: Table(u32, [..] int);
-    for i: 0..ids.count-1 {
-        list := table_find_pointer(*buckets, hashes[i]);
-        if !list {
-            empty: [..] int;
-            list = table_add(*buckets, hashes[i], empty);
-        }
-        array_add(list, i);
-    }
+    // Buckets as a flat array of (hash, idx) pairs
+    Hash_Idx :: struct { hash: u32; idx: int; }
+    bucket_entries: [..] Hash_Idx;
+    bucket_entries.allocator = temp;
+    array_reserve(*bucket_entries, ids.count);
+    for i: 0..ids.count-1  array_add(*bucket_entries, .{ hash = hashes[i], idx = i });
+    quick_sort(bucket_entries, (a: Hash_Idx, b: Hash_Idx) -> int { return cast(s64) a.hash - cast(s64) b.hash; });
 
     parent: [..] int;
+    parent.allocator = temp;
+    array_reserve(*parent, ids.count);
     for i: 0..ids.count-1  array_add(*parent, i);
-    for bucket : buckets {
-        for bi: 0..bucket.count-1 {
-            i := bucket[bi];
+
+    bucket_start := 0;
+    while bucket_start < bucket_entries.count {
+        bucket_end := bucket_start + 1;
+        while bucket_end < bucket_entries.count && bucket_entries[bucket_end].hash == bucket_entries[bucket_start].hash  bucket_end += 1;
+
+        for bi: bucket_start..bucket_end-1 {
+            i := bucket_entries[bi].idx;
             if parent[i] != i  continue;
-            for bj: bi+1..bucket.count-1 {
-                j := bucket[bj];
+            for bj: bi+1..bucket_end-1 {
+                j := bucket_entries[bj].idx;
                 if parent[j] != j    continue;
                 if ids[i] == ids[j]  continue;
                 if exprs_equal(ids[i], ids[j], pool.exprs) {
@@ -1333,9 +1385,8 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
                 }
             }
         }
+        bucket_start = bucket_end;
     }
-    for bucket : buckets  array_free(bucket);
-    deinit(*buckets);
 
     made_progress := false;
     for i: 0..ids.count-1 {
@@ -1343,7 +1394,8 @@ cse_pass :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var,
         if counts[i] < 2                         continue;  // not shared enough to CSE
         if cse_expr_size(ids[i], pool.exprs) == 0   continue;  // trivial (leaf) node
 
-        temp_name := tprint("%1%2", prefix, counter.*);
+        // temp_name needs to survive past the function's temp storage marker.
+        temp_name := copy_string(tprint("%1%2", prefix, counter.*));
         counter.* += 1;
 
         ex       := pool.exprs[ids[i]];
@@ -1459,22 +1511,27 @@ sort_cse_topological :: (cse_vars: *[..] CSE_Var, exprs: [] Expr) {
     emitted: [..] bool;
     for _ : 0..cse_vars.count-1  array_add(*emitted, false);
 
+    name_to_idx: Table(string, int);
+    for v, i : cse_vars.*  table_add(*name_to_idx, v.name, i);
+    assert(name_to_idx.count == cse_vars.count, "sort_cse_topological: duplicate CSE_Var name");
+
+    expr_ids: [..] Expr_ID;
+    expr_ids.allocator = temp;
+    for v : cse_vars.*  array_add(*expr_ids, v.expr_id);
+    deps_flat, deps_offsets := collect_symbol_names_csr(expr_ids, exprs);
+
     remaining := cse_vars.count;
     while remaining > 0 {
         made_progress := false;
         for i : 0..cse_vars.count-1 {
             if emitted[i]  continue;
-            deps: [..] string;
-            collect_symbol_names(cse_vars.*[i].expr_id, exprs, *deps);
             ready := true;
-            for dep : deps {
-                for j : 0..cse_vars.count-1 {
-                    if j != i && cse_vars.*[j].name == dep && !emitted[j] {
-                        ready = false;
-                        break;
-                    }
+            for dep : deps_csr_slice(deps_flat, deps_offsets, i) {
+                found, j := table_find(*name_to_idx, dep);
+                if found && j != i && !emitted[j] {
+                    ready = false;
+                    break;
                 }
-                if !ready  break;
             }
             if ready {
                 emitted[i] = true;
@@ -1576,6 +1633,29 @@ collect_symbol_names :: (e: Expr_ID, exprs: [] Expr, names: *[..] string) {
     }
     collect_symbol_names(ex.left,  exprs, names);
     collect_symbol_names(ex.right, exprs, names);
+}
+
+// Batch/CSR version of collect_symbol_names: item i's referenced names are
+// flat[offsets[i]..offsets[i+1]-1].
+collect_symbol_names_csr :: (expr_ids: [] Expr_ID, exprs: [] Expr) -> (flat: [..] string, offsets: [..] int) {
+    flat: [..] string;
+    offsets: [..] int;
+    array_reserve(*offsets, expr_ids.count + 1);
+    array_add(*offsets, 0);
+    for id : expr_ids {
+        mark := get_temporary_storage_mark();
+        scratch: [..] string;
+        scratch.allocator = temp;
+        collect_symbol_names(id, exprs, *scratch);
+        for name : scratch  array_add(*flat, name);
+        array_add(*offsets, flat.count);
+        set_temporary_storage_mark(mark);
+    }
+    return flat, offsets;
+}
+
+deps_csr_slice :: inline (flat: [] string, offsets: [] int, i: int) -> [] string {
+    return array_view(flat, offsets[i], offsets[i + 1] - offsets[i]);
 }
 
 

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen common_drain_pjf.net common_drain_pjf.h -type_name double
 
 #pragma once
@@ -141,16 +141,16 @@ static float reset (Params params, State* state, int num_channels, float sample_
     double vSGJ1 = 0;
 
     // --- Newton-Raphson solve: J1
-    const auto _J1_t4 = (1.0 / 1000.0);
-    const auto _J1_t5 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
+    const auto _J1_t2 = (1.0 / 1000.0);
+    const auto _J1_t3 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _J1_t3 = (vSGJ1 - _2N5460_vp);
-        const auto _J1_t2 = (_J1_t3 + _J1_t4);
-        const auto _J1_t1 = ((_2N5460_Beta * (_J1_t2 * _J1_t2)) * _J1_t5);
-        const auto _J1_t0 = (_J1_t1 + vSGJ1);
-        const auto res_vSGJ1 = (-_J1_t0);
-        const auto delta_vSGJ1 = (-(_J1_t0 / (((_2N5460_Beta * (_J1_t2 + _J1_t2)) * _J1_t5) + 1.0)));
+        const auto _J1_t1 = (vSGJ1 - _2N5460_vp);
+        const auto _J1_t5 = (_J1_t1 + _J1_t2);
+        const auto _J1_t0 = ((_2N5460_Beta * (_J1_t5 * _J1_t5)) * _J1_t3);
+        const auto _J1_t4 = (_J1_t0 + vSGJ1);
+        const auto res_vSGJ1 = (-_J1_t4);
+        const auto delta_vSGJ1 = (-(_J1_t4 / (((_2N5460_Beta * (_J1_t5 + _J1_t5)) * _J1_t3) + 1.0)));
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vSGJ1 * res_vSGJ1;

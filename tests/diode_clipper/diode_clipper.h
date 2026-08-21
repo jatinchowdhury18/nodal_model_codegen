@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen diode_clipper.net diode_clipper.h
 
 #pragma once
@@ -165,12 +165,12 @@ static float reset (Params params, State* state, int num_channels, float sample_
     const auto _D1D2_t6 = (gR1 * vi);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _D1D2_t3 = (vD1D2 / D1N914_vt);
-        const auto _D1D2_t2 = math_exp_approx(_D1D2_t3);
-        const auto _D1D2_t1 = (((D1N914_Is * (_D1D2_t2 - (1.0f / _D1D2_t2))) - _D1D2_t6) * _D1D2_t4);
+        const auto _D1D2_t2 = (vD1D2 / D1N914_vt);
+        const auto _D1D2_t3 = math_exp_approx(_D1D2_t2);
+        const auto _D1D2_t1 = (((D1N914_Is * (_D1D2_t3 - (1.0f / _D1D2_t3))) - _D1D2_t6) * _D1D2_t4);
         const auto _D1D2_t0 = (_D1D2_t1 + vD1D2);
         const auto res_vD1D2 = (-_D1D2_t0);
-        const auto delta_vD1D2 = (-(_D1D2_t0 / (((D1N914_Is * ((_D1D2_t2 / D1N914_vt) + (_D1D2_t5 / _D1D2_t2))) * _D1D2_t4) + 1.0f)));
+        const auto delta_vD1D2 = (-(_D1D2_t0 / (((D1N914_Is * ((_D1D2_t3 / D1N914_vt) + (_D1D2_t5 / _D1D2_t3))) * _D1D2_t4) + 1.0f)));
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1D2 * res_vD1D2;

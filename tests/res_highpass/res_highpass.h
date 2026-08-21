@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen res_highpass.net res_highpass.h
 
 #pragma once
@@ -30,9 +30,9 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto gR9 = 1.0f / params.R9;
     
     const auto _t0 = (((gC21 + gC22) + gL1) * 64.0f);
-    const auto _t3 = (gC22 * 64.0f);
-    const auto _t5 = ((gC22 + gR9) * 64.0f);
-    const auto _t4 = (1.0f / ((_t0 * _t5) - (_t3 * _t3)));
+    const auto _t4 = ((gC22 + gR9) * 64.0f);
+    const auto _t5 = (gC22 * 64.0f);
+    const auto _t3 = (1.0f / ((_t0 * _t4) - (_t5 * _t5)));
     float c0_tC22;
     float c_tC22[4];
     float c0_tC21;
@@ -46,8 +46,8 @@ static void compute (const float* const* input, float** output, int num_channels
         const auto zL1 = (_k == 4) ? 1.0f : 0.0f;
         const auto _t1 = (zC22 * 64.0f);
         const auto _t2 = ((zL1 - (((gC21 * vi) - zC21) + zC22)) * 64.0f);
-        const auto vo = (-(((_t0 * _t1) + (_t2 * _t3)) * _t4));
-        const auto vl = (-(((_t2 * _t5) + (_t3 * _t1)) * _t4));
+        const auto vo = (-(((_t0 * _t1) + (_t2 * _t5)) * _t3));
+        const auto vl = (-(((_t2 * _t4) + (_t5 * _t1)) * _t3));
         const auto tC21 = (gC21 * (vi - vl));
         const auto tC22 = (gC22 * (vl - vo));
         if (_k == 0) {
@@ -72,8 +72,8 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto tC21 = c0_tC21 + c_tC21[0] * vi + c_tC21[1] * zC21 + c_tC21[2] * zC22 + c_tC21[3] * zL1;
             const auto _t1 = (zC22 * 64.0f);
             const auto _t2 = ((zL1 - (((gC21 * vi) - zC21) + zC22)) * 64.0f);
-            const auto vo = (-(((_t0 * _t1) + (_t2 * _t3)) * _t4));
-            const auto vl = (-(((_t2 * _t5) + (_t3 * _t1)) * _t4));
+            const auto vo = (-(((_t0 * _t1) + (_t2 * _t5)) * _t3));
+            const auto vl = (-(((_t2 * _t4) + (_t5 * _t1)) * _t3));
             const auto tL1 = (gL1 * (vl - 0));
             
             zC21 = 2 * tC21 - zC21;

@@ -124,7 +124,7 @@ END);
         check_bool("Rin without Aol falls back to ideal", opamp_is_ideal(eop), true);
     }
 
-    // Vos/Ibias/Ios alone (no Aol) is a valid non-ideal configuration --
+    // Vos/Ibias/Ios alone (no Aol) is a valid non-ideal configuration:
     // doesn't need the explicit-VCVS path, so no Aol requirement.
     {
         info := parse_netlist(#string END
@@ -310,7 +310,7 @@ END);
         check_str("digit-leading model name gets a safe Params field prefix", x1.nonlinear.mu_name, "_12AX7_Mu");
     }
 
-    // The model name is looked up from the LAST token, not a fixed index --
+    // The model name is looked up from the LAST token, not a fixed index,
     // so an X-line with a different terminal count than TRIODE's 3 (e.g. a
     // future PENTODE with 4) still finds the right .model card. Exercised
     // here with an unrecognized kind (nothing implements a 4-terminal device

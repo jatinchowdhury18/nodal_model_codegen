@@ -8,6 +8,7 @@
 #import "sym_algebra";
 #import "nonlinear_solve";
 #import "Basic";
+String :: #import "String";
 
 check :: (label: string, e: Expr_ID, expected: string, exprs: [] Expr) {
     got := print_expr(e, exprs);
@@ -30,7 +31,7 @@ check_str :: (label: string, got: string, expected: string) {
 
 print_cluster :: (c: Nonlinear_Cluster, exprs: [] Expr) {
     print("cluster '%': % unknown(s)\n", c.name, c.unknowns.count);
-    for u : c.unknowns  print("  unknown %: vt=%, residual=%, delta=%\n", u.name, u.vt_name, u.residual_name, u.delta_name);
+    for u : c.unknowns  print("  unknown %: vt=%, residual=%, delta=%\n", u.name, u.model.vt_name, u.residual_name, u.delta_name);
     print("  invariant items (%):\n", c.invariant_items.count);
     for gv : c.invariant_items  print("    % = %\n", gv.name, print_expr(gv.expr_id, exprs));
     print("  iteration items (%):\n", c.iteration_items.count);
@@ -124,7 +125,7 @@ main :: () {
         u0 := clusters[0].unknowns[0];
         u1 := clusters[0].unknowns[1];
         check_bool("unknowns named vPKX1/vGKX1", (u0.name == "vPKX1" && u1.name == "vGKX1") || (u0.name == "vGKX1" && u1.name == "vPKX1"), true);
-        check_bool("no step limiter (Dempwolf I-V law is smooth everywhere)", u0.limiter_kind == .NONE && u1.limiter_kind == .NONE, true);
+        check_bool("no step limiter (Dempwolf I-V law is smooth everywhere)", u0.model.limiter_kind == .NONE && u1.model.limiter_kind == .NONE, true);
 
         // The Jacobian/residual construction must actually reference the
         // model's own params (Gk/Gamma/Gg/Xi), not just pass them through
@@ -218,7 +219,7 @@ main :: () {
         }
         if all_ok  print("PASS  [dc_no_leaked_branch_currents]\n");
 
-        // C1's terminal "vi" is a raw circuit input, not a solved node --
+        // C1's terminal "vi" is a raw circuit input, not a solved node:
         // lookup_node_voltage() must resolve it via the `inputs` parameter
         // rather than asserting.
         vi_v := lookup_node_voltage("vi", dc_solve_vars, dc_solutions, *dc_pool, .["vi"]);
@@ -278,9 +279,9 @@ main :: () {
         check_bool("one unknown in the cluster", clusters[0].unknowns.count == 1, true);
         u := clusters[0].unknowns[0];
         check_str("unknown name", u.name, "vclip_Eop");
-        check_bool("limiter kind is AMP_CLIP", u.limiter_kind == .AMP_CLIP, true);
-        check_str("vsat_p_name threaded through", u.vsat_p_name, "Eop_VsatP");
-        check_str("vsat_n_name threaded through", u.vsat_n_name, "Eop_VsatN");
+        check_bool("limiter kind is AMP_CLIP", u.model.limiter_kind == .AMP_CLIP, true);
+        check_str("vsat_p_name threaded through", u.model.vsat_p_name, "Eop_VsatP");
+        check_str("vsat_n_name threaded through", u.model.vsat_n_name, "Eop_VsatN");
 
         // "vo"'s closed form must reference vclip_Eop. If it doesn't
         // (bug (a) above), the whole clip nonlinearity silently vanishes
@@ -305,7 +306,7 @@ main :: () {
     // 6. Op-amp slew-rate limiting, no Vsat at all (regression guard for a
     //    bug found while testing this: clamp_opamp_output's generated call
     //    always passes both Vsat rail args, so a slew-only op-amp needs
-    //    vsat_p_name/vsat_n_name populated with permissive defaults too --
+    //    vsat_p_name/vsat_n_name populated with permissive defaults too:
     //    the gate for that was originally `has_vsat_p || has_vsat_n`, which
     //    stayed false for a slew-only model and left the rail args as empty
     //    strings in the generated code).
@@ -330,12 +331,12 @@ main :: () {
         clusters := build_nonlinear_clusters(circuit, solve_vars, solutions, *pool);
         check_bool("one cluster", clusters.count == 1, true);
         u := clusters[0].unknowns[0];
-        check_bool("has_slew threaded through", u.has_slew, true);
-        check_str("slew_name threaded through", u.slew_name, "Eop_Slew");
-        check_str("zslew_name derived from element name", u.zslew_name, "zslew_Eop");
+        check_bool("has_slew threaded through", u.model.has_slew, true);
+        check_str("slew_name threaded through", u.model.slew_name, "Eop_Slew");
+        check_str("zslew_name derived from element name", u.model.zslew_name, "zslew_Eop");
         // vsat_p_name/vsat_n_name must still be non-empty even though Vsat
         // itself is unset; clamp_opamp_output's call always needs both.
-        check_bool("vsat_p_name non-empty despite no Vsat", u.vsat_p_name.count > 0, true);
-        check_bool("vsat_n_name non-empty despite no Vsat", u.vsat_n_name.count > 0, true);
+        check_bool("vsat_p_name non-empty despite no Vsat", u.model.vsat_p_name.count > 0, true);
+        check_bool("vsat_n_name non-empty despite no Vsat", u.model.vsat_n_name.count > 0, true);
     }
 }

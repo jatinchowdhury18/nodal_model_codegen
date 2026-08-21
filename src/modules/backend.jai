@@ -11,11 +11,14 @@ File   :: #import "File";
 // generated block into another, e.g. impedance defs into the outer loop).
 indent :: (in: string, prefix := "    ") -> string {
     if in.count == 0  return in;
-    ends_with_newline := in[in.count - 1] == #char "\n";
-    out := String.replace(in, "\n", tprint("\n%", prefix));
-    out = tprint("%1%2", prefix, out);
-    if ends_with_newline  out.count -= prefix.count;
-    return out;
+    builder: String_Builder;
+    append(*builder, prefix);
+    for i : 0..in.count-1 {
+        c := in[i];
+        append(*builder, c);
+        if c == #char "\n" && i != in.count - 1  append(*builder, prefix);
+    }
+    return builder_to_string(*builder);
 }
 
 // "Global" properties that inform the code generation.
@@ -201,5 +204,5 @@ Flop_Count :: struct {
     muls: int;
     divs: int;
     adds: int; // ADD, SUB, and NEG all counted here
-    transcendentals: int; // EXP, LOG, POW, only nonzero in `exact` mode -- see count_flops_expr() in codegen.jai
+    transcendentals: int; // EXP, LOG, POW, only nonzero in `exact` mode: see count_flops_expr() in codegen.jai
 }

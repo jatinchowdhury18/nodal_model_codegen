@@ -931,7 +931,7 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     }
 
     // gmin: a group of nodes can be jointly floating at DC even if no single
-    // row is empty (e.g. a resistor chain hanging off a diode-pinned node --
+    // row is empty (e.g. a resistor chain hanging off a diode-pinned node:
     // every row is real, but the group has no path to ground). A tiny
     // leakage conductance on every non-pinned node breaks that degeneracy,
     // same as real SPICE's gmin-to-ground regularization.

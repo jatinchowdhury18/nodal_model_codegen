@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen pedal_tone.net pedal_tone.h
 
 #pragma once
@@ -35,43 +35,48 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto gRtm = 1.0f / params.Rtm;
     
     const auto _t0 = (((gR8 + gC8) + gRtm) * 1024.0f);
-    const auto _t3 = (gRtp * 32768.0f);
-    const auto _t6 = (((gC9 + gR5) + gRtp) * 2048.0f);
-    const auto _t7 = (gRtm * 32768.0f);
-    const auto _t9 = (gRtm * 1024.0f);
-    const auto _t11 = ((gRtp + gRtm) * 32768.0f);
-    const auto _t12 = (gRtp * 2048.0f);
-    const auto _t5 = (_t6 * _t7);
-    const auto _t10 = ((_t6 * _t11) - (_t12 * _t3));
-    const auto _t8 = (1.0f / ((_t9 * _t5) - (_t0 * _t10)));
-    const auto _t13 = (_t12 * _t7);
+    const auto _t2 = (gRtp * 32768.0f);
+    const auto _t5 = (((gC9 + gR5) + gRtp) * 2048.0f);
+    const auto _t6 = (gRtm * 32768.0f);
+    const auto _t8 = (gRtm * 1024.0f);
+    const auto _t10 = ((gRtp + gRtm) * 32768.0f);
+    const auto _t11 = (gRtp * 2048.0f);
+    const auto _t4 = (_t5 * _t6);
+    const auto _t9 = ((_t5 * _t10) - (_t11 * _t2));
+    const auto _t7 = (1.0f / ((_t8 * _t4) - (_t0 * _t9)));
+    const auto _t13 = (_t11 * _t6);
     float c0_tC9;
     float c_tC9[3];
     float c0_n2;
     float c_n2[3];
     float c0_tC8;
     float c_tC8[3];
+    float c0_vo;
+    float c_vo[3];
     
     for (int _k = 0; _k <= 3; ++_k)
     {
         const auto vi = (_k == 1) ? 1.0f : 0.0f;
         const auto zC8 = (_k == 2) ? 1.0f : 0.0f;
         const auto zC9 = (_k == 3) ? 1.0f : 0.0f;
-        const auto _t2 = ((zC9 - (gC9 * vi)) * 2048.0f);
-        const auto _t4 = (((gR8 * vi) + zC8) * 1024.0f);
-        const auto _t1 = (_t2 * _t3);
-        const auto n1 = (((_t9 * _t1) - (_t4 * _t10)) * _t8);
+        const auto _t1 = ((zC9 - (gC9 * vi)) * 2048.0f);
+        const auto _t3 = (((gR8 * vi) + zC8) * 1024.0f);
+        const auto _t12 = (_t1 * _t2);
+        const auto vo = (((_t0 * _t12) - (_t3 * _t4)) * _t7);
+        const auto n1 = (((_t8 * _t12) - (_t3 * _t9)) * _t7);
         const auto tC8 = (gC8 * (n1 - 0));
-        const auto n2 = ((((_t0 * (_t2 * _t11)) - (_t4 * _t13)) - (_t9 * (_t2 * _t7))) * _t8);
+        const auto n2 = ((((_t0 * (_t1 * _t10)) - (_t3 * _t13)) - (_t8 * (_t1 * _t6))) * _t7);
         const auto tC9 = (gC9 * (vi - n2));
         if (_k == 0) {
             c0_tC9 = tC9;
             c0_n2 = n2;
             c0_tC8 = tC8;
+            c0_vo = vo;
         } else {
             c_tC9[_k - 1] = tC9 - c0_tC9;
             c_n2[_k - 1] = n2 - c0_n2;
             c_tC8[_k - 1] = tC8 - c0_tC8;
+            c_vo[_k - 1] = vo - c0_vo;
         }
     }
     
@@ -86,11 +91,11 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto tC9 = c0_tC9 + c_tC9[0] * vi + c_tC9[1] * zC8 + c_tC9[2] * zC9;
             const auto n2 = c0_n2 + c_n2[0] * vi + c_n2[1] * zC8 + c_n2[2] * zC9;
             const auto tC8 = c0_tC8 + c_tC8[0] * vi + c_tC8[1] * zC8 + c_tC8[2] * zC9;
-            const auto _t2 = ((zC9 - (gC9 * vi)) * 2048.0f);
-            const auto _t4 = (((gR8 * vi) + zC8) * 1024.0f);
-            const auto _t1 = (_t2 * _t3);
-            const auto vo = (((_t0 * _t1) - (_t4 * _t5)) * _t8);
-            const auto n1 = (((_t9 * _t1) - (_t4 * _t10)) * _t8);
+            const auto vo = c0_vo + c_vo[0] * vi + c_vo[1] * zC8 + c_vo[2] * zC9;
+            const auto _t1 = ((zC9 - (gC9 * vi)) * 2048.0f);
+            const auto _t3 = (((gR8 * vi) + zC8) * 1024.0f);
+            const auto _t12 = (_t1 * _t2);
+            const auto n1 = (((_t8 * _t12) - (_t3 * _t9)) * _t7);
             
             zC8 = 2 * tC8 - zC8;
             zC9 = 2 * tC9 - zC9;

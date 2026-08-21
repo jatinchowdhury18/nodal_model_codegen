@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version 03d2306.
+// Auto-generated with netlist_codegen version d1e5ccb.
 // Command: netlist_codegen opamp_complete.net opamp_complete.h
 
 #pragma once
@@ -80,36 +80,36 @@ static void compute (const float* const* input, float** output, int num_channels
     float c__Eraw_t16[2];
     float c0__Eraw_t15;
     float c__Eraw_t15[2];
-    float c0__Eraw_t3;
-    float c__Eraw_t3[2];
+    float c0__Eraw_t5;
+    float c__Eraw_t5[2];
     
     for (int _k = 0; _k <= 2; ++_k)
     {
         const auto vi = (_k == 1) ? 1.0f : 0.0f;
         const auto zEraw_Ccomp = (_k == 2) ? 1.0f : 0.0f;
-        const auto _Eraw_t2 = (gRF * 64.0f);
-        const auto _Eraw_t5 = (Eraw_Aol * Eraw_Vos);
-        const auto _Eraw_t6 = (Eraw_Aol * gEraw_Rcomp);
-        const auto _Eraw_t9 = (gR1 + gRF);
-        const auto _Eraw_t11 = (gRF + gEraw_Rout);
-        const auto _Eraw_t4 = (_Eraw_t5 * gEraw_Rcomp);
-        const auto _Eraw_t8 = (_Eraw_t9 + gEraw_Rin);
-        const auto _Eraw_t10 = (_Eraw_t11 * 64.0f);
-        const auto _Eraw_t3 = (zEraw_Ccomp + _Eraw_t4);
-        const auto _Eraw_t7 = (_Eraw_t8 * 1024.0f);
-        const auto _Eraw_t15 = (_Eraw_t2 * _Eraw_t3);
-        const auto _Eraw_t16 = (_Eraw_t7 * (_Eraw_t10 * _Eraw_t3));
-        const auto _Eraw_t17 = ((((Eraw_Ibias - (Eraw_Ios / 2.0f)) - (gR1 * vi)) * 1024.0f) * (_Eraw_t10 * _Eraw_t6));
+        const auto _Eraw_t1 = (gRF * 64.0f);
+        const auto _Eraw_t2 = (Eraw_Aol * Eraw_Vos);
+        const auto _Eraw_t4 = (gR1 + gRF);
+        const auto _Eraw_t6 = (_Eraw_t2 * gEraw_Rcomp);
+        const auto _Eraw_t7 = (gRF + gEraw_Rout);
+        const auto _Eraw_t8 = (Eraw_Aol * gEraw_Rcomp);
+        const auto _Eraw_t11 = (_Eraw_t4 + gEraw_Rin);
+        const auto _Eraw_t12 = (_Eraw_t7 * 64.0f);
+        const auto _Eraw_t3 = (_Eraw_t11 * 1024.0f);
+        const auto _Eraw_t5 = (zEraw_Ccomp + _Eraw_t6);
+        const auto _Eraw_t15 = (_Eraw_t1 * _Eraw_t5);
+        const auto _Eraw_t16 = (_Eraw_t3 * (_Eraw_t12 * _Eraw_t5));
+        const auto _Eraw_t17 = ((((Eraw_Ibias - (Eraw_Ios / 2.0f)) - (gR1 * vi)) * 1024.0f) * (_Eraw_t12 * _Eraw_t8));
         if (_k == 0) {
             c0__Eraw_t17 = _Eraw_t17;
             c0__Eraw_t16 = _Eraw_t16;
             c0__Eraw_t15 = _Eraw_t15;
-            c0__Eraw_t3 = _Eraw_t3;
+            c0__Eraw_t5 = _Eraw_t5;
         } else {
             c__Eraw_t17[_k - 1] = _Eraw_t17 - c0__Eraw_t17;
             c__Eraw_t16[_k - 1] = _Eraw_t16 - c0__Eraw_t16;
             c__Eraw_t15[_k - 1] = _Eraw_t15 - c0__Eraw_t15;
-            c__Eraw_t3[_k - 1] = _Eraw_t3 - c0__Eraw_t3;
+            c__Eraw_t5[_k - 1] = _Eraw_t5 - c0__Eraw_t5;
         }
     }
     
@@ -125,24 +125,24 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto _Eraw_t17 = c0__Eraw_t17 + c__Eraw_t17[0] * vi + c__Eraw_t17[1] * zEraw_Ccomp;
             const auto _Eraw_t16 = c0__Eraw_t16 + c__Eraw_t16[0] * vi + c__Eraw_t16[1] * zEraw_Ccomp;
             const auto _Eraw_t15 = c0__Eraw_t15 + c__Eraw_t15[0] * vi + c__Eraw_t15[1] * zEraw_Ccomp;
-            const auto _Eraw_t3 = c0__Eraw_t3 + c__Eraw_t3[0] * vi + c__Eraw_t3[1] * zEraw_Ccomp;
-            const auto _Eraw_t1 = (gRF * 1024.0f);
-            const auto _Eraw_t2 = (gRF * 64.0f);
-            const auto _Eraw_t5 = (Eraw_Aol * Eraw_Vos);
-            const auto _Eraw_t6 = (Eraw_Aol * gEraw_Rcomp);
-            const auto _Eraw_t9 = (gR1 + gRF);
-            const auto _Eraw_t11 = (gRF + gEraw_Rout);
+            const auto _Eraw_t5 = c0__Eraw_t5 + c__Eraw_t5[0] * vi + c__Eraw_t5[1] * zEraw_Ccomp;
+            const auto _Eraw_t1 = (gRF * 64.0f);
+            const auto _Eraw_t2 = (Eraw_Aol * Eraw_Vos);
+            const auto _Eraw_t4 = (gR1 + gRF);
+            const auto _Eraw_t6 = (_Eraw_t2 * gEraw_Rcomp);
+            const auto _Eraw_t7 = (gRF + gEraw_Rout);
+            const auto _Eraw_t8 = (Eraw_Aol * gEraw_Rcomp);
+            const auto _Eraw_t10 = (gRF * 1024.0f);
+            const auto _Eraw_t11 = (_Eraw_t4 + gEraw_Rin);
+            const auto _Eraw_t12 = (_Eraw_t7 * 64.0f);
             const auto _Eraw_t13 = (gEraw_Rcomp + gEraw_Ccomp);
-            const auto _Eraw_t4 = (_Eraw_t5 * gEraw_Rcomp);
-            const auto _Eraw_t8 = (_Eraw_t9 + gEraw_Rin);
-            const auto _Eraw_t10 = (_Eraw_t11 * 64.0f);
-            const auto _Eraw_t7 = (_Eraw_t8 * 1024.0f);
-            const auto _Eraw_t12 = ((_Eraw_t1 * (_Eraw_t2 * _Eraw_t13)) - (_Eraw_t7 * (_Eraw_t10 * _Eraw_t13)));
-            const auto _Eraw_t14 = (1.0f / ((((((65536.0f * gRF) * gEraw_Rout) * Eraw_Aol) * gEraw_Rcomp) / _Eraw_t12) - 1.0f));
-            const auto _Eraw_t18 = (1.0f / _Eraw_t12);
+            const auto _Eraw_t3 = (_Eraw_t11 * 1024.0f);
+            const auto _Eraw_t9 = ((_Eraw_t10 * (_Eraw_t1 * _Eraw_t13)) - (_Eraw_t3 * (_Eraw_t12 * _Eraw_t13)));
+            const auto _Eraw_t14 = (1.0f / ((((((65536.0f * gRF) * gEraw_Rout) * Eraw_Aol) * gEraw_Rcomp) / _Eraw_t9) - 1.0f));
+            const auto _Eraw_t18 = (1.0f / _Eraw_t9);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const auto _Eraw_t0 = ((((_Eraw_t1 * (_Eraw_t15 + (((gEraw_Rout * vclip_Eraw) * 64.0f) * _Eraw_t6))) - _Eraw_t16) - _Eraw_t17) * _Eraw_t18);
+                const auto _Eraw_t0 = ((((_Eraw_t10 * (_Eraw_t15 + (((gEraw_Rout * vclip_Eraw) * 64.0f) * _Eraw_t8))) - _Eraw_t16) - _Eraw_t17) * _Eraw_t18);
                 const auto res_vclip_Eraw = (_Eraw_t0 - vclip_Eraw);
                 const auto delta_vclip_Eraw = ((vclip_Eraw - _Eraw_t0) * _Eraw_t14);
             
@@ -165,7 +165,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 auto residual_norm_sq = res_vclip_Eraw_active * res_vclip_Eraw_active;
                 auto step_norm_sq = delta_vclip_Eraw_active * delta_vclip_Eraw_active;
             
-                
+            
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
                 
@@ -217,24 +217,24 @@ static float reset (Params params, State* state, int num_channels, float sample_
 
     // --- Newton-Raphson solve: Eraw
     const auto _Eraw_t2 = (Eraw_Aol * Eraw_Vos);
-    const auto _Eraw_t3 = (Eraw_Aol * gEraw_Rcomp);
-    const auto _Eraw_t6 = (gR1 + gRF);
-    const auto _Eraw_t7 = (1.0f / 1000000000.0f);
+    const auto _Eraw_t4 = (Eraw_Aol * gEraw_Rcomp);
+    const auto _Eraw_t8 = (gR1 + gRF);
     const auto _Eraw_t9 = (gRF + gEraw_Rout);
-    const auto _Eraw_t11 = (gEraw_Rcomp + _Eraw_t7);
+    const auto _Eraw_t10 = (1.0f / 1000000000.0f);
+    const auto _Eraw_t11 = (gEraw_Rcomp + _Eraw_t10);
     const auto _Eraw_t1 = (_Eraw_t2 * gEraw_Rcomp);
-    const auto _Eraw_t5 = (_Eraw_t6 + gEraw_Rin);
-    const auto _Eraw_t8 = (_Eraw_t9 + _Eraw_t7);
-    const auto _Eraw_t4 = (_Eraw_t5 + _Eraw_t7);
-    const auto _Eraw_t10 = ((gRF * (gRF * _Eraw_t11)) - (_Eraw_t4 * (_Eraw_t8 * _Eraw_t11)));
-    const auto _Eraw_t12 = (1.0f / (((((gRF * gEraw_Rout) * Eraw_Aol) * gEraw_Rcomp) / _Eraw_t10) - 1.0f));
+    const auto _Eraw_t3 = (_Eraw_t9 + _Eraw_t10);
+    const auto _Eraw_t7 = (_Eraw_t8 + gEraw_Rin);
+    const auto _Eraw_t6 = (_Eraw_t7 + _Eraw_t10);
+    const auto _Eraw_t5 = ((gRF * (gRF * _Eraw_t11)) - (_Eraw_t6 * (_Eraw_t3 * _Eraw_t11)));
+    const auto _Eraw_t12 = (1.0f / (((((gRF * gEraw_Rout) * Eraw_Aol) * gEraw_Rcomp) / _Eraw_t5) - 1.0f));
     const auto _Eraw_t13 = (gRF * _Eraw_t1);
-    const auto _Eraw_t14 = (_Eraw_t4 * (_Eraw_t8 * _Eraw_t1));
-    const auto _Eraw_t15 = (((Eraw_Ibias - (Eraw_Ios / 2.0f)) - (gR1 * vi)) * (_Eraw_t8 * _Eraw_t3));
-    const auto _Eraw_t16 = (1.0f / _Eraw_t10);
+    const auto _Eraw_t14 = (_Eraw_t6 * (_Eraw_t3 * _Eraw_t1));
+    const auto _Eraw_t15 = (((Eraw_Ibias - (Eraw_Ios / 2.0f)) - (gR1 * vi)) * (_Eraw_t3 * _Eraw_t4));
+    const auto _Eraw_t16 = (1.0f / _Eraw_t5);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _Eraw_t0 = ((((gRF * (_Eraw_t13 + ((gEraw_Rout * vclip_Eraw) * _Eraw_t3))) - _Eraw_t14) - _Eraw_t15) * _Eraw_t16);
+        const auto _Eraw_t0 = ((((gRF * (_Eraw_t13 + ((gEraw_Rout * vclip_Eraw) * _Eraw_t4))) - _Eraw_t14) - _Eraw_t15) * _Eraw_t16);
         const auto res_vclip_Eraw = (_Eraw_t0 - vclip_Eraw);
         const auto delta_vclip_Eraw = ((vclip_Eraw - _Eraw_t0) * _Eraw_t12);
     
@@ -257,7 +257,7 @@ static float reset (Params params, State* state, int num_channels, float sample_
         auto residual_norm_sq = res_vclip_Eraw_active * res_vclip_Eraw_active;
         auto step_norm_sq = delta_vclip_Eraw_active * delta_vclip_Eraw_active;
     
-        
+    
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;
         
