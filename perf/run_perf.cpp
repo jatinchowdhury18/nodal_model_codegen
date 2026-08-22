@@ -29,6 +29,7 @@
 #include "generated/common_emitter.h"
 #include "generated/pedal_drive.h"
 #include "generated/pedal_model.h"
+#include "generated/tube_compressor.h"
 #include "generated/eq73.h"
 
 static constexpr int N_WARMUP = 2;
@@ -97,6 +98,19 @@ struct PedalModelTraits {
     static constexpr float vi_dc = 0.0f;
     static constexpr auto compute = pedal_model::compute;
     static constexpr auto reset   = pedal_model::reset;
+};
+
+// The largest nonlinear cluster in the fixture set (k=5: two triodes plus a
+// sidechain diode), so it is the case where per-iteration cost and iteration
+// count both matter most.
+struct TubeCompressorTraits {
+    static constexpr const char* name = "tube_compressor";
+    using Params = tube_compressor::Params;
+    using State  = tube_compressor::State;
+    static constexpr bool has_reset = true;
+    static constexpr float vi_dc = 0.0f;
+    static constexpr auto compute = tube_compressor::compute;
+    static constexpr auto reset   = tube_compressor::reset;
 };
 
 struct Eq73Traits {
@@ -213,8 +227,9 @@ static void run_case(event_collector& ec, const std::string& out_dir,
 
 static void print_usage(const char* argv0) {
     std::cerr << "Usage: " << argv0 << " --out-dir <dir> [--case <name>]...\n"
-              << "  --case rc_lowpass | eq_filter2 | diode_clipper | common_emitter | pedal_drive | eq73\n"
-              << "  (default: all 6 cases)\n";
+              << "  --case rc_lowpass | eq_filter2 | diode_clipper | common_emitter | pedal_drive |\n"
+              << "         pedal_model | tube_compressor | eq73\n"
+              << "  (default: all cases)\n";
 }
 
 int main(int argc, char** argv) {
@@ -258,6 +273,7 @@ int main(int argc, char** argv) {
     if (run_all || cases.count("common_emitter")) run_case<CommonEmitterTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("pedal_drive"))    run_case<PedalDriveTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("pedal_model"))    run_case<PedalModelTraits>(ec, out_dir, input_buf);
+    if (run_all || cases.count("tube_compressor")) run_case<TubeCompressorTraits>(ec, out_dir, input_buf);
     if (run_all || cases.count("eq73"))           run_case<Eq73Traits>(ec, out_dir, input_buf);
 
     return 0;

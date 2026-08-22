@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen tube_compressor.net tube_compressor.h -type_name double
+// Auto-generated with netlist_codegen version 44d6b06.
+// Command: netlist_codegen tube_compressor.net tube_compressor.h -type_name double -instrument
 
 #pragma once
 
@@ -47,18 +47,6 @@ static double math_pow_approx(double x, double y) {
         else
         {
             v_new = vt * math_log_approx(v_new / vt);
-        }
-    }
-    else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
-    {
-        if (v_old < 0)
-        {
-            const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
-        }
-        else
-        {
-            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -112,6 +100,8 @@ struct State {
     double vPKX2 {};
     double vGKX2 {};
     double vD1 {};
+    long long nr_solves_X1_X2_D1 {};
+    long long nr_iters_X1_X2_D1 {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -271,6 +261,8 @@ static void compute (const float* const* input, float** output, int num_channels
         auto vPKX2 = state[ch].vPKX2;
         auto vGKX2 = state[ch].vGKX2;
         auto vD1 = state[ch].vD1;
+        long long nr_solves_X1_X2_D1 = state[ch].nr_solves_X1_X2_D1;
+        long long nr_iters_X1_X2_D1 = state[ch].nr_iters_X1_X2_D1;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
@@ -336,8 +328,10 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto _X1_X2_D1_t114 = (1.0 / (_X1_X2_D1_t101 + _X1_X2_D1_t121));
             const auto _X1_X2_D1_t423 = ((gCin * vi) - zCin);
             const auto _X1_X2_D1_t424 = (_12AX7_DEMPWOLF_Gg * _12AX7_DEMPWOLF_Xi);
+            ++nr_solves_X1_X2_D1;
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
+                ++nr_iters_X1_X2_D1;
                 const auto _X1_X2_D1_t12 = (vPKX1 / _12AX7_DEMPWOLF_Mu);
                 const auto _X1_X2_D1_t21 = (_12AX7_DEMPWOLF_Cg * vGKX1);
                 const auto _X1_X2_D1_t69 = (_12AX7_DEMPWOLF_Cg * vGKX2);
@@ -845,6 +839,8 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].vPKX2 = vPKX2;
         state[ch].vGKX2 = vGKX2;
         state[ch].vD1 = vD1;
+        state[ch].nr_solves_X1_X2_D1 = nr_solves_X1_X2_D1;
+        state[ch].nr_iters_X1_X2_D1 = nr_iters_X1_X2_D1;
     }
 }
 
@@ -1299,6 +1295,8 @@ static float reset (Params params, State* state, int num_channels, float sample_
         state[ch].zCout = zCout;
         state[ch].zCsc = zCsc;
         state[ch].zRk2Ck2 = zRk2Ck2;
+        state[ch].nr_solves_X1_X2_D1 = 0;
+        state[ch].nr_iters_X1_X2_D1 = 0;
     }
     return vo_dc_out;
 }

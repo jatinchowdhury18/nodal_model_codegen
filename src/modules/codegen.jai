@@ -171,7 +171,16 @@ generate_params_struct :: (elements: [] Element,
 
 // extra_state_names: nonlinear-cluster junction-voltage unknowns, persisted
 // across samples as the Newton warm start.
-generate_state_struct :: (elements: [] Element, extra_state_names: [] string, backend: Backend = .{}, unit_name := "") -> string, [] string {
+// There are two `-instrument` counters for one nonlinear cluster:
+// - Number of Newton "solves"
+// - How many iterations they took
+newton_counter_names :: (cluster_name: string) -> (solves: string, iters: string) {
+    return tprint("nr_solves_%", cluster_name), tprint("nr_iters_%", cluster_name);
+}
+
+NEWTON_COUNTER_TYPE :: "long long";
+
+generate_state_struct :: (elements: [] Element, extra_state_names: [] string, backend: Backend = .{}, unit_name := "", counter_names: [] string = .[]) -> string, [] string {
     states: [..] string;
     struct_name := tprint("State%", unit_name);
 
@@ -201,6 +210,9 @@ generate_state_struct :: (elements: [] Element, extra_state_names: [] string, ba
         array_add(*states, name);
         append(*builder, field_decl(backend, backend.type_name, name));
     }
+
+    // -instrument counters.
+    for name : counter_names  append(*builder, field_decl(backend, NEWTON_COUNTER_TYPE, name));
 
     append(*builder, struct_close(backend, struct_name));
     return builder_to_string(*builder), states;
@@ -400,6 +412,50 @@ static %1 limit_junction_voltage(%1 v_new, %1 v_old, %1 vt, %1 vcrit) {
         } else {
             v_new = vt * %3(v_new / vt);
         }
+    }
+    return v_new;
+}
+DONE
+        return tprint(template, type_name, abs_fn, log_fn);
+    }
+
+    abs_fn := math_fn(backend, "abs");
+    log_fn := transcendental_fn_name(backend, "log");
+    template := #string DONE
+[[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
+{
+    if (v_new > vcrit && %1(v_new - v_old) > 2 * vt)
+    {
+        if (v_old > 0)
+        {
+            const auto arg = 1 + (v_new - v_old) / vt;
+            v_new = arg > 0 ? v_old + vt * %2(arg) : vcrit;
+        }
+        else
+        {
+            v_new = vt * %2(v_new / vt);
+        }
+    }
+    return v_new;
+};
+DONE
+    return tprint(template, abs_fn, log_fn);
+}
+
+generate_junction_limiter_sym_helper :: (backend: Backend) -> string {
+    if !backend.is_cpp {
+        type_name := backend.type_name;
+        abs_fn    := math_fn(backend, "fabs");
+        log_fn    := transcendental_fn_name(backend, "log");
+        template := #string DONE
+static %1 limit_junction_voltage_sym(%1 v_new, %1 v_old, %1 vt, %1 vcrit) {
+    if (v_new > vcrit && %2(v_new - v_old) > 2 * vt) {
+        if (v_old > 0) {
+            %1 arg = 1 + (v_new - v_old) / vt;
+            v_new = arg > 0 ? v_old + vt * %3(arg) : vcrit;
+        } else {
+            v_new = vt * %3(v_new / vt);
+        }
     } else if (v_new < -vcrit && %2(v_new - v_old) > 2 * vt) {
         if (v_old < 0) {
             %1 arg = 1 + (v_old - v_new) / vt;
@@ -416,8 +472,8 @@ DONE
 
     abs_fn := math_fn(backend, "abs");
     log_fn := transcendental_fn_name(backend, "log");
-    template := #string DONE
-[[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
+    cpp_template := #string DONE
+[[maybe_unused]] static auto limit_junction_voltage_sym = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
     if (v_new > vcrit && %1(v_new - v_old) > 2 * vt)
     {
@@ -446,7 +502,7 @@ DONE
     return v_new;
 };
 DONE
-    return tprint(template, abs_fn, log_fn);
+    return tprint(cpp_template, abs_fn, log_fn);
 }
 
 // JFET vGS step limiter: clamps Newton steps at pinch-off (vGS < Vp).
@@ -514,7 +570,7 @@ generate_vcrit_defs :: (clusters: [] Nonlinear_Cluster, backend: Backend) -> str
     emitted: [..] string;
     for c : clusters {
         for u : c.unknowns {
-            if u.model.limiter_kind != .EXP_JUNCTION  continue;
+            if u.model.limiter_kind != .EXP_JUNCTION && u.model.limiter_kind != .EXP_JUNCTION_SYM  continue;
             if array_find(emitted, u.model.vt_name)  continue;
             array_add(*emitted, u.model.vt_name);
             print_to_builder(*builder, "const %1 vcrit_%2 = %2 * %3(%2 / (%4(2.0) * %5));\n",
@@ -542,6 +598,9 @@ emit_unknown_update :: (builder: *String_Builder, u: Cluster_Unknown, delta_expr
     if u.model.limiter_kind == {
         case .EXP_JUNCTION;
             print_to_builder(builder, "%1 = limit_junction_voltage(%1 + (%2), %1, %3, vcrit_%3);\n",
+                             u.name, delta_expr, u.model.vt_name);
+        case .EXP_JUNCTION_SYM;
+            print_to_builder(builder, "%1 = limit_junction_voltage_sym(%1 + (%2), %1, %3, vcrit_%3);\n",
                              u.name, delta_expr, u.model.vt_name);
         case .JFET_PINCHOFF;
             print_to_builder(builder, "%1 = limit_jfet_vgs(%1 + (%2), %3);\n", u.name, delta_expr, u.model.vp_name);
@@ -645,7 +704,8 @@ indent_lines :: (text: string, indent: string) -> string {
 // Both are only used for the Newton-invariant regions. Invariant extraction
 // can be disabled with enable_extraction=false.
 generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend, apply_slew := true, max_iter := "newton_max_iter",
-                                 enable_extraction := false, basis_names: [] string = .[], non_basis_variant_names: [] string = .[]) -> (outer_code: string, inner_code: string) {
+                                 enable_extraction := false, basis_names: [] string = .[], non_basis_variant_names: [] string = .[],
+                                 count_iterations := false) -> (outer_code: string, inner_code: string) {
     outer_builder: String_Builder;
     builder: String_Builder;
     print_to_builder(*builder, "// --- Newton-Raphson solve: %\n", cluster.name);
@@ -660,8 +720,17 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
         emit_invariant_region(cluster.lo_invariant_items, exprs, backend, enable_extraction, basis_names, other_variant_names, *outer_builder, *builder);
     }
 
+    if count_iterations {
+        solves_name, _ := newton_counter_names(cluster.name);
+        print_to_builder(*builder, "++%;\n", solves_name);
+    }
+
     print_to_builder(*builder, "for (int newton_iter = 0; newton_iter < %; ++newton_iter)\n{\n", max_iter);
     inner_builder: String_Builder;
+    if count_iterations {
+        _, iters_name := newton_counter_names(cluster.name);
+        print_to_builder(*inner_builder, "++%;\n", iters_name);
+    }
     emit_topological_order(cluster.iteration_items, exprs, *inner_builder, backend);
     if cluster.amp_clip_idx >= 0 {
         emit_topological_order(cluster.hi_iteration_items, exprs, *inner_builder, backend);
@@ -749,7 +818,7 @@ build_dc_operating_point :: (elements: [] Element, inputs: [] string, outputs: [
 // every channel's State. Each input gets its own `<input>_dc` param. When
 // `outputs` is exactly one node, reset() also returns that node's settled
 // DC voltage (instead of void).
-generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: [] string, backend: Backend, unit_name := "") -> string {
+generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: [] string, backend: Backend, unit_name := "", counter_names: [] string = .[]) -> string {
     dc_clusters, dc_pool, z_init_vars, output_dc_vars := build_dc_operating_point(elements, inputs, outputs);
     returns_dc := outputs.count == 1;
 
@@ -795,6 +864,8 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: []
         }
     }
     for zv : z_init_vars  print_to_builder(*builder, "        state[ch].%1 = %1;\n", zv.name);
+    // -instrument counters. reset()'s own DC solve is deliberately not counted.
+    for name : counter_names  print_to_builder(*builder, "        state[ch].%1 = 0;\n", name);
     append(*builder, "    }\n");
 
     if returns_dc  print_to_builder(*builder, "    return %;\n", output_dc_vars[0].name);

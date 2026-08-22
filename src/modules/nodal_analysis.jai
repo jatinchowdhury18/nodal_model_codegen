@@ -80,7 +80,8 @@ Nonlinear_Model :: struct {
 // before it wanders into a region the I-V law approximates badly.
 Limiter_Kind :: enum {
     NONE;           // plain Newton step
-    EXP_JUNCTION;   // diode/BJT-style: clamp near vcrit = vt*log(vt/(sqrt(2)*Is))
+    EXP_JUNCTION;   // diode/BJT-style: clamp the *forward* step near vcrit = vt*log(vt/(sqrt(2)*Is))
+    EXP_JUNCTION_SYM; // antiparallel diode pair (sinh law): same clamp, both directions
     JFET_PINCHOFF;  // JFET-style: clamp at Vp (see generate_jfet_limiter_helper)
     AMP_CLIP;       // op-amp output clip/slew: hard rail clamp (see generate_opamp_clip_limiter_helper)
 }
@@ -117,10 +118,17 @@ Nonlinear_Device_Spec :: struct {
 // below treats an empty spec as "this element contributes nothing."
 nonlinear_device_spec :: (type: Element_Type) -> Nonlinear_Device_Spec {
     if type == {
-        case .DIODE; #through;
-        case .DIODE_PAIR;
+        case .DIODE;
             return .{
                 unknowns  = Device_Unknown.[ .{ name_prefix = "v", pos_terminal = 0, neg_terminal = 1, limiter = .EXP_JUNCTION } ],
+                kcl_terms = Device_Kcl_Term.[
+                    .{ terminal_idx = 0, branch_suffix = "", entering = false }, // anode -= i
+                    .{ terminal_idx = 1, branch_suffix = "", entering = true },  // cathode += i
+                ],
+            };
+        case .DIODE_PAIR;
+            return .{
+                unknowns  = Device_Unknown.[ .{ name_prefix = "v", pos_terminal = 0, neg_terminal = 1, limiter = .EXP_JUNCTION_SYM } ],
                 kcl_terms = Device_Kcl_Term.[
                     .{ terminal_idx = 0, branch_suffix = "", entering = false }, // anode -= i
                     .{ terminal_idx = 1, branch_suffix = "", entering = true },  // cathode += i
@@ -199,7 +207,8 @@ nonlinear_device_spec :: (type: Element_Type) -> Nonlinear_Device_Spec {
 // / generate_vcrit_defs in netlist_codegen.jai).
 device_limiter_names :: (kind: Limiter_Kind, m: Nonlinear_Model) -> (vt_name: string, is_name: string, vp_name: string) {
     if kind == {
-        case .EXP_JUNCTION;  return m.vt_name, m.is_name, "";
+        case .EXP_JUNCTION; #through;
+        case .EXP_JUNCTION_SYM; return m.vt_name, m.is_name, "";
         case .JFET_PINCHOFF; return "", "", m.vp_name;
     }
     return "", "", "";
@@ -229,7 +238,14 @@ device_model_param_names :: (type: Element_Type, m: Nonlinear_Model) -> [..] str
 // True if any element in `elements` has an unknown using this limiter kind.
 // Used to decide which limiter helper functions to emit.
 circuit_uses_limiter_kind :: (elements: [] Element, kind: Limiter_Kind) -> bool {
-    for el : elements {
+    for el, i : elements {
+        if el.type == .DIODE {
+            pending := ifx find_antiparallel_partner(elements, i) >= 0
+                       then Limiter_Kind.EXP_JUNCTION_SYM else .EXP_JUNCTION;
+            if kind == pending  return true;
+            continue;
+        }
+
         spec := nonlinear_device_spec(el.type);
         for u : spec.unknowns  if u.limiter == kind  return true;
 
@@ -537,43 +553,45 @@ reduce_parallel_once :: (elements: *[..] Element) -> bool {
     return false;
 }
 
+// Two DIODEs that will collapse into one DIODE_PAIR.
+diodes_are_antiparallel_pair :: (el1: Element, el2: Element) -> bool {
+    if el1.type != .DIODE || el2.type != .DIODE  return false;
+    if el1.no_combine || el2.no_combine  return false;
+    if el1.terminals[0] != el2.terminals[1] || el1.terminals[1] != el2.terminals[0]  return false;
+    return el1.nonlinear.is_name == el2.nonlinear.is_name
+        && el1.nonlinear.vt_name == el2.nonlinear.vt_name;
+}
+
+// Index of the element that will collapse with elements[i] into one
+// DIODE_PAIR, or -1 if there is none.
+find_antiparallel_partner :: (elements: [] Element, i: int) -> int {
+    for j : 0..elements.count-1 {
+        if j != i && diodes_are_antiparallel_pair(elements[i], elements[j])  return j;
+    }
+    return -1;
+}
+
 // Attempt ONE antiparallel diode-pair collapse. Returns true if one was made.
-// Two DIODEs sharing both terminals with reversed polarity and the same
-// .model collapse into a DIODE_PAIR. Diodes with different .model params
-// (e.g. asymmetric clippers) are left as two separate DIODEs.
 reduce_diode_pairs_once :: (elements: *[..] Element) -> bool {
     for i : 0..elements.count-1 {
+        j := find_antiparallel_partner(elements.*, i);
+        if j < 0  continue;
+
         el1 := (elements.*)[i];
-        if el1.type != .DIODE  continue;
+        el2 := (elements.*)[j];
+        print("Combining antiparallel diode pair: % || %\n", el1.name, el2.name);
 
-        for j : i+1..elements.count-1 {
-            el2 := (elements.*)[j];
-            if el2.type != .DIODE  continue;
-            if el1.no_combine || el2.no_combine  continue;
+        new_el: Element;
+        new_el.name = tprint("%1%2", el1.name, el2.name);
+        new_el.type = .DIODE_PAIR;
+        array_add(*new_el.terminals, el1.terminals[0]);
+        array_add(*new_el.terminals, el1.terminals[1]);
+        new_el.nonlinear = el1.nonlinear;
 
-            same_pair := el1.terminals[0] == el2.terminals[1] && el1.terminals[1] == el2.terminals[0];
-            if !same_pair  continue;
-
-            same_model := el1.nonlinear.is_name == el2.nonlinear.is_name
-                       && el1.nonlinear.vt_name == el2.nonlinear.vt_name;
-            if !same_model  continue;
-
-            print("Combining antiparallel diode pair: % || %\n", el1.name, el2.name);
-
-            new_el: Element;
-            new_el.name = tprint("%1%2", el1.name, el2.name);
-            new_el.type = .DIODE_PAIR;
-            array_add(*new_el.terminals, el1.terminals[0]);
-            array_add(*new_el.terminals, el1.terminals[1]);
-            new_el.nonlinear = el1.nonlinear;
-
-            hi := max(i, j);
-            lo := min(i, j);
-            array_unordered_remove_by_index(elements, hi);
-            array_unordered_remove_by_index(elements, lo);
-            array_add(elements, new_el);
-            return true;
-        }
+        array_unordered_remove_by_index(elements, max(i, j));
+        array_unordered_remove_by_index(elements, min(i, j));
+        array_add(elements, new_el);
+        return true;
     }
     return false;
 }

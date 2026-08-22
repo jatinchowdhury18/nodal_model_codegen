@@ -877,7 +877,17 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
 
     extra_state_names: [..] string;
     for c : clusters  for u : c.unknowns  array_add(*extra_state_names, u.name);
-    state_struct_code, states := generate_state_struct(elements_copy, extra_state_names, backend, suffix);
+
+    // -instrument: one solve counter and one iteration counter per cluster.
+    counter_names: [..] string;
+    if backend.instrument && has_nonlinear {
+        for c : clusters {
+            solves_name, iters_name := newton_counter_names(c.name);
+            array_add(*counter_names, solves_name);
+            array_add(*counter_names, iters_name);
+        }
+    }
+    state_struct_code, states := generate_state_struct(elements_copy, extra_state_names, backend, suffix, counter_names);
     append(*builder, state_struct_code);
     append(*builder, "\n");
 
@@ -904,7 +914,8 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     cluster_newton_inner: [..] string;
     if has_nonlinear {
         for c : clusters {
-            c_outer, c_inner := generate_cluster_newton_code(c, cluster_exprs, backend, enable_extraction = true, basis_names = basis_names, non_basis_variant_names = branch_current_names);
+            c_outer, c_inner := generate_cluster_newton_code(c, cluster_exprs, backend, enable_extraction = true, basis_names = basis_names, non_basis_variant_names = branch_current_names,
+                                                             count_iterations = backend.instrument);
             array_add(*cluster_newton_outer, c_outer);
             array_add(*cluster_newton_inner, c_inner);
         }
@@ -917,6 +928,7 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
 
     append(*builder, "    for (int ch = 0; ch < num_channels; ++ch)\n    {\n");
     for state : states  append(*builder, tprint("        %1 %2 = state[ch].%2;\n", backend.decl_type, state));
+    for name : counter_names  append(*builder, tprint("        %1 %2 = state[ch].%2;\n", NEWTON_COUNTER_TYPE, name));
 
     append(*builder, "        for (int n = 0; n < num_samples; ++n)\n        {\n");
 
@@ -943,10 +955,11 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     append(*builder, "        }\n");
 
     for state : states  append(*builder, tprint("        state[ch].%1 = %1;\n", state));
+    for name : counter_names  append(*builder, tprint("        state[ch].%1 = %1;\n", name));
     append(*builder, "    }\n}\n");
 
     append(*builder, "\n");
-    append(*builder, generate_reset_function(elements_copy, inputs, outputs, backend, suffix));
+    append(*builder, generate_reset_function(elements_copy, inputs, outputs, backend, suffix, counter_names));
 
     return builder_to_string(*builder), has_nonlinear;
 }
@@ -996,12 +1009,12 @@ generate_joined_unit :: (decls: [] Sub_Circuit_Decl, backend: Backend) -> string
 
 // Main entry point!
 netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "", cpu_profile: CPU_Profile = CPU_PROFILE_GENERIC,
-                    enable_extraction := false) -> string {
+                    enable_extraction := false, instrument := false) -> string {
     // parse the netlist into our internal structure
     net := parse_netlist(netlist_str);
 
     // choose the language backend (C, C++, ...)
-    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx, enable_extraction);
+    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx, enable_extraction, instrument);
 
     if net.outputs.count == 0 {
         log("Adding output node: vo\n");
@@ -1026,6 +1039,7 @@ netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: stri
             append(*builder, "\n");
         }
         if circuit_uses_limiter_kind(net.elements, .EXP_JUNCTION) { append(*builder, generate_junction_limiter_helper(backend)); append(*builder, "\n"); }
+        if circuit_uses_limiter_kind(net.elements, .EXP_JUNCTION_SYM) { append(*builder, generate_junction_limiter_sym_helper(backend)); append(*builder, "\n"); }
         if circuit_uses_limiter_kind(net.elements, .JFET_PINCHOFF) { append(*builder, generate_jfet_limiter_helper(backend)); append(*builder, "\n"); }
         if circuit_uses_limiter_kind(net.elements, .AMP_CLIP) { append(*builder, generate_opamp_clip_limiter_helper(backend)); append(*builder, "\n"); }
         append(*builder, generate_newton_constants(net.newton_tol_sq, net.newton_max_iter, backend));

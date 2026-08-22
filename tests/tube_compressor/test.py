@@ -13,7 +13,7 @@ fs, vout = read_wav("vout.wav", scale=250)
 write_bin(vin, "input.bin")
 
 # Generate C++ code
-netlist_codegen("tube_compressor.net", "tube_compressor.h", dtype="double")
+netlist_codegen("tube_compressor.net", "tube_compressor.h", dtype="double", instrument=True)
 compile_run_cpp("tube_compressor")
 cpp_vout = read_bin("output.bin")
 

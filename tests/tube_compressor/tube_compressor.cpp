@@ -52,6 +52,9 @@ int main()
 
     write_data (output, count);
 
+    printf("Solves/sample: %f\n", (double) state.nr_solves_X1_X2_D1 / (double) count);
+    printf("Iters/sample: %f\n", (double) state.nr_iters_X1_X2_D1 / (double) count);
+
     free (input);
     free (output);
 

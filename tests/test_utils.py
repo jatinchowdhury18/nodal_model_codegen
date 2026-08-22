@@ -46,7 +46,7 @@ def write_bin(x, bin_file):
 def read_bin(bin_file):
     return np.fromfile(bin_file, dtype=np.float32)
 
-def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace=None):
+def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace=None, instrument=False):
     cmd = [
         codegen_exe,
         netlist_file,
@@ -58,6 +58,8 @@ def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace
         cmd += ["-namespace", namespace]
     if dtype is not None:
         cmd += ["-type_name", dtype]
+    if instrument:
+        cmd += ["-instrument"]
 
     start = time.perf_counter()
     subprocess.run(cmd)

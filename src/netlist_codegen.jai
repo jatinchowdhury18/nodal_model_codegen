@@ -12,6 +12,7 @@ Args :: struct {
     cpu:          string = "generic"; @"?Target CPU profile for the extraction cost model. Built-in: generic (default), m1, zen4, cortex_a8. Or a path to a custom cpu_profiles/*.txt file."
     opt_extract:  bool   = true;      @"?Enable basis-vector linear coefficient extraction (enabled by default)."
     stats:        bool   = false;     @"?Print netlist_codegen()'s wall time and bytes-allocated to stderr after codegen finishes."
+    instrument:   bool   = false;     @"?Emit Newton solve/iteration counters (nr_solves_<cluster>, nr_iters_<cluster>) on the State struct."
 }
 
 Alloc_Stats :: struct {
@@ -80,7 +81,7 @@ main :: () {
     temp_before := context.temporary_storage.total_bytes_occupied;
     start_time := seconds_since_init();
 
-    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file, cpu_profile, args.opt_extract);
+    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file, cpu_profile, args.opt_extract, args.instrument);
 
     elapsed_seconds := seconds_since_init() - start_time;
     context.allocator = stats.underlying;
