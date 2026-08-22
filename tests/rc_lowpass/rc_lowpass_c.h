@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version de49196.
+// Auto-generated with netlist_codegen version d0fcc0c.
 // Command: netlist_codegen rc_lowpass.net rc_lowpass_c.h -opt_port_matrix -lang c
 
 #pragma once

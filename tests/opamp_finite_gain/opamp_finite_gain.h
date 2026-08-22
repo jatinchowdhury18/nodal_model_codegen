@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version de49196.
+// Auto-generated with netlist_codegen version d0fcc0c.
 // Command: netlist_codegen opamp_finite_gain.net opamp_finite_gain.h -opt_port_matrix
 
 #pragma once

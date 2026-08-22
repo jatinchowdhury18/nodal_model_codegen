@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version de49196.
+// Auto-generated with netlist_codegen version d0fcc0c.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h -opt_port_matrix
 
 #pragma once

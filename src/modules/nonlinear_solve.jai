@@ -647,7 +647,11 @@ port_jacobian_expr :: (pf: *Port_Form, j: int, n: int, pool: *Expr_Pool) -> Expr
         if have  result = expr_add(result, term, pool);
         else   { result = term; have = true; }
     }
-    if !have  result = expr_const(0, pool);
+    // For off-diagonals that are actually empty, we emit NO_EXPR.
+    if !have {
+        if j == n  return expr_const(-1, pool);
+        return NO_EXPR;
+    }
     if j == n  result = expr_sub(result, expr_const(1, pool), pool);
     return result;
 }
@@ -1036,7 +1040,11 @@ build_nonlinear_clusters :: (elements: [] Element,
                 delta_equations: [..] Expr_ID;
                 for j : 0..pf.k-1 {
                     eq := F_ids[j];
-                    for n : 0..pf.k-1  eq = expr_add(eq, expr_mul(J_ids[j*pf.k + n], port_delta_ids[n], pool), pool);
+                    for n : 0..pf.k-1 {
+                        // Emit NO_EXPR for structural zero values.
+                        if J_ids[j*pf.k + n] == NO_EXPR  continue;
+                        eq = expr_add(eq, expr_mul(J_ids[j*pf.k + n], port_delta_ids[n], pool), pool);
+                    }
                     array_add(*delta_equations, eq);
                 }
                 deltas := solve(delta_equations, port_delta_ids, pool);

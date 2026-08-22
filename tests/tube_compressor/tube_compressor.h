@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version de49196.
+// Auto-generated with netlist_codegen version d0fcc0c.
 // Command: netlist_codegen tube_compressor.net tube_compressor.h -opt_port_matrix -type_name double -instrument
 
 #pragma once
@@ -660,11 +660,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_X2_D1_J0_4 = (_X1_X2_D1_Z0_4 * _X1_X2_D1_g4_4);
                 const auto _X1_X2_D1_J1_0 = ((_X1_X2_D1_Z1_0 * _X1_X2_D1_g0_0) + (_X1_X2_D1_Z1_1 * _X1_X2_D1_g1_0));
                 const auto _X1_X2_D1_J1_1 = (((_X1_X2_D1_Z1_0 * _X1_X2_D1_g0_1) + (_X1_X2_D1_Z1_1 * _X1_X2_D1_g1_1)) - 1.0);
-                const auto _X1_X2_D1_J1_2 = 0.0;
-                const auto _X1_X2_D1_J1_3 = 0.0;
                 const auto _X1_X2_D1_J1_4 = (_X1_X2_D1_Z1_4 * _X1_X2_D1_g4_4);
-                const auto _X1_X2_D1_J2_0 = 0.0;
-                const auto _X1_X2_D1_J2_1 = 0.0;
                 const auto _X1_X2_D1_J2_2 = (((_X1_X2_D1_Z2_2 * _X1_X2_D1_g2_2) + (_X1_X2_D1_Z2_3 * _X1_X2_D1_g3_2)) - 1.0);
                 const auto _X1_X2_D1_J2_3 = ((_X1_X2_D1_Z2_2 * _X1_X2_D1_g2_3) + (_X1_X2_D1_Z2_3 * _X1_X2_D1_g3_3));
                 const auto _X1_X2_D1_J2_4 = (_X1_X2_D1_Z2_4 * _X1_X2_D1_g4_4);
@@ -672,7 +668,6 @@ static void compute (const float* const* input, float** output, int num_channels
                 const auto _X1_X2_D1_J3_1 = (_X1_X2_D1_Z3_0 * _X1_X2_D1_g0_1);
                 const auto _X1_X2_D1_J3_2 = ((_X1_X2_D1_Z3_2 * _X1_X2_D1_g2_2) + (_X1_X2_D1_Z3_3 * _X1_X2_D1_g3_2));
                 const auto _X1_X2_D1_J3_3 = (((_X1_X2_D1_Z3_2 * _X1_X2_D1_g2_3) + (_X1_X2_D1_Z3_3 * _X1_X2_D1_g3_3)) - 1.0);
-                const auto _X1_X2_D1_J3_4 = 0.0;
                 const auto _X1_X2_D1_J4_0 = ((_X1_X2_D1_Z4_0 * _X1_X2_D1_g0_0) + (_X1_X2_D1_Z4_1 * _X1_X2_D1_g1_0));
                 const auto _X1_X2_D1_J4_1 = ((_X1_X2_D1_Z4_0 * _X1_X2_D1_g0_1) + (_X1_X2_D1_Z4_1 * _X1_X2_D1_g1_1));
                 const auto _X1_X2_D1_J4_2 = (_X1_X2_D1_Z4_2 * _X1_X2_D1_g2_2);
@@ -687,11 +682,11 @@ static void compute (const float* const* input, float** output, int num_channels
                 _J[0][4] = _X1_X2_D1_J0_4;
                 _J[1][0] = _X1_X2_D1_J1_0;
                 _J[1][1] = _X1_X2_D1_J1_1;
-                _J[1][2] = _X1_X2_D1_J1_2;
-                _J[1][3] = _X1_X2_D1_J1_3;
+                _J[1][2] = (double)0;
+                _J[1][3] = (double)0;
                 _J[1][4] = _X1_X2_D1_J1_4;
-                _J[2][0] = _X1_X2_D1_J2_0;
-                _J[2][1] = _X1_X2_D1_J2_1;
+                _J[2][0] = (double)0;
+                _J[2][1] = (double)0;
                 _J[2][2] = _X1_X2_D1_J2_2;
                 _J[2][3] = _X1_X2_D1_J2_3;
                 _J[2][4] = _X1_X2_D1_J2_4;
@@ -699,7 +694,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 _J[3][1] = _X1_X2_D1_J3_1;
                 _J[3][2] = _X1_X2_D1_J3_2;
                 _J[3][3] = _X1_X2_D1_J3_3;
-                _J[3][4] = _X1_X2_D1_J3_4;
+                _J[3][4] = (double)0;
                 _J[4][0] = _X1_X2_D1_J4_0;
                 _J[4][1] = _X1_X2_D1_J4_1;
                 _J[4][2] = _X1_X2_D1_J4_2;

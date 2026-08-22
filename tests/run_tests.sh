@@ -30,6 +30,7 @@ test eq73
 # simple nonlinear
 test diode_circuit
 test diode_clipper
+test asym_diode_clipper
 test common_emitter
 test common_emitter_pnp
 test common_drain

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version de49196.
+// Auto-generated with netlist_codegen version d0fcc0c.
 // Command: netlist_codegen common_cathode.net common_cathode_c.h -opt_port_matrix -lang c -type_name double
 
 #pragma once

@@ -908,7 +908,9 @@ emit_port_solve_block :: (cluster: Nonlinear_Cluster, backend: Backend) -> strin
     print_to_builder(*inner, "\n%1 _J[%2][%2];\n", backend.type_name, k);
     for j : 0..k-1 {
         for n : 0..k-1 {
-            print_to_builder(*inner, "_J[%1][%2] = %3;\n", j, n, pf.j_names[j*k + n]);
+            name := pf.j_names[j*k + n];
+            if name.count > 0  print_to_builder(*inner, "_J[%1][%2] = %3;\n", j, n, name);
+            else               print_to_builder(*inner, "_J[%1][%2] = (%3)0;\n", j, n, backend.type_name);
         }
     }
 

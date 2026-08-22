@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version de49196.
+// Auto-generated with netlist_codegen version d0fcc0c.
 // Command: netlist_codegen common_drain.net common_drain.h -opt_port_matrix -type_name double
 
 #pragma once
