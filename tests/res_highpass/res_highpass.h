@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version d0fcc0c.
+// Auto-generated with netlist_codegen version ac50416.
 // Command: netlist_codegen res_highpass.net res_highpass.h -opt_port_matrix
 
 #pragma once

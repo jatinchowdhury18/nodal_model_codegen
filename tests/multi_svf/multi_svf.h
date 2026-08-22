@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version d0fcc0c.
+// Auto-generated with netlist_codegen version ac50416.
 // Command: netlist_codegen multi_svf.net multi_svf.h -opt_port_matrix
 
 #pragma once

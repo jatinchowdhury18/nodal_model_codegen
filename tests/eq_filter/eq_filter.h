@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version d0fcc0c.
+// Auto-generated with netlist_codegen version ac50416.
 // Command: netlist_codegen eq_filter.net eq_filter.h -opt_port_matrix -namespace nodal::eq_filter
 
 #pragma once

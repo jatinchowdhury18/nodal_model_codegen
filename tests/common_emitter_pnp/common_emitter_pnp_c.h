@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version d0fcc0c.
+// Auto-generated with netlist_codegen version ac50416.
 // Command: netlist_codegen common_emitter_pnp.net common_emitter_pnp_c.h -opt_port_matrix -lang c -type_name double
 
 #pragma once

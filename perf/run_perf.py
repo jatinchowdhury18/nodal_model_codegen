@@ -57,6 +57,7 @@ def generate_header(case):
     cmd = [CODEGEN_EXE, net_path, header_path,
            "-type_name", case["dtype"], "-namespace", case["name"]]
     cmd += ["-cpu", "m1"] # @TODO: make this a parameter
+    cmd += ["-opt_port_matrix"]
     # Per-case extra codegen flags (see cases.py), so flag-gated variants are
     # measured reproducibly instead of by hand-generating into perf/generated/.
     cmd += case.get("extra_args", [])

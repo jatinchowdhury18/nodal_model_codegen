@@ -1488,10 +1488,57 @@ classify_expr_for_basis :: (e: Expr_ID, exprs: [] Expr,
     return .{false, true};
 }
 
+// differentiate()'s POW case always builds a fractional power's derivative
+// as POW(base, base_exponent - 1), reusing the same base Expr_ID. So
+// wherever POW(H, gamma) and POW(H, gamma-1) both occur, rewrite the
+// value to MUL(POW(H, gamma-1), H) so the pair shares one pow() call.
+reduce_pow_pairs :: (gen_var_ids: [] Expr_ID, pool: *Expr_Pool) {
+    pow_ids: [..] Expr_ID;
+    visited: Table(Expr_ID, bool);
+    for id : gen_var_ids  collect_pow_nodes(id, pool, *visited, *pow_ids);
+    deinit(*visited);
+
+    for i : pow_ids {
+        pi := pool.exprs[i];
+        if pi.kind != .POW  continue;
+        e := pool.exprs[pi.right]; // this POW's exponent
+        if e.kind != .SUB  continue;
+        c := pool.exprs[e.right];
+        if c.kind != .CONST || c.value != 1  continue; // needs exponent = (something) - 1
+
+        // Find the sibling POW(base, e.left): the value this is the derivative of.
+        for j : pow_ids {
+            if j == i  continue;
+            pj := pool.exprs[j];
+            if pj.kind != .POW || pj.left != pi.left || pj.right != e.left  continue;
+            pool.exprs[j] = Expr.{ kind = .MUL, left = i, right = pi.left };
+            break;
+        }
+    }
+    array_free(pow_ids);
+}
+
+collect_pow_nodes :: (e: Expr_ID, pool: *Expr_Pool, visited: *Table(Expr_ID, bool), pow_ids: *[..] Expr_ID) {
+    ex := pool.exprs[e];
+    if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return;
+    found, _ := table_find(visited, e);
+    if found  return;
+    table_add(visited, e, true);
+
+    if is_unary(ex.kind) {
+        collect_pow_nodes(ex.left, pool, visited, pow_ids);
+    } else {
+        collect_pow_nodes(ex.left,  pool, visited, pow_ids);
+        collect_pow_nodes(ex.right, pool, visited, pow_ids);
+    }
+    if ex.kind == .POW  array_add(pow_ids, e);
+}
+
 // `prefix` names the generated temps ("_t0", "_t1", ... by default). Pass a
 // distinct prefix if you're emitting more than one cse()'d block into the
 // same C/C++ scope, or their temp names will collide.
 cse :: (gen_var_ids: [] Expr_ID, pool: *Expr_Pool, prefix: string = "_t") -> [..] CSE_Var {
+    reduce_pow_pairs(gen_var_ids, pool);
     cse_vars: [..] CSE_Var;
     counter: int = 0;
     MAX_PASSES :: 20;
