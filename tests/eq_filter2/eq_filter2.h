@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen eq_filter2.net eq_filter2.h -opt_port_matrix -type_name double
 
 #pragma once
 

@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen common_emitter.net common_emitter_c.h -lang c
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen common_emitter.net common_emitter_c.h -opt_port_matrix -lang c
 
 #pragma once
 
@@ -42,13 +42,6 @@ static float limit_junction_voltage(float v_new, float v_old, float vt, float vc
             v_new = arg > 0 ? v_old + vt * math_log_approx(arg) : vcrit;
         } else {
             v_new = vt * math_log_approx(v_new / vt);
-        }
-    } else if (v_new < -vcrit && fabsf(v_new - v_old) > 2 * vt) {
-        if (v_old < 0) {
-            float arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
-        } else {
-            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -122,6 +115,56 @@ static void compute (const float* const* input, float** output, int num_channels
     const float _t15 = (gR1 * VCC);
     const float _t16 = (1.0f / ((gC1 + gR1) + gR2));
     const float _t17 = (VCC * (_t0 * (_t8 * _t11)));
+    const float _Q1_zt1 = (gC1 + gR1);
+    const float _Q1_zt2 = (gRE * 2048.0f);
+    const float _Q1_zt5 = (gC2 + gRL);
+    const float _Q1_zt6 = (gC2 * 128.0f);
+    const float _Q1_zt8 = (-1.0f);
+    const float _Q1_zt10 = (1.0f / gRE);
+    const float _Q1_zt0 = (_Q1_zt1 + gR2);
+    const float _Q1_zt4 = (_Q1_zt5 * 128.0f);
+    const float _Q1_zt7 = (_Q1_zt8 / _Q1_zt0);
+    const float _Q1_zt9 = (-_Q1_zt10);
+    const float _Q1_zt3 = ((262144.0f * gRE) * ((((gRC + gC2) * 128.0f) * _Q1_zt4) - (_Q1_zt6 * _Q1_zt6)));
+    const float _Q1_Z0_0 = _Q1_zt7;
+    const float _Q1_Z0_1 = ((128.0f * (_Q1_zt2 * (_Q1_zt4 * (128.0f * 1.0f)))) / _Q1_zt3);
+    const float _Q1_Z1_0 = (_Q1_zt7 + _Q1_zt9);
+    const float _Q1_Z1_1 = _Q1_zt9;
+    float c0__Q1_voc0;
+    float c__Q1_voc0[3];
+    float c0__Q1_zt13;
+    float c__Q1_zt13[3];
+    float c0__Q1_voc1;
+    float c__Q1_voc1[3];
+    float c0__Q1_zt14;
+    float c__Q1_zt14[3];
+    
+    for (int _k = 0; _k <= 3; ++_k)
+    {
+        const float vi = (_k == 1) ? 1.0f : 0.0f;
+        const float zC1 = (_k == 2) ? 1.0f : 0.0f;
+        const float zC2 = (_k == 3) ? 1.0f : 0.0f;
+        const float _Q1_zt12 = (gC1 * vi);
+        const float _Q1_zt15 = (gR1 * VCC);
+        const float _Q1_zt16 = (_Q1_zt12 - zC1);
+        const float _Q1_zt11 = (-_Q1_zt16);
+        const float _Q1_zt14 = (_Q1_zt15 - _Q1_zt11);
+        const float _Q1_zt13 = (_Q1_zt14 / _Q1_zt0);
+        const float _Q1_voc0 = (_Q1_zt13 + ((128.0f * ((_Q1_zt2 * ((_Q1_zt4 * (128.0f * (-zC2))) + (_Q1_zt6 * (zC2 * 128.0f)))) - (VCC * (_Q1_zt2 * ((gRC * 128.0f) * _Q1_zt4))))) / _Q1_zt3));
+        const float _Q1_voc1 = _Q1_zt13;
+        if (_k == 0) {
+            c0__Q1_voc0 = _Q1_voc0;
+            c0__Q1_zt13 = _Q1_zt13;
+            c0__Q1_voc1 = _Q1_voc1;
+            c0__Q1_zt14 = _Q1_zt14;
+        } else {
+            c__Q1_voc0[_k - 1] = _Q1_voc0 - c0__Q1_voc0;
+            c__Q1_zt13[_k - 1] = _Q1_zt13 - c0__Q1_zt13;
+            c__Q1_voc1[_k - 1] = _Q1_voc1 - c0__Q1_voc1;
+            c__Q1_zt14[_k - 1] = _Q1_zt14 - c0__Q1_zt14;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         float zC1 = state[ch].zC1;
@@ -132,65 +175,45 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const float vi = input[ch][n];
 
-            // --- Newton-Raphson solve: Q1
-            const float _Q1_t1 = (gR1 * VCC);
-            const float _Q1_t4 = (gC1 * vi);
-            const float _Q1_t5 = (gC1 + gR1);
-            const float _Q1_t9 = (gC2 + gRL);
-            const float _Q1_t10 = (gRE * 2048.0f);
-            const float _Q1_t11 = (_Q1_t9 * 128.0f);
-            const float _Q1_t13 = (gC2 * 128.0f);
-            const float _Q1_t16 = (1.0f / (Q2N5089_vt * Q2N5089_BetaF));
-            const float _Q1_t17 = (1.0f / (_Q1_t5 + gR2));
-            const float _Q1_t22 = (16384.0f * Q2N5089_Is);
-            const float _Q1_t33 = (_Q1_t4 - zC1);
-            const float _Q1_t45 = (1.0f / (Q2N5089_vt * Q2N5089_BetaR));
-            const float _Q1_t12 = ((((gRC + gC2) * 128.0f) * _Q1_t11) - (_Q1_t13 * _Q1_t13));
-            const float _Q1_t48 = (_Q1_t13 * (zC2 * 128.0f));
-            const float _Q1_t49 = (VCC * (_Q1_t10 * ((gRC * 128.0f) * _Q1_t11)));
-            const float _Q1_t50 = (1.0f / ((262144.0f * gRE) * _Q1_t12));
-            const float _Q1_t51 = (1.0f / _Q1_t12);
+            // --- Newton-Raphson solve (N-port): Q1
+            const float _Q1_voc0 = c0__Q1_voc0 + c__Q1_voc0[0] * vi + c__Q1_voc0[1] * zC1 + c__Q1_voc0[2] * zC2;
+            const float _Q1_zt13 = c0__Q1_zt13 + c__Q1_zt13[0] * vi + c__Q1_zt13[1] * zC1 + c__Q1_zt13[2] * zC2;
+            const float _Q1_voc1 = c0__Q1_voc1 + c__Q1_voc1[0] * vi + c__Q1_voc1[1] * zC1 + c__Q1_voc1[2] * zC2;
+            const float _Q1_zt14 = c0__Q1_zt14 + c__Q1_zt14[0] * vi + c__Q1_zt14[1] * zC1 + c__Q1_zt14[2] * zC2;
+            const float _Q1_zt12 = (gC1 * vi);
+            const float _Q1_zt15 = (gR1 * VCC);
+            const float _Q1_zt16 = (_Q1_zt12 - zC1);
+            const float _Q1_zt11 = (-_Q1_zt16);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const float _Q1_t20 = (vBEQ1 / Q2N5089_vt);
-                const float _Q1_t23 = math_exp_approx(_Q1_t20);
-                const float _Q1_t35 = (vBCQ1 / Q2N5089_vt);
-                const float _Q1_t3 = (_Q1_t23 - 1.0f);
-                const float _Q1_t8 = math_exp_approx(_Q1_t35);
-                const float _Q1_t18 = (Q2N5089_Is * _Q1_t23);
-                const float _Q1_t19 = (_Q1_t18 / Q2N5089_vt);
-                const float _Q1_t25 = (_Q1_t18 * _Q1_t16);
-                const float _Q1_t42 = (_Q1_t8 / Q2N5089_vt);
-                const float _Q1_t46 = (Q2N5089_Is * _Q1_t8);
-                const float _Q1_t2 = (_Q1_t3 / Q2N5089_BetaF);
-                const float _Q1_t6 = (_Q1_t23 - _Q1_t8);
-                const float _Q1_t7 = (_Q1_t8 - 1.0f);
-                const float _Q1_t24 = (_Q1_t25 * _Q1_t17);
-                const float _Q1_t34 = (_Q1_t7 / Q2N5089_BetaR);
-                const float _Q1_t37 = (_Q1_t6 - _Q1_t34);
-                const float _Q1_t40 = (_Q1_t46 * _Q1_t45);
-                const float _Q1_t41 = (_Q1_t42 / Q2N5089_BetaR);
-                const float _Q1_t44 = (_Q1_t40 * _Q1_t17);
-                const float _Q1_t47 = (_Q1_t42 + _Q1_t41);
-                const float _Q1_t15 = ((_Q1_t24 + (((_Q1_t19 / Q2N5089_BetaF) + _Q1_t19) / gRE)) + 1.0f);
-                const float _Q1_t21 = (((((_Q1_t22 * _Q1_t23) * _Q1_t9) / Q2N5089_vt) * _Q1_t51) - _Q1_t24);
-                const float _Q1_t32 = (_Q1_t2 + _Q1_t34);
-                const float _Q1_t36 = (Q2N5089_Is * _Q1_t37);
-                const float _Q1_t39 = ((_Q1_t44 + (((_Q1_t22 * _Q1_t47) * _Q1_t9) * _Q1_t51)) + 1.0f);
-                const float _Q1_t43 = (_Q1_t44 + ((((_Q1_t46 / Q2N5089_vt) / Q2N5089_BetaR) - (Q2N5089_Is * _Q1_t47)) / gRE));
-                const float _Q1_t31 = (Q2N5089_Is * _Q1_t32);
-                const float _Q1_t38 = ((_Q1_t39 * _Q1_t15) + (_Q1_t21 * _Q1_t43));
-                const float _Q1_t30 = (_Q1_t31 - _Q1_t33);
-                const float _Q1_t29 = (_Q1_t1 - _Q1_t30);
-                const float _Q1_t28 = (_Q1_t29 * _Q1_t17);
-                const float _Q1_t0 = (_Q1_t28 + ((128.0f * ((_Q1_t10 * ((((_Q1_t36 - zC2) * 128.0f) * _Q1_t11) + _Q1_t48)) - _Q1_t49)) * _Q1_t50));
-                const float _Q1_t14 = (vBCQ1 - _Q1_t0);
-                const float _Q1_t27 = (_Q1_t28 - ((_Q1_t31 + _Q1_t36) / gRE));
-                const float _Q1_t26 = (vBEQ1 - _Q1_t27);
-                const float res_vBCQ1 = (_Q1_t0 - vBCQ1);
-                const float delta_vBCQ1 = (-(((_Q1_t14 * _Q1_t15) + (_Q1_t21 * _Q1_t26)) / _Q1_t38));
-                const float res_vBEQ1 = (_Q1_t27 - vBEQ1);
-                const float delta_vBEQ1 = (((_Q1_t14 * _Q1_t43) - (_Q1_t39 * _Q1_t26)) / _Q1_t38);
+                const float _Q1_pt0 = (vBCQ1 / Q2N5089_vt);
+                const float _Q1_pt1 = (vBEQ1 / Q2N5089_vt);
+                const float _Q1_pt4 = math_exp_approx(_Q1_pt0);
+                const float _Q1_pt6 = (_Q1_pt4 / Q2N5089_vt);
+                const float _Q1_pt8 = math_exp_approx(_Q1_pt1);
+                const float _Q1_pt3 = (_Q1_pt4 - 1.0f);
+                const float _Q1_pt5 = (Q2N5089_Is * _Q1_pt8);
+                const float _Q1_pt7 = (_Q1_pt5 / Q2N5089_vt);
+                const float _Q1_pt2 = (_Q1_pt3 / Q2N5089_BetaR);
+                const float _Q1_i0 = (Q2N5089_Is * (((_Q1_pt8 - 1.0f) / Q2N5089_BetaF) + _Q1_pt2));
+                const float _Q1_i1 = (Q2N5089_Is * ((_Q1_pt8 - _Q1_pt4) - _Q1_pt2));
+                const float _Q1_g0_0 = (((Q2N5089_Is * _Q1_pt4) / Q2N5089_vt) / Q2N5089_BetaR);
+                const float _Q1_g0_1 = (_Q1_pt7 / Q2N5089_BetaF);
+                const float _Q1_g1_0 = (-(Q2N5089_Is * (_Q1_pt6 + (_Q1_pt6 / Q2N5089_BetaR))));
+                const float _Q1_g1_1 = _Q1_pt7;
+                const float _Q1_pt9 = ((_Q1_voc0 + (_Q1_Z0_0 * _Q1_i0)) + (_Q1_Z0_1 * _Q1_i1));
+                const float _Q1_pt10 = ((_Q1_voc1 + (_Q1_Z1_0 * _Q1_i0)) + (_Q1_Z1_1 * _Q1_i1));
+                const float _Q1_pt11 = (vBCQ1 - _Q1_pt9);
+                const float _Q1_pt12 = (((_Q1_Z1_0 * _Q1_g0_1) + (_Q1_Z1_1 * _Q1_g1_1)) - 1.0f);
+                const float _Q1_pt13 = ((_Q1_Z0_0 * _Q1_g0_1) + (_Q1_Z0_1 * _Q1_g1_1));
+                const float _Q1_pt14 = (vBEQ1 - _Q1_pt10);
+                const float _Q1_pt16 = (((_Q1_Z0_0 * _Q1_g0_0) + (_Q1_Z0_1 * _Q1_g1_0)) - 1.0f);
+                const float _Q1_pt17 = ((_Q1_Z1_0 * _Q1_g0_0) + (_Q1_Z1_1 * _Q1_g1_0));
+                const float _Q1_pt15 = ((_Q1_pt16 * _Q1_pt12) - (_Q1_pt13 * _Q1_pt17));
+                const float res_vBCQ1 = (_Q1_pt9 - vBCQ1);
+                const float res_vBEQ1 = (_Q1_pt10 - vBEQ1);
+                const float delta_vBCQ1 = (((_Q1_pt11 * _Q1_pt12) - (_Q1_pt13 * _Q1_pt14)) / _Q1_pt15);
+                const float delta_vBEQ1 = (((_Q1_pt16 * _Q1_pt14) - (_Q1_pt11 * _Q1_pt17)) / _Q1_pt15);
             
                 float residual_norm_sq = 0.0;
                 residual_norm_sq += res_vBCQ1 * res_vBCQ1;
@@ -266,57 +289,54 @@ static float reset (Params params, State* state, int num_channels, float sample_
     float vBCQ1 = 0;
     float vBEQ1 = 0;
 
-    // --- Newton-Raphson solve: Q1
-    const float _Q1_t7 = (1.0f / 1000000000.0f);
-    const float _Q1_t12 = (gR1 + gR2);
-    const float _Q1_t15 = (1.0f / (gRE + _Q1_t7));
-    const float _Q1_t19 = (1.0f / (Q2N5089_vt * Q2N5089_BetaF));
-    const float _Q1_t24 = (gR1 * VCC);
-    const float _Q1_t35 = (1.0f / (Q2N5089_vt * Q2N5089_BetaR));
-    const float _Q1_t6 = (1.0f / (gRC + _Q1_t7));
-    const float _Q1_t11 = (1.0f / (_Q1_t12 + _Q1_t7));
-    const float _Q1_t43 = (VCC * gRC);
+    const float _Q1_zt0 = (-1.0f);
+    const float _Q1_zt2 = (gR1 + gR2);
+    const float _Q1_zt3 = (1.0f / 1000000000.0f);
+    const float _Q1_zt4 = (gRC + _Q1_zt3);
+    const float _Q1_zt6 = (gRE + _Q1_zt3);
+    const float _Q1_zt8 = (1.0f / _Q1_zt6);
+    const float _Q1_zt1 = (_Q1_zt2 + _Q1_zt3);
+    const float _Q1_zt5 = (_Q1_zt0 / _Q1_zt1);
+    const float _Q1_zt7 = (-_Q1_zt8);
+    const float _Q1_Z0_0 = _Q1_zt5;
+    const float _Q1_Z0_1 = (1.0f / _Q1_zt4);
+    const float _Q1_Z1_0 = (_Q1_zt5 + _Q1_zt7);
+    const float _Q1_Z1_1 = _Q1_zt7;
+    // --- Newton-Raphson solve (N-port): Q1
+    const float _Q1_zt9 = (gR1 * VCC);
+    const float _Q1_zt10 = (_Q1_zt9 / _Q1_zt1);
+    const float _Q1_voc0 = (_Q1_zt10 + ((-(VCC * gRC)) / _Q1_zt4));
+    const float _Q1_voc1 = _Q1_zt10;
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const float _Q1_t4 = (vBCQ1 / Q2N5089_vt);
-        const float _Q1_t14 = (vBEQ1 / Q2N5089_vt);
-        const float _Q1_t28 = math_exp_approx(_Q1_t14);
-        const float _Q1_t42 = math_exp_approx(_Q1_t4);
-        const float _Q1_t1 = (_Q1_t28 - 1.0f);
-        const float _Q1_t3 = (_Q1_t28 - _Q1_t42);
-        const float _Q1_t5 = (_Q1_t42 - 1.0f);
-        const float _Q1_t13 = (Q2N5089_Is * _Q1_t28);
-        const float _Q1_t17 = (_Q1_t13 / Q2N5089_vt);
-        const float _Q1_t27 = (_Q1_t1 / Q2N5089_BetaF);
-        const float _Q1_t29 = (_Q1_t5 / Q2N5089_BetaR);
-        const float _Q1_t30 = (_Q1_t3 - _Q1_t29);
-        const float _Q1_t34 = (Q2N5089_Is * _Q1_t42);
-        const float _Q1_t40 = (_Q1_t34 * _Q1_t35);
-        const float _Q1_t41 = (_Q1_t42 / Q2N5089_vt);
-        const float _Q1_t2 = (Q2N5089_Is * _Q1_t30);
-        const float _Q1_t10 = (_Q1_t13 * _Q1_t19);
-        const float _Q1_t18 = (_Q1_t10 * _Q1_t11);
-        const float _Q1_t25 = (_Q1_t27 + _Q1_t29);
-        const float _Q1_t26 = (Q2N5089_Is * _Q1_t25);
-        const float _Q1_t33 = (_Q1_t40 * _Q1_t11);
-        const float _Q1_t38 = (_Q1_t41 / Q2N5089_BetaR);
-        const float _Q1_t9 = ((_Q1_t18 + (((_Q1_t17 / Q2N5089_BetaF) + _Q1_t17) * _Q1_t15)) + 1.0f);
-        const float _Q1_t16 = ((_Q1_t17 * _Q1_t6) - _Q1_t18);
-        const float _Q1_t23 = (_Q1_t24 - _Q1_t26);
-        const float _Q1_t37 = (_Q1_t41 + _Q1_t38);
-        const float _Q1_t22 = (_Q1_t23 * _Q1_t11);
-        const float _Q1_t36 = (Q2N5089_Is * _Q1_t37);
-        const float _Q1_t39 = (_Q1_t33 + ((((_Q1_t34 / Q2N5089_vt) / Q2N5089_BetaR) - _Q1_t36) * _Q1_t15));
-        const float _Q1_t0 = (_Q1_t22 + ((_Q1_t2 - _Q1_t43) * _Q1_t6));
-        const float _Q1_t8 = (vBCQ1 - _Q1_t0);
-        const float _Q1_t21 = (_Q1_t22 - ((_Q1_t26 + _Q1_t2) * _Q1_t15));
-        const float _Q1_t32 = ((_Q1_t33 + (_Q1_t36 * _Q1_t6)) + 1.0f);
-        const float _Q1_t20 = (vBEQ1 - _Q1_t21);
-        const float _Q1_t31 = ((_Q1_t32 * _Q1_t9) + (_Q1_t16 * _Q1_t39));
-        const float res_vBCQ1 = (_Q1_t0 - vBCQ1);
-        const float delta_vBCQ1 = (-(((_Q1_t8 * _Q1_t9) + (_Q1_t16 * _Q1_t20)) / _Q1_t31));
-        const float res_vBEQ1 = (_Q1_t21 - vBEQ1);
-        const float delta_vBEQ1 = (((_Q1_t8 * _Q1_t39) - (_Q1_t32 * _Q1_t20)) / _Q1_t31);
+        const float _Q1_pt0 = (vBCQ1 / Q2N5089_vt);
+        const float _Q1_pt1 = (vBEQ1 / Q2N5089_vt);
+        const float _Q1_pt4 = math_exp_approx(_Q1_pt0);
+        const float _Q1_pt6 = (_Q1_pt4 / Q2N5089_vt);
+        const float _Q1_pt8 = math_exp_approx(_Q1_pt1);
+        const float _Q1_pt3 = (_Q1_pt4 - 1.0f);
+        const float _Q1_pt5 = (Q2N5089_Is * _Q1_pt8);
+        const float _Q1_pt7 = (_Q1_pt5 / Q2N5089_vt);
+        const float _Q1_pt2 = (_Q1_pt3 / Q2N5089_BetaR);
+        const float _Q1_i0 = (Q2N5089_Is * (((_Q1_pt8 - 1.0f) / Q2N5089_BetaF) + _Q1_pt2));
+        const float _Q1_i1 = (Q2N5089_Is * ((_Q1_pt8 - _Q1_pt4) - _Q1_pt2));
+        const float _Q1_g0_0 = (((Q2N5089_Is * _Q1_pt4) / Q2N5089_vt) / Q2N5089_BetaR);
+        const float _Q1_g0_1 = (_Q1_pt7 / Q2N5089_BetaF);
+        const float _Q1_g1_0 = (-(Q2N5089_Is * (_Q1_pt6 + (_Q1_pt6 / Q2N5089_BetaR))));
+        const float _Q1_g1_1 = _Q1_pt7;
+        const float _Q1_pt9 = ((_Q1_voc0 + (_Q1_Z0_0 * _Q1_i0)) + (_Q1_Z0_1 * _Q1_i1));
+        const float _Q1_pt10 = ((_Q1_voc1 + (_Q1_Z1_0 * _Q1_i0)) + (_Q1_Z1_1 * _Q1_i1));
+        const float _Q1_pt11 = (vBCQ1 - _Q1_pt9);
+        const float _Q1_pt12 = (((_Q1_Z1_0 * _Q1_g0_1) + (_Q1_Z1_1 * _Q1_g1_1)) - 1.0f);
+        const float _Q1_pt13 = ((_Q1_Z0_0 * _Q1_g0_1) + (_Q1_Z0_1 * _Q1_g1_1));
+        const float _Q1_pt14 = (vBEQ1 - _Q1_pt10);
+        const float _Q1_pt16 = (((_Q1_Z0_0 * _Q1_g0_0) + (_Q1_Z0_1 * _Q1_g1_0)) - 1.0f);
+        const float _Q1_pt17 = ((_Q1_Z1_0 * _Q1_g0_0) + (_Q1_Z1_1 * _Q1_g1_0));
+        const float _Q1_pt15 = ((_Q1_pt16 * _Q1_pt12) - (_Q1_pt13 * _Q1_pt17));
+        const float res_vBCQ1 = (_Q1_pt9 - vBCQ1);
+        const float res_vBEQ1 = (_Q1_pt10 - vBEQ1);
+        const float delta_vBCQ1 = (((_Q1_pt11 * _Q1_pt12) - (_Q1_pt13 * _Q1_pt14)) / _Q1_pt15);
+        const float delta_vBEQ1 = (((_Q1_pt16 * _Q1_pt14) - (_Q1_pt11 * _Q1_pt17)) / _Q1_pt15);
     
         float residual_norm_sq = 0.0;
         residual_norm_sq += res_vBCQ1 * res_vBCQ1;

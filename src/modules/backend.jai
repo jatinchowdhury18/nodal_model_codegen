@@ -36,10 +36,11 @@ Backend :: struct {
     cpu: CPU_Profile = CPU_PROFILE_GENERIC;  // target CPU for scheduling/extraction cost model
     enable_extraction: bool; // basis-vector linear coefficient extraction
     instrument:        bool; // emit Newton iteration/solve counters on State
+    opt_port_matrix:   bool; // N-port (Thevenin) formulation of nonlinear clusters
 }
 
 make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE_GENERIC, transcendental_approx: Transcendental_Approx = .{},
-                 enable_extraction := false, instrument := false) -> Backend {
+                 enable_extraction := false, instrument := false, opt_port_matrix := false) -> Backend {
     is_cpp := lang != "c";
     return .{
         is_cpp    = is_cpp,
@@ -50,6 +51,7 @@ make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE
         transcendental_approx = transcendental_approx,
         enable_extraction = enable_extraction,
         instrument = instrument,
+        opt_port_matrix = opt_port_matrix,
     };
 }
 

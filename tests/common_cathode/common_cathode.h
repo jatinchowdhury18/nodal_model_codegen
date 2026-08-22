@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen common_cathode.net common_cathode.h -type_name double
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen common_cathode.net common_cathode.h -opt_port_matrix -type_name double
 
 #pragma once
 
@@ -108,6 +108,57 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t12 = (gRp * (gCout * _t5));
     const auto _t13 = (1.0 / (gCin + gRg));
     const auto _t14 = (gRp * (_t8 * _t5));
+    const auto _X1_zt4 = (gCout * 1.0);
+    const auto _X1_zt10 = (gCout + gRp);
+    const auto _X1_zt12 = (gCout * gRkCk);
+    const auto _X1_zt13 = (gCin + gRg);
+    const auto _X1_zt14 = (gCout + gRL);
+    const auto _X1_zt0 = (_X1_zt14 * gRkCk);
+    const auto _X1_zt1 = (gCout * _X1_zt12);
+    const auto _X1_zt2 = (_X1_zt10 * _X1_zt0);
+    const auto _X1_zt3 = (gCout * _X1_zt4);
+    const auto _X1_zt6 = (_X1_zt14 * 1.0);
+    const auto _X1_zt11 = (_X1_zt1 - _X1_zt2);
+    const auto _X1_zt5 = (_X1_zt10 * _X1_zt6);
+    const auto _X1_zt9 = (_X1_zt3 - _X1_zt5);
+    const auto _X1_zt7 = (_X1_zt9 / _X1_zt11);
+    const auto _X1_zt8 = (-_X1_zt7);
+    const auto _X1_Z0_0 = (((_X1_zt0 * 1.0) / _X1_zt11) - _X1_zt7);
+    const auto _X1_Z0_1 = _X1_zt8;
+    const auto _X1_Z1_0 = _X1_zt8;
+    const auto _X1_Z1_1 = (-((1.0 / _X1_zt13) + _X1_zt7));
+    double c0__X1_voc0;
+    double c__X1_voc0[4];
+    double c0__X1_voc1;
+    double c__X1_voc1[4];
+    double c0__X1_zt15;
+    double c__X1_zt15[4];
+    
+    for (int _k = 0; _k <= 4; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0 : 0.0;
+        const auto zCin = (_k == 2) ? 1.0 : 0.0;
+        const auto zCout = (_k == 3) ? 1.0 : 0.0;
+        const auto zRkCk = (_k == 4) ? 1.0 : 0.0;
+        const auto _X1_zt16 = (gCout * zRkCk);
+        const auto _X1_zt18 = (gCout * _X1_zt16);
+        const auto _X1_zt20 = (_X1_zt14 * zRkCk);
+        const auto _X1_zt19 = (_X1_zt10 * _X1_zt20);
+        const auto _X1_zt17 = (_X1_zt18 - _X1_zt19);
+        const auto _X1_zt15 = (_X1_zt17 / _X1_zt11);
+        const auto _X1_voc0 = (((((_X1_zt0 * (-zCout)) + (gCout * (zCout * gRkCk))) - (gRp * (_X1_zt14 * (VCC * gRkCk)))) / _X1_zt11) - _X1_zt15);
+        const auto _X1_voc1 = (-(((-((gCin * vi) - zCin)) / _X1_zt13) + _X1_zt15));
+        if (_k == 0) {
+            c0__X1_voc0 = _X1_voc0;
+            c0__X1_voc1 = _X1_voc1;
+            c0__X1_zt15 = _X1_zt15;
+        } else {
+            c__X1_voc0[_k - 1] = _X1_voc0 - c0__X1_voc0;
+            c__X1_voc1[_k - 1] = _X1_voc1 - c0__X1_voc1;
+            c__X1_zt15[_k - 1] = _X1_zt15 - c0__X1_zt15;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zCin = state[ch].zCin;
@@ -119,89 +170,58 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            // --- Newton-Raphson solve: X1
-            const auto _X1_t6 = (gCout + gRp);
-            const auto _X1_t13 = (gCout + gRL);
-            const auto _X1_t27 = (1.0 / (gCin + gRg));
-            const auto _X1_t37 = (_12AX7_DEMPWOLF_Gamma - 1.0);
-            const auto _X1_t40 = (_12AX7_DEMPWOLF_Xi - 1.0);
-            const auto _X1_t41 = (gCout * gRkCk);
-            const auto _X1_t4 = (_X1_t13 * gRkCk);
-            const auto _X1_t21 = (gCout * _X1_t41);
-            const auto _X1_t22 = (_X1_t6 * _X1_t4);
-            const auto _X1_t5 = (1.0 / (_X1_t21 - _X1_t22));
-            const auto _X1_t71 = (_12AX7_DEMPWOLF_Gk * _12AX7_DEMPWOLF_Gamma);
-            const auto _X1_t72 = (gCout * (zCout * gRkCk));
-            const auto _X1_t73 = (gRp * (_X1_t13 * (VCC * gRkCk)));
-            const auto _X1_t74 = ((gCin * vi) - zCin);
-            const auto _X1_t75 = (_12AX7_DEMPWOLF_Gg * _12AX7_DEMPWOLF_Xi);
+            // --- Newton-Raphson solve (N-port): X1
+            const auto _X1_voc0 = c0__X1_voc0 + c__X1_voc0[0] * vi + c__X1_voc0[1] * zCin + c__X1_voc0[2] * zCout + c__X1_voc0[3] * zRkCk;
+            const auto _X1_voc1 = c0__X1_voc1 + c__X1_voc1[0] * vi + c__X1_voc1[1] * zCin + c__X1_voc1[2] * zCout + c__X1_voc1[3] * zRkCk;
+            const auto _X1_zt15 = c0__X1_zt15 + c__X1_zt15[0] * vi + c__X1_zt15[1] * zCin + c__X1_zt15[2] * zCout + c__X1_zt15[3] * zRkCk;
+            const auto _X1_zt16 = (gCout * zRkCk);
+            const auto _X1_zt18 = (gCout * _X1_zt16);
+            const auto _X1_zt20 = (_X1_zt14 * zRkCk);
+            const auto _X1_zt19 = (_X1_zt10 * _X1_zt20);
+            const auto _X1_zt17 = (_X1_zt18 - _X1_zt19);
+            const auto _X1_pt15 = (_12AX7_DEMPWOLF_Gamma - 1.0);
+            const auto _X1_pt21 = (_12AX7_DEMPWOLF_Xi - 1.0);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const auto _X1_t19 = (vPKX1 / _12AX7_DEMPWOLF_Mu);
-                const auto _X1_t26 = (_12AX7_DEMPWOLF_Cg * vGKX1);
-                const auto _X1_t39 = math_exp_approx(_X1_t26);
-                const auto _X1_t10 = (1.0 + _X1_t39);
-                const auto _X1_t18 = (_X1_t19 + vGKX1);
-                const auto _X1_t3 = (_12AX7_DEMPWOLF_Ck * _X1_t18);
-                const auto _X1_t9 = math_log_approx(_X1_t10);
-                const auto _X1_t32 = (_X1_t9 / _12AX7_DEMPWOLF_Cg);
-                const auto _X1_t56 = math_pow_approx(_X1_t32, _12AX7_DEMPWOLF_Xi);
-                const auto _X1_t2 = math_exp_approx(_X1_t3);
-                const auto _X1_t20 = (_12AX7_DEMPWOLF_Gg * _X1_t56);
-                const auto _X1_t25 = math_pow_approx(_X1_t32, _X1_t40);
-                const auto _X1_t36 = (1.0 + _X1_t2);
-                const auto _X1_t49 = (_X1_t25 * _X1_t39);
-                const auto _X1_t55 = (_X1_t20 + _12AX7_DEMPWOLF_Ig0);
-                const auto _X1_t64 = (_12AX7_DEMPWOLF_Mu * _X1_t36);
-                const auto _X1_t17 = math_log_approx(_X1_t36);
-                const auto _X1_t33 = (_12AX7_DEMPWOLF_Xi * _X1_t49);
-                const auto _X1_t48 = (_12AX7_DEMPWOLF_Gg * _X1_t33);
-                const auto _X1_t16 = (_X1_t17 / _12AX7_DEMPWOLF_Ck);
-                const auto _X1_t35 = math_pow_approx(_X1_t16, _X1_t37);
-                const auto _X1_t38 = (_X1_t48 / _X1_t10);
-                const auto _X1_t15 = math_pow_approx(_X1_t16, _12AX7_DEMPWOLF_Gamma);
-                const auto _X1_t31 = (_X1_t35 * _X1_t2);
-                const auto _X1_t54 = (_12AX7_DEMPWOLF_Gk * _X1_t15);
-                const auto _X1_t69 = (_12AX7_DEMPWOLF_Gamma * _X1_t31);
-                const auto _X1_t1 = (_X1_t54 - _X1_t55);
-                const auto _X1_t14 = (zRkCk + _X1_t1);
-                const auto _X1_t68 = (_12AX7_DEMPWOLF_Gk * _X1_t69);
-                const auto _X1_t8 = (_X1_t14 + _X1_t55);
-                const auto _X1_t12 = (_X1_t13 * _X1_t8);
-                const auto _X1_t34 = (_X1_t68 / _X1_t36);
-                const auto _X1_t61 = (gCout * _X1_t68);
-                const auto _X1_t62 = (_X1_t13 * _X1_t68);
-                const auto _X1_t65 = (gCout * _X1_t61);
-                const auto _X1_t67 = (_X1_t6 * _X1_t62);
-                const auto _X1_t7 = (gCout * _X1_t8);
-                const auto _X1_t11 = (_X1_t6 * _X1_t12);
-                const auto _X1_t30 = (_X1_t34 - _X1_t38);
-                const auto _X1_t47 = (_X1_t30 + _X1_t38);
-                const auto _X1_t53 = (gCout * _X1_t7);
-                const auto _X1_t60 = (_X1_t65 / _X1_t64);
-                const auto _X1_t66 = (_X1_t67 / _X1_t64);
-                const auto _X1_t29 = (gCout * _X1_t47);
-                const auto _X1_t44 = (gCout * _X1_t29);
-                const auto _X1_t46 = (_X1_t13 * _X1_t47);
-                const auto _X1_t52 = (_X1_t53 - _X1_t11);
-                const auto _X1_t59 = (_X1_t60 - _X1_t66);
-                const auto _X1_t45 = (_X1_t6 * _X1_t46);
-                const auto _X1_t51 = (_X1_t52 * _X1_t5);
-                const auto _X1_t58 = (_X1_t59 * _X1_t5);
-                const auto _X1_t63 = ((((((((_X1_t71 * _X1_t35) * _X1_t2) * _X1_t13) * gRkCk) / _X1_t64) * _X1_t5) - _X1_t58) - 1.0);
-                const auto _X1_t0 = ((((((_X1_t1 - zCout) * _X1_t4) + _X1_t72) - _X1_t73) * _X1_t5) - _X1_t51);
-                const auto _X1_t23 = (vPKX1 - _X1_t0);
-                const auto _X1_t28 = (_X1_t44 - _X1_t45);
-                const auto _X1_t43 = (_X1_t28 * _X1_t5);
-                const auto _X1_t50 = (((_X1_t55 - _X1_t74) * _X1_t27) + _X1_t51);
-                const auto _X1_t70 = (_X1_t50 + vGKX1);
-                const auto _X1_t24 = ((((((_X1_t75 * _X1_t25) * _X1_t39) / _X1_t10) * _X1_t27) + _X1_t43) + 1.0);
-                const auto _X1_t42 = ((((_X1_t30 * _X1_t13) * gRkCk) * _X1_t5) - _X1_t43);
-                const auto _X1_t57 = ((_X1_t42 * _X1_t58) - (_X1_t63 * _X1_t24));
-                const auto res_vPKX1 = (_X1_t0 - vPKX1);
-                const auto delta_vPKX1 = (-(((_X1_t23 * _X1_t24) + (_X1_t42 * _X1_t70)) / _X1_t57));
-                const auto res_vGKX1 = (-_X1_t70);
-                const auto delta_vGKX1 = (((_X1_t63 * _X1_t70) + (_X1_t23 * _X1_t58)) / _X1_t57);
+                const auto _X1_pt2 = math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1)));
+                const auto _X1_pt5 = (_12AX7_DEMPWOLF_Cg * vGKX1);
+                const auto _X1_pt10 = math_exp_approx(_X1_pt5);
+                const auto _X1_pt1 = (1.0 + _X1_pt2);
+                const auto _X1_pt9 = (1.0 + _X1_pt10);
+                const auto _X1_pt0 = (math_log_approx(_X1_pt1) / _12AX7_DEMPWOLF_Ck);
+                const auto _X1_pt8 = math_log_approx(_X1_pt9);
+                const auto _X1_pt14 = math_pow_approx(_X1_pt0, _X1_pt15);
+                const auto _X1_pt4 = (_X1_pt8 / _12AX7_DEMPWOLF_Cg);
+                const auto _X1_pt12 = (_X1_pt14 * _X1_pt2);
+                const auto _X1_pt13 = (_12AX7_DEMPWOLF_Gamma * _X1_pt12);
+                const auto _X1_pt20 = math_pow_approx(_X1_pt4, _X1_pt21);
+                const auto _X1_pt3 = math_pow_approx(_X1_pt4, _12AX7_DEMPWOLF_Xi);
+                const auto _X1_pt7 = (_12AX7_DEMPWOLF_Gg * _X1_pt3);
+                const auto _X1_pt11 = (_12AX7_DEMPWOLF_Gk * _X1_pt13);
+                const auto _X1_pt19 = (_X1_pt20 * _X1_pt10);
+                const auto _X1_pt6 = (_X1_pt7 + _12AX7_DEMPWOLF_Ig0);
+                const auto _X1_pt17 = (_12AX7_DEMPWOLF_Xi * _X1_pt19);
+                const auto _X1_pt16 = (_12AX7_DEMPWOLF_Gg * _X1_pt17);
+                const auto _X1_pt18 = (_X1_pt16 / _X1_pt9);
+                const auto _X1_i0 = ((_12AX7_DEMPWOLF_Gk * math_pow_approx(_X1_pt0, _12AX7_DEMPWOLF_Gamma)) - _X1_pt6);
+                const auto _X1_i1 = _X1_pt6;
+                const auto _X1_g0_0 = (_X1_pt11 / (_12AX7_DEMPWOLF_Mu * _X1_pt1));
+                const auto _X1_g0_1 = ((_X1_pt11 / _X1_pt1) - _X1_pt18);
+                const auto _X1_g1_0 = 0.0;
+                const auto _X1_g1_1 = _X1_pt18;
+                const auto _X1_pt22 = ((_X1_voc0 + (_X1_Z0_0 * _X1_i0)) + (_X1_Z0_1 * _X1_i1));
+                const auto _X1_pt23 = ((_X1_voc1 + (_X1_Z1_0 * _X1_i0)) + (_X1_Z1_1 * _X1_i1));
+                const auto _X1_pt24 = (vPKX1 - _X1_pt22);
+                const auto _X1_pt25 = (((_X1_Z1_0 * _X1_g0_1) + (_X1_Z1_1 * _X1_g1_1)) - 1.0);
+                const auto _X1_pt26 = ((_X1_Z0_0 * _X1_g0_1) + (_X1_Z0_1 * _X1_g1_1));
+                const auto _X1_pt27 = (vGKX1 - _X1_pt23);
+                const auto _X1_pt29 = (((_X1_Z0_0 * _X1_g0_0) + (_X1_Z0_1 * _X1_g1_0)) - 1.0);
+                const auto _X1_pt30 = ((_X1_Z1_0 * _X1_g0_0) + (_X1_Z1_1 * _X1_g1_0));
+                const auto _X1_pt28 = ((_X1_pt29 * _X1_pt25) - (_X1_pt26 * _X1_pt30));
+                const auto res_vPKX1 = (_X1_pt22 - vPKX1);
+                const auto res_vGKX1 = (_X1_pt23 - vGKX1);
+                const auto delta_vPKX1 = (((_X1_pt24 * _X1_pt25) - (_X1_pt26 * _X1_pt27)) / _X1_pt28);
+                const auto delta_vGKX1 = (((_X1_pt29 * _X1_pt27) - (_X1_pt24 * _X1_pt30)) / _X1_pt28);
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vPKX1 * res_vPKX1;
@@ -284,69 +304,61 @@ static float reset (Params params, State* state, int num_channels, float sample_
     double vPKX1 = 0;
     double vGKX1 = 0;
 
-    // --- Newton-Raphson solve: X1
-    const auto _X1_t15 = (1.0 / 1000000000.0);
-    const auto _X1_t21 = (_12AX7_DEMPWOLF_Xi - 1.0);
-    const auto _X1_t26 = (1.0 / (gRg + _X1_t15));
-    const auto _X1_t33 = (1.0 / Rk);
-    const auto _X1_t41 = (_12AX7_DEMPWOLF_Gamma - 1.0);
-    const auto _X1_t48 = (_12AX7_DEMPWOLF_Gk * _12AX7_DEMPWOLF_Gamma);
-    const auto _X1_t2 = (1.0 / (gRp + _X1_t15));
-    const auto _X1_t14 = (1.0 / (_X1_t33 + _X1_t15));
-    const auto _X1_t54 = (gRp * VCC);
-    const auto _X1_t55 = (_12AX7_DEMPWOLF_Gg * _12AX7_DEMPWOLF_Xi);
+    const auto _X1_zt1 = (1.0 / 1000000000.0);
+    const auto _X1_zt2 = (1.0 / Rk);
+    const auto _X1_zt3 = (_X1_zt2 + _X1_zt1);
+    const auto _X1_zt5 = (1.0 / _X1_zt3);
+    const auto _X1_zt0 = (gRp + _X1_zt1);
+    const auto _X1_zt4 = (-_X1_zt5);
+    const auto _X1_Z0_0 = ((-(1.0 / _X1_zt0)) + _X1_zt4);
+    const auto _X1_Z0_1 = _X1_zt4;
+    const auto _X1_Z1_0 = _X1_zt4;
+    const auto _X1_Z1_1 = (_X1_zt4 + (-(1.0 / (gRg + _X1_zt1))));
+    // --- Newton-Raphson solve (N-port): X1
+    const auto _X1_voc0 = (-((-(gRp * VCC)) / _X1_zt0));
+    const auto _X1_pt15 = (_12AX7_DEMPWOLF_Gamma - 1.0);
+    const auto _X1_pt18 = (_12AX7_DEMPWOLF_Xi - 1.0);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _X1_t9 = (vPKX1 / _12AX7_DEMPWOLF_Mu);
-        const auto _X1_t30 = (_X1_t9 + vGKX1);
-        const auto _X1_t31 = (_12AX7_DEMPWOLF_Cg * vGKX1);
-        const auto _X1_t32 = math_exp_approx(_X1_t31);
-        const auto _X1_t8 = (_12AX7_DEMPWOLF_Ck * _X1_t30);
-        const auto _X1_t12 = (1.0 + _X1_t32);
-        const auto _X1_t1 = math_exp_approx(_X1_t8);
-        const auto _X1_t7 = (1.0 + _X1_t1);
-        const auto _X1_t11 = math_log_approx(_X1_t12);
-        const auto _X1_t50 = (_12AX7_DEMPWOLF_Mu * _X1_t7);
-        const auto _X1_t6 = math_log_approx(_X1_t7);
-        const auto _X1_t10 = (_X1_t11 / _12AX7_DEMPWOLF_Cg);
-        const auto _X1_t25 = math_pow_approx(_X1_t10, _12AX7_DEMPWOLF_Xi);
-        const auto _X1_t36 = math_pow_approx(_X1_t10, _X1_t21);
-        const auto _X1_t42 = (_X1_t36 * _X1_t32);
-        const auto _X1_t5 = (_X1_t6 / _12AX7_DEMPWOLF_Ck);
-        const auto _X1_t20 = (_12AX7_DEMPWOLF_Xi * _X1_t42);
-        const auto _X1_t24 = (_12AX7_DEMPWOLF_Gg * _X1_t25);
-        const auto _X1_t29 = math_pow_approx(_X1_t5, _12AX7_DEMPWOLF_Gamma);
-        const auto _X1_t44 = (_12AX7_DEMPWOLF_Gg * _X1_t20);
-        const auto _X1_t49 = math_pow_approx(_X1_t5, _X1_t41);
-        const auto _X1_t53 = (_X1_t48 * _X1_t49);
-        const auto _X1_t13 = (_X1_t24 + _12AX7_DEMPWOLF_Ig0);
-        const auto _X1_t18 = (_X1_t49 * _X1_t1);
-        const auto _X1_t28 = (_12AX7_DEMPWOLF_Gk * _X1_t29);
-        const auto _X1_t40 = (_12AX7_DEMPWOLF_Gamma * _X1_t18);
-        const auto _X1_t43 = (_X1_t44 / _X1_t12);
-        const auto _X1_t52 = (_X1_t53 * _X1_t1);
-        const auto _X1_t4 = (_X1_t28 - _X1_t13);
-        const auto _X1_t39 = (_12AX7_DEMPWOLF_Gk * _X1_t40);
-        const auto _X1_t47 = (_X1_t52 / _X1_t50);
-        const auto _X1_t51 = (_X1_t47 * _X1_t14);
-        const auto _X1_t3 = (_X1_t4 + _X1_t13);
-        const auto _X1_t27 = (_X1_t3 * _X1_t14);
-        const auto _X1_t38 = (_X1_t39 / _X1_t7);
-        const auto _X1_t46 = (((_X1_t47 * _X1_t2) + _X1_t51) + 1.0);
-        const auto _X1_t0 = (((_X1_t4 - _X1_t54) * _X1_t2) + _X1_t27);
-        const auto _X1_t17 = (_X1_t38 - _X1_t43);
-        const auto _X1_t19 = (_X1_t17 + _X1_t43);
-        const auto _X1_t23 = ((_X1_t13 * _X1_t26) + _X1_t27);
-        const auto _X1_t34 = (_X1_t0 + vPKX1);
-        const auto _X1_t37 = (_X1_t19 * _X1_t14);
-        const auto _X1_t16 = ((_X1_t17 * _X1_t2) + _X1_t37);
-        const auto _X1_t22 = (_X1_t23 + vGKX1);
-        const auto _X1_t35 = ((((((_X1_t55 * _X1_t36) * _X1_t32) / _X1_t12) * _X1_t26) + _X1_t37) + 1.0);
-        const auto _X1_t45 = ((_X1_t46 * _X1_t35) - (_X1_t16 * _X1_t51));
-        const auto res_vPKX1 = (-_X1_t34);
-        const auto delta_vPKX1 = (((_X1_t16 * _X1_t22) - (_X1_t34 * _X1_t35)) / _X1_t45);
-        const auto res_vGKX1 = (-_X1_t22);
-        const auto delta_vGKX1 = (((_X1_t34 * _X1_t51) - (_X1_t46 * _X1_t22)) / _X1_t45);
+        const auto _X1_pt2 = math_exp_approx((_12AX7_DEMPWOLF_Ck * ((vPKX1 / _12AX7_DEMPWOLF_Mu) + vGKX1)));
+        const auto _X1_pt10 = (_12AX7_DEMPWOLF_Cg * vGKX1);
+        const auto _X1_pt1 = (1.0 + _X1_pt2);
+        const auto _X1_pt6 = math_exp_approx(_X1_pt10);
+        const auto _X1_pt9 = (1.0 + _X1_pt6);
+        const auto _X1_pt0 = (math_log_approx(_X1_pt1) / _12AX7_DEMPWOLF_Ck);
+        const auto _X1_pt8 = math_log_approx(_X1_pt9);
+        const auto _X1_pt14 = math_pow_approx(_X1_pt0, _X1_pt15);
+        const auto _X1_pt7 = (_X1_pt8 / _12AX7_DEMPWOLF_Cg);
+        const auto _X1_pt13 = (_X1_pt14 * _X1_pt2);
+        const auto _X1_pt21 = math_pow_approx(_X1_pt7, _X1_pt18);
+        const auto _X1_pt5 = math_pow_approx(_X1_pt7, _12AX7_DEMPWOLF_Xi);
+        const auto _X1_pt12 = (_12AX7_DEMPWOLF_Gamma * _X1_pt13);
+        const auto _X1_pt20 = (_X1_pt21 * _X1_pt6);
+        const auto _X1_pt4 = (_12AX7_DEMPWOLF_Gg * _X1_pt5);
+        const auto _X1_pt11 = (_12AX7_DEMPWOLF_Gk * _X1_pt12);
+        const auto _X1_pt17 = (_12AX7_DEMPWOLF_Xi * _X1_pt20);
+        const auto _X1_pt19 = (_12AX7_DEMPWOLF_Gg * _X1_pt17);
+        const auto _X1_pt3 = (_X1_pt4 + _12AX7_DEMPWOLF_Ig0);
+        const auto _X1_pt16 = (_X1_pt19 / _X1_pt9);
+        const auto _X1_i0 = ((_12AX7_DEMPWOLF_Gk * math_pow_approx(_X1_pt0, _12AX7_DEMPWOLF_Gamma)) - _X1_pt3);
+        const auto _X1_i1 = _X1_pt3;
+        const auto _X1_g0_0 = (_X1_pt11 / (_12AX7_DEMPWOLF_Mu * _X1_pt1));
+        const auto _X1_g0_1 = ((_X1_pt11 / _X1_pt1) - _X1_pt16);
+        const auto _X1_g1_0 = 0.0;
+        const auto _X1_g1_1 = _X1_pt16;
+        const auto _X1_pt22 = ((_X1_voc0 + (_X1_Z0_0 * _X1_i0)) + (_X1_Z0_1 * _X1_i1));
+        const auto _X1_pt23 = ((_X1_Z1_0 * _X1_i0) + (_X1_Z1_1 * _X1_i1));
+        const auto _X1_pt24 = (vPKX1 - _X1_pt22);
+        const auto _X1_pt25 = (((_X1_Z1_0 * _X1_g0_1) + (_X1_Z1_1 * _X1_g1_1)) - 1.0);
+        const auto _X1_pt26 = ((_X1_Z0_0 * _X1_g0_1) + (_X1_Z0_1 * _X1_g1_1));
+        const auto _X1_pt27 = (vGKX1 - _X1_pt23);
+        const auto _X1_pt29 = (((_X1_Z0_0 * _X1_g0_0) + (_X1_Z0_1 * _X1_g1_0)) - 1.0);
+        const auto _X1_pt30 = ((_X1_Z1_0 * _X1_g0_0) + (_X1_Z1_1 * _X1_g1_0));
+        const auto _X1_pt28 = ((_X1_pt29 * _X1_pt25) - (_X1_pt26 * _X1_pt30));
+        const auto res_vPKX1 = (_X1_pt22 - vPKX1);
+        const auto res_vGKX1 = (_X1_pt23 - vGKX1);
+        const auto delta_vPKX1 = (((_X1_pt24 * _X1_pt25) - (_X1_pt26 * _X1_pt27)) / _X1_pt28);
+        const auto delta_vGKX1 = (((_X1_pt29 * _X1_pt27) - (_X1_pt24 * _X1_pt30)) / _X1_pt28);
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vPKX1 * res_vPKX1;

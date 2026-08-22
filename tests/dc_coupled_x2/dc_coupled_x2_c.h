@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2_c.h -lang c -type_name float
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2_c.h -opt_port_matrix -lang c -type_name float
 
 #pragma once
 
@@ -42,13 +42,6 @@ static float limit_junction_voltage(float v_new, float v_old, float vt, float vc
             v_new = arg > 0 ? v_old + vt * math_log_approx(arg) : vcrit;
         } else {
             v_new = vt * math_log_approx(v_new / vt);
-        }
-    } else if (v_new < -vcrit && fabsf(v_new - v_old) > 2 * vt) {
-        if (v_old < 0) {
-            float arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
-        } else {
-            v_new = -vt * math_log_approx(-v_new / vt);
         }
     }
     return v_new;
@@ -96,6 +89,23 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
     
     const float vcrit_D1N914_vt = D1N914_vt * logf(D1N914_vt / (sqrtf(2.0) * D1N914_Is));
     
+    const float _D1_zt0 = (gR1 + gR2);
+    const float _D1_Z0_0 = (-((1.0f / _D1_zt0) + (1.0f / gR3C1)));
+    float c0__D1_voc0;
+    float c__D1_voc0[2];
+    
+    for (int _k = 0; _k <= 2; ++_k)
+    {
+        const float vi = (_k == 1) ? 1.0f : 0.0f;
+        const float zR3C1 = (_k == 2) ? 1.0f : 0.0f;
+        const float _D1_voc0 = (-((((-(gR1 * vi)) - (gR2 * Vbias)) / _D1_zt0) + (zR3C1 / gR3C1)));
+        if (_k == 0) {
+            c0__D1_voc0 = _D1_voc0;
+        } else {
+            c__D1_voc0[_k - 1] = _D1_voc0 - c0__D1_voc0;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         float zR3C1 = state[ch].zR3C1;
@@ -104,22 +114,17 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
         {
             const float vi = input[ch][n];
 
-            // --- Newton-Raphson solve: D1
-            const float _D1_t3 = (1.0f / (gR1 + gR2));
-            const float _D1_t9 = (gR1 * vi);
-            const float _D1_t10 = (gR2 * Vbias);
+            // --- Newton-Raphson solve (N-port): D1
+            const float _D1_voc0 = c0__D1_voc0 + c__D1_voc0[0] * vi + c__D1_voc0[1] * zR3C1;
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const float _D1_t2 = (vD1 / D1N914_vt);
-                const float _D1_t8 = math_exp_approx(_D1_t2);
-                const float _D1_t1 = (_D1_t8 - 1.0f);
-                const float _D1_t4 = (D1N914_Is * _D1_t1);
-                const float _D1_t6 = (D1N914_Is * _D1_t8);
-                const float _D1_t7 = (_D1_t6 / D1N914_vt);
-                const float _D1_t0 = ((((_D1_t4 - _D1_t9) - _D1_t10) * _D1_t3) + ((zR3C1 + _D1_t4) / gR3C1));
-                const float _D1_t5 = (_D1_t0 + vD1);
-                const float res_vD1 = (-_D1_t5);
-                const float delta_vD1 = (-(_D1_t5 / (((_D1_t7 * _D1_t3) + (_D1_t7 / gR3C1)) + 1.0f)));
+                const float _D1_pt1 = (vD1 / D1N914_vt);
+                const float _D1_pt0 = math_exp_approx(_D1_pt1);
+                const float _D1_i0 = (D1N914_Is * (_D1_pt0 - 1.0f));
+                const float _D1_g0_0 = ((D1N914_Is * _D1_pt0) / D1N914_vt);
+                const float _D1_pt2 = (_D1_voc0 + (_D1_Z0_0 * _D1_i0));
+                const float res_vD1 = (_D1_pt2 - vD1);
+                const float delta_vD1 = ((vD1 - _D1_pt2) / ((_D1_Z0_0 * _D1_g0_0) - 1.0f));
             
                 float residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD1 * res_vD1;
@@ -172,21 +177,19 @@ static float reset_stage1 (Params_stage1 params, State_stage1* state, int num_ch
 
     float vD1 = 0;
 
-    // --- Newton-Raphson solve: D1
-    const float _D1_t2 = (1.0f / ((gR1 + gR2) + (1.0f / 1000000000.0f)));
-    const float _D1_t8 = (gR1 * vi);
-    const float _D1_t9 = ((gR2 * Vbias) / R3);
+    const float _D1_zt0 = ((gR1 + gR2) + (1.0f / 1000000000.0f));
+    const float _D1_Z0_0 = ((-((R3 * (1.0f / R3)) / _D1_zt0)) + (-(R3 * 1.0f)));
+    // --- Newton-Raphson solve (N-port): D1
+    const float _D1_voc0 = (-((R3 * (((-(gR1 * vi)) / R3) - ((gR2 * Vbias) / R3))) / _D1_zt0));
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const float _D1_t5 = (vD1 / D1N914_vt);
-        const float _D1_t4 = math_exp_approx(_D1_t5);
-        const float _D1_t7 = (D1N914_Is * _D1_t4);
-        const float _D1_t3 = (_D1_t4 - 1.0f);
-        const float _D1_t1 = (D1N914_Is * _D1_t3);
-        const float _D1_t0 = ((((((_D1_t1 - _D1_t8) / R3) - _D1_t9) * R3) * _D1_t2) + (_D1_t1 * R3));
-        const float _D1_t6 = (_D1_t0 + vD1);
-        const float res_vD1 = (-_D1_t6);
-        const float delta_vD1 = (-(_D1_t6 / ((((_D1_t7 / D1N914_vt) * _D1_t2) + ((_D1_t7 * R3) / D1N914_vt)) + 1.0f)));
+        const float _D1_pt1 = (vD1 / D1N914_vt);
+        const float _D1_pt0 = math_exp_approx(_D1_pt1);
+        const float _D1_i0 = (D1N914_Is * (_D1_pt0 - 1.0f));
+        const float _D1_g0_0 = ((D1N914_Is * _D1_pt0) / D1N914_vt);
+        const float _D1_pt2 = (_D1_voc0 + (_D1_Z0_0 * _D1_i0));
+        const float res_vD1 = (_D1_pt2 - vD1);
+        const float delta_vD1 = ((vD1 - _D1_pt2) / ((_D1_Z0_0 * _D1_g0_0) - 1.0f));
     
         float residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1 * res_vD1;
@@ -241,6 +244,22 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
     
     const float vcrit_D1N914_vt = D1N914_vt * logf(D1N914_vt / (sqrtf(2.0) * D1N914_Is));
     
+    const float _D1x_Z0_0 = (-((1.0f / gR1x) + (1.0f / gR3xC1x)));
+    float c0__D1x_voc0;
+    float c__D1x_voc0[2];
+    
+    for (int _k = 0; _k <= 2; ++_k)
+    {
+        const float vo1 = (_k == 1) ? 1.0f : 0.0f;
+        const float zR3xC1x = (_k == 2) ? 1.0f : 0.0f;
+        const float _D1x_voc0 = (-(((-(gR1x * vo1)) / gR1x) + (zR3xC1x / gR3xC1x)));
+        if (_k == 0) {
+            c0__D1x_voc0 = _D1x_voc0;
+        } else {
+            c__D1x_voc0[_k - 1] = _D1x_voc0 - c0__D1x_voc0;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         float zR3xC1x = state[ch].zR3xC1x;
@@ -249,20 +268,17 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
         {
             const float vo1 = input[ch][n];
 
-            // --- Newton-Raphson solve: D1x
-            const float _D1x_t8 = (gR1x * vo1);
+            // --- Newton-Raphson solve (N-port): D1x
+            const float _D1x_voc0 = c0__D1x_voc0 + c__D1x_voc0[0] * vo1 + c__D1x_voc0[1] * zR3xC1x;
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const float _D1x_t2 = (vD1x / D1N914_vt);
-                const float _D1x_t7 = math_exp_approx(_D1x_t2);
-                const float _D1x_t1 = (_D1x_t7 - 1.0f);
-                const float _D1x_t3 = (D1N914_Is * _D1x_t1);
-                const float _D1x_t6 = (D1N914_Is * _D1x_t7);
-                const float _D1x_t0 = (((_D1x_t3 - _D1x_t8) / gR1x) + ((zR3xC1x + _D1x_t3) / gR3xC1x));
-                const float _D1x_t4 = (_D1x_t0 + vD1x);
-                const float _D1x_t5 = (_D1x_t6 / D1N914_vt);
-                const float res_vD1x = (-_D1x_t4);
-                const float delta_vD1x = (-(_D1x_t4 / (((_D1x_t5 / gR1x) + (_D1x_t5 / gR3xC1x)) + 1.0f)));
+                const float _D1x_pt0 = (vD1x / D1N914_vt);
+                const float _D1x_pt1 = math_exp_approx(_D1x_pt0);
+                const float _D1x_i0 = (D1N914_Is * (_D1x_pt1 - 1.0f));
+                const float _D1x_g0_0 = ((D1N914_Is * _D1x_pt1) / D1N914_vt);
+                const float _D1x_pt2 = (_D1x_voc0 + (_D1x_Z0_0 * _D1x_i0));
+                const float res_vD1x = (_D1x_pt2 - vD1x);
+                const float delta_vD1x = ((vD1x - _D1x_pt2) / ((_D1x_Z0_0 * _D1x_g0_0) - 1.0f));
             
                 float residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD1x * res_vD1x;
@@ -309,23 +325,20 @@ static float reset_stage2 (Params_stage2 params, State_stage2* state, int num_ch
 
     float vD1x = 0;
 
-    // --- Newton-Raphson solve: D1x
-    const float _D1x_t3 = (1.0f / 1000000000.0f);
-    const float _D1x_t7 = (1.0f / ((1.0f / R3x) + _D1x_t3));
-    const float _D1x_t2 = (1.0f / (gR1x + _D1x_t3));
-    const float _D1x_t11 = (gR1x * vo1);
+    const float _D1x_zt1 = (1.0f / 1000000000.0f);
+    const float _D1x_zt0 = (gR1x + _D1x_zt1);
+    const float _D1x_Z0_0 = ((-(1.0f / _D1x_zt0)) + (-(1.0f / ((1.0f / R3x) + _D1x_zt1))));
+    // --- Newton-Raphson solve (N-port): D1x
+    const float _D1x_voc0 = (-((-(gR1x * vo1)) / _D1x_zt0));
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const float _D1x_t1 = (vD1x / D1N914_vt);
-        const float _D1x_t6 = math_exp_approx(_D1x_t1);
-        const float _D1x_t10 = (D1N914_Is * _D1x_t6);
-        const float _D1x_t5 = (_D1x_t6 - 1.0f);
-        const float _D1x_t9 = (_D1x_t10 / D1N914_vt);
-        const float _D1x_t4 = (D1N914_Is * _D1x_t5);
-        const float _D1x_t0 = (((_D1x_t4 - _D1x_t11) * _D1x_t2) + (_D1x_t4 * _D1x_t7));
-        const float _D1x_t8 = (_D1x_t0 + vD1x);
-        const float res_vD1x = (-_D1x_t8);
-        const float delta_vD1x = (-(_D1x_t8 / (((_D1x_t9 * _D1x_t2) + (_D1x_t9 * _D1x_t7)) + 1.0f)));
+        const float _D1x_pt0 = (vD1x / D1N914_vt);
+        const float _D1x_pt1 = math_exp_approx(_D1x_pt0);
+        const float _D1x_i0 = (D1N914_Is * (_D1x_pt1 - 1.0f));
+        const float _D1x_g0_0 = ((D1N914_Is * _D1x_pt1) / D1N914_vt);
+        const float _D1x_pt2 = (_D1x_voc0 + (_D1x_Z0_0 * _D1x_i0));
+        const float res_vD1x = (_D1x_pt2 - vD1x);
+        const float delta_vD1x = ((vD1x - _D1x_pt2) / ((_D1x_Z0_0 * _D1x_g0_0) - 1.0f));
     
         float residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1x * res_vD1x;

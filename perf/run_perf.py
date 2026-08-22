@@ -110,12 +110,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", action="append", choices=CASE_NAMES, dest="cases",
                          help="run only this case (repeatable); default: all cases")
+    parser.add_argument("--codegen-arg", action="append", default=[], dest="codegen_args",
+                         metavar="FLAG",
+                         help="extra netlist_codegen flag applied to every case (repeatable), "
+                              "e.g. --codegen-arg -opt_port_matrix")
     parser.add_argument("--experiment", default=None,
                          help="experiment tag for perf/results/<tag>/; default: git short-hash (+'-dirty')")
     args = parser.parse_args()
 
     selected = args.cases if args.cases else CASE_NAMES
-    tag = args.experiment if args.experiment else experiment_tag_default()
+    # Fold the codegen flags into the default tag. Without this a flagged run
+    # silently overwrites the same commit's unflagged results directory.
+    tag = args.experiment
+    if not tag:
+        tag = experiment_tag_default()
+        for flag in args.codegen_args:
+            tag += "-" + flag.lstrip("-")
 
     os.makedirs(GENERATED_DIR, exist_ok=True)
     out_dir = os.path.join(SCRIPT_DIR, "results", tag)
@@ -127,8 +137,13 @@ def main():
     # run_perf.cpp #includes all of them unconditionally (avoids conditional
     # compilation for a fixed, small case list) -- only the *timing* is
     # subset-selectable via run_perf.exe's --case flag.
+    # Global flags append to whatever per-case extra_args a case already carries.
+    active = CASES
+    if args.codegen_args:
+        active = [dict(c, extra_args=list(c.get("extra_args", [])) + args.codegen_args) for c in CASES]
+
     codegen_stats = {}
-    for case in CASES:
+    for case in active:
         print(f"Generating {case['name']}...")
         codegen_stats[case["name"]] = generate_header(case)
 
@@ -158,6 +173,7 @@ def main():
         data["timestamp"] = timestamp
         data["host"] = host
         data["codegen"] = codegen_stats[name]
+        data["codegen_args"] = args.codegen_args
         with open(json_path, "w") as f:
             json.dump(data, f, indent=2)
 

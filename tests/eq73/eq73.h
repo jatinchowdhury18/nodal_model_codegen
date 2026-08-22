@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen eq73.net eq73.h -type_name float
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen eq73.net eq73.h -opt_port_matrix -type_name float
 
 #pragma once
 

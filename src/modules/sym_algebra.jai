@@ -834,7 +834,7 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
         est := estimate_min_magnitude(det_A, pool, check.magnitudes);
         if est < check.threshold {
             label_suffix := ifx check.label.count > 0 then tprint(" for \"%\"", check.label) else "";
-            log("Warning: det(A)% could plausibly underflow -- estimated worst-case minimum magnitude % is below threshold %. See sym_algebra.jai's Cramer's-rule comment for background; consider splitting the circuit (e.g. a `split_here` directive) if this shows up as actual instability.\n",
+            log("Warning: det(A)% could plausibly underflow: estimated worst-case minimum magnitude % is below threshold %. See sym_algebra.jai's Cramer's-rule comment for background; consider splitting the circuit (e.g. a `split_here` directive) if this shows up as actual instability.\n",
                 label_suffix, formatFloat(est, mode = .SCIENTIFIC), formatFloat(check.threshold, mode = .SCIENTIFIC));
         }
     }
@@ -1656,6 +1656,39 @@ collect_symbol_names_csr :: (expr_ids: [] Expr_ID, exprs: [] Expr) -> (flat: [..
 
 deps_csr_slice :: inline (flat: [] string, offsets: [] int, i: int) -> [] string {
     return array_view(flat, offsets[i], offsets[i + 1] - offsets[i]);
+}
+
+// Backward-reachable subset of `items` feeding `terminal_names`, order
+// preserved (items is already topologically sorted). Polymorphic over any
+// { name: string; expr_id: Expr_ID; ... } item type (Gen_Var, CSE_Var, ...).
+collect_region_closure :: (terminal_names: [] string, items: [] $T, exprs: [] Expr) -> [] T {
+    include: [..] bool;
+    include.allocator = temp;
+    for _ : 0..items.count-1  array_add(*include, false);
+
+    needed_set: Table(string, bool);
+    needed_set.allocator = temp;
+    for n : terminal_names  table_add(*needed_set, n, true);
+
+    changed := true;
+    while changed {
+        changed = false;
+        for item, i : items {
+            if include[i]  continue;
+            if !table_contains(*needed_set, item.name)  continue;
+
+            include[i] = true;
+            changed = true;
+            deps: [..] string;
+            deps.allocator = temp;
+            collect_symbol_names(item.expr_id, exprs, *deps);
+            for d : deps  if !table_contains(*needed_set, d)  table_add(*needed_set, d, true);
+        }
+    }
+
+    result: [..] T;
+    for item, i : items  if include[i]  array_add(*result, item);
+    return result;
 }
 
 

@@ -13,6 +13,7 @@ Args :: struct {
     opt_extract:  bool   = true;      @"?Enable basis-vector linear coefficient extraction (enabled by default)."
     stats:        bool   = false;     @"?Print netlist_codegen()'s wall time and bytes-allocated to stderr after codegen finishes."
     instrument:   bool   = false;     @"?Emit Newton solve/iteration counters (nr_solves_<cluster>, nr_iters_<cluster>) on the State struct."
+    opt_port_matrix: bool = false;    @"?Solve nonlinear clusters via their N-port (Thevenin) equivalent v = voc + Z*i, instead of substituting closed-form node voltages. Exact; see scratch/PORT_MATRIX_STEPS.md."
 }
 
 Alloc_Stats :: struct {
@@ -81,7 +82,7 @@ main :: () {
     temp_before := context.temporary_storage.total_bytes_occupied;
     start_time := seconds_since_init();
 
-    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file, cpu_profile, args.opt_extract, args.instrument);
+    gen_code := netlist_codegen(netlist_file_str, args.type_name, args.lang, args.namespace, netlist_file, cpu_profile, args.opt_extract, args.instrument, args.opt_port_matrix);
 
     elapsed_seconds := seconds_since_init() - start_time;
     context.allocator = stats.underlying;

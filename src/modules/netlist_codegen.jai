@@ -813,13 +813,13 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
         check := build_magnitude_check(elements_copy, values, backend, label);
         solutions := solve(equations, solve_vars, *pool, check);
 
-        clusters = build_nonlinear_clusters(kcl_elements, solve_vars, solutions, *pool);
+        clusters = build_nonlinear_clusters(kcl_elements, solve_vars, solutions, *pool, backend);
         for c : clusters {
             unknown_names: [..] string;
             for u : c.unknowns  array_add(*unknown_names, u.name);
             log("  Cluster \"%\": % joint unknown(s): %\n", c.name, c.unknowns.count, String.join(..unknown_names, separator = ", "));
             if c.amp_clip_idx >= 0 {
-                log("    Active-set clipping on % -- generating pinned-high/pinned-low reduced Newton systems\n", c.unknowns[c.amp_clip_idx].name);
+                log("    Active-set clipping on %, generating pinned-high/pinned-low reduced Newton systems\n", c.unknowns[c.amp_clip_idx].name);
             }
         }
 
@@ -855,12 +855,30 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     newton_worst_case := 0;
     if has_nonlinear {
         for c : clusters {
-            setup_flops := count_flops(c.invariant_items, cluster_exprs, backend.transcendental_approx);
-            iter_flops  := count_flops(c.iteration_items, cluster_exprs, backend.transcendental_approx);
-            log("  Cluster \"%\" Newton setup: %\n", c.name, flop_str(setup_flops));
-            log("  Cluster \"%\" Newton iteration: % × up to % iters\n", c.name, flop_str(iter_flops), newton_max_iter);
+            use_port  := use_port_form(c, backend);
+            setup_flops: Flop_Count;
+            if use_port {
+                setup_flops = count_flops(c.port.invariant_items, cluster_exprs, backend.transcendental_approx);
+                voc_flops  := count_flops(c.port.voc_items, cluster_exprs, backend.transcendental_approx);
+                setup_flops.muls += voc_flops.muls;
+                setup_flops.divs += voc_flops.divs;
+                setup_flops.adds += voc_flops.adds;
+                setup_flops.transcendentals += voc_flops.transcendentals;
+            } else {
+                setup_flops = count_flops(c.invariant_items, cluster_exprs, backend.transcendental_approx);
+            }
+            iter_flops  := ifx use_port
+                           then port_newton_iteration_flops(c, cluster_exprs, backend)
+                           else count_flops(c.iteration_items, cluster_exprs, backend.transcendental_approx);
+            log("  Cluster \"%1\" Newton setup: %2%3\n", c.name, flop_str(setup_flops), ifx use_port then " (N-port)" else "");
+            log("  Cluster \"%1\" Newton iteration: %2 × up to %3 iters%4\n", c.name, flop_str(iter_flops), newton_max_iter, ifx use_port then " (N-port)" else "");
+            if use_port {
+                laws := count_flops(c.port.iteration_items, cluster_exprs, backend.transcendental_approx);
+                log("    device laws: %\n", flop_str(laws));
+                log("    symbolic path: %\n", flop_str(count_flops(c.iteration_items, cluster_exprs, backend.transcendental_approx)));
+            }
             if c.invariant_items.count == 0 {
-                log("    No Newton-invariant subexpressions found -- nothing hoisted out of the per-iteration loop\n");
+                log("    No Newton-invariant subexpressions found, nothing hoisted out of the per-iteration loop\n");
             }
             newton_worst_case += flop_total(setup_flops) + newton_max_iter * flop_total(iter_flops);
         }
@@ -914,8 +932,14 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     cluster_newton_inner: [..] string;
     if has_nonlinear {
         for c : clusters {
-            c_outer, c_inner := generate_cluster_newton_code(c, cluster_exprs, backend, enable_extraction = true, basis_names = basis_names, non_basis_variant_names = branch_current_names,
-                                                             count_iterations = backend.instrument);
+            c_outer, c_inner: string;
+            if use_port_form(c, backend) {
+                c_outer, c_inner = generate_cluster_port_newton_code(c, cluster_exprs, backend, enable_extraction = true, basis_names = basis_names,
+                                                                    non_basis_variant_names = branch_current_names, count_iterations = backend.instrument);
+            } else {
+                c_outer, c_inner = generate_cluster_newton_code(c, cluster_exprs, backend, enable_extraction = true, basis_names = basis_names, non_basis_variant_names = branch_current_names,
+                                                               count_iterations = backend.instrument);
+            }
             array_add(*cluster_newton_outer, c_outer);
             array_add(*cluster_newton_inner, c_inner);
         }
@@ -1009,12 +1033,12 @@ generate_joined_unit :: (decls: [] Sub_Circuit_Decl, backend: Backend) -> string
 
 // Main entry point!
 netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "", cpu_profile: CPU_Profile = CPU_PROFILE_GENERIC,
-                    enable_extraction := false, instrument := false) -> string {
+                    enable_extraction := false, instrument := false, opt_port_matrix := false) -> string {
     // parse the netlist into our internal structure
     net := parse_netlist(netlist_str);
 
     // choose the language backend (C, C++, ...)
-    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx, enable_extraction, instrument);
+    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx, enable_extraction, instrument, opt_port_matrix);
 
     if net.outputs.count == 0 {
         log("Adding output node: vo\n");

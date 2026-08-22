@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen diode_circuit.net diode_circuit.h
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen diode_circuit.net diode_circuit.h -opt_port_matrix
 
 #pragma once
 
@@ -49,18 +49,6 @@ static float math_pow_approx(float x, float y) {
             v_new = vt * math_log_approx(v_new / vt);
         }
     }
-    else if (v_new < -vcrit && std::abs(v_new - v_old) > 2 * vt)
-    {
-        if (v_old < 0)
-        {
-            const auto arg = 1 + (v_old - v_new) / vt;
-            v_new = arg > 0 ? v_old - vt * math_log_approx(arg) : -vcrit;
-        }
-        else
-        {
-            v_new = -vt * math_log_approx(-v_new / vt);
-        }
-    }
     return v_new;
 };
 
@@ -95,6 +83,23 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto vcrit_D1N914_vt = D1N914_vt * std::log(D1N914_vt / (std::sqrt(2.0) * D1N914_Is));
     
     const auto _t0 = (1.0f / (gR1 + gC1));
+    const auto _D1_zt0 = (gR1 + gC1);
+    const auto _D1_Z0_0 = (-(1.0f / _D1_zt0));
+    float c0__D1_voc0;
+    float c__D1_voc0[2];
+    
+    for (int _k = 0; _k <= 2; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0f : 0.0f;
+        const auto zC1 = (_k == 2) ? 1.0f : 0.0f;
+        const auto _D1_voc0 = (-((-((gR1 * vi) + zC1)) / _D1_zt0));
+        if (_k == 0) {
+            c0__D1_voc0 = _D1_voc0;
+        } else {
+            c__D1_voc0[_k - 1] = _D1_voc0 - c0__D1_voc0;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC1 = state[ch].zC1;
@@ -103,17 +108,17 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            // --- Newton-Raphson solve: D1
-            const auto _D1_t2 = (1.0f / (gR1 + gC1));
-            const auto _D1_t5 = ((gR1 * vi) + zC1);
+            // --- Newton-Raphson solve (N-port): D1
+            const auto _D1_voc0 = c0__D1_voc0 + c__D1_voc0[0] * vi + c__D1_voc0[1] * zC1;
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const auto _D1_t1 = (vD1 / D1N914_vt);
-                const auto _D1_t4 = math_exp_approx(_D1_t1);
-                const auto _D1_t0 = (((D1N914_Is * (_D1_t4 - 1.0f)) - _D1_t5) * _D1_t2);
-                const auto _D1_t3 = (_D1_t0 + vD1);
-                const auto res_vD1 = (-_D1_t3);
-                const auto delta_vD1 = (-(_D1_t3 / ((((D1N914_Is * _D1_t4) / D1N914_vt) * _D1_t2) + 1.0f)));
+                const auto _D1_pt1 = (vD1 / D1N914_vt);
+                const auto _D1_pt0 = math_exp_approx(_D1_pt1);
+                const auto _D1_i0 = (D1N914_Is * (_D1_pt0 - 1.0f));
+                const auto _D1_g0_0 = ((D1N914_Is * _D1_pt0) / D1N914_vt);
+                const auto _D1_pt2 = (_D1_voc0 + (_D1_Z0_0 * _D1_i0));
+                const auto res_vD1 = (_D1_pt2 - vD1);
+                const auto delta_vD1 = ((vD1 - _D1_pt2) / ((_D1_Z0_0 * _D1_g0_0) - 1.0f));
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD1 * res_vD1;
@@ -157,17 +162,19 @@ static float reset (Params params, State* state, int num_channels, float sample_
 
     float vD1 = 0;
 
-    // --- Newton-Raphson solve: D1
-    const auto _D1_t3 = (1.0f / (gR1 + (1.0f / 1000000000.0f)));
-    const auto _D1_t5 = (gR1 * vi);
+    const auto _D1_zt0 = (gR1 + (1.0f / 1000000000.0f));
+    const auto _D1_Z0_0 = (-(1.0f / _D1_zt0));
+    // --- Newton-Raphson solve (N-port): D1
+    const auto _D1_voc0 = (-((-(gR1 * vi)) / _D1_zt0));
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _D1_t2 = (vD1 / D1N914_vt);
-        const auto _D1_t1 = math_exp_approx(_D1_t2);
-        const auto _D1_t0 = (((D1N914_Is * (_D1_t1 - 1.0f)) - _D1_t5) * _D1_t3);
-        const auto _D1_t4 = (_D1_t0 + vD1);
-        const auto res_vD1 = (-_D1_t4);
-        const auto delta_vD1 = (-(_D1_t4 / ((((D1N914_Is * _D1_t1) / D1N914_vt) * _D1_t3) + 1.0f)));
+        const auto _D1_pt1 = (vD1 / D1N914_vt);
+        const auto _D1_pt0 = math_exp_approx(_D1_pt1);
+        const auto _D1_i0 = (D1N914_Is * (_D1_pt0 - 1.0f));
+        const auto _D1_g0_0 = ((D1N914_Is * _D1_pt0) / D1N914_vt);
+        const auto _D1_pt2 = (_D1_voc0 + (_D1_Z0_0 * _D1_i0));
+        const auto res_vD1 = (_D1_pt2 - vD1);
+        const auto delta_vD1 = ((vD1 - _D1_pt2) / ((_D1_Z0_0 * _D1_g0_0) - 1.0f));
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1 * res_vD1;

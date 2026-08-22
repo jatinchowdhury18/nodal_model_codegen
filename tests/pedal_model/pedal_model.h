@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen pedal_model.net pedal_model.h -type_name double
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen pedal_model.net pedal_model.h -opt_port_matrix -type_name double
 
 #pragma once
 
@@ -35,7 +35,7 @@ static double math_pow_approx(double x, double y) {
 }
 
 
-[[maybe_unused]] static auto limit_junction_voltage = [](auto v_new, auto v_old, auto vt, auto vcrit)
+[[maybe_unused]] static auto limit_junction_voltage_sym = [](auto v_new, auto v_old, auto vt, auto vcrit)
 {
     if (v_new > vcrit && std::abs(v_new - v_old) > 2 * vt)
     {
@@ -247,6 +247,122 @@ static void compute (const float* const* input, float** output, int num_channels
         }
     }
     
+    const auto _J1_D1D2_zt4 = (gC12 + gC11);
+    const auto _J1_D1D2_zt11 = (gRfR10 * 1.0);
+    const auto _J1_D1D2_zt12 = (-_J1_D1D2_zt11);
+    const auto _J1_D1D2_zt16 = (gRfR10 * gRfR10);
+    const auto _J1_D1D2_zt23 = (gRL + gC13);
+    const auto _J1_D1D2_zt25 = (_J1_D1D2_zt4 + gRfR10);
+    const auto _J1_D1D2_zt26 = (gC12 * 1.0);
+    const auto _J1_D1D2_zt31 = (gR9C9 + gRfR10);
+    const auto _J1_D1D2_zt42 = (gC13 + gR13);
+    const auto _J1_D1D2_zt43 = (gC4 + gR6C3);
+    const auto _J1_D1D2_zt52 = (gR11 + gC12);
+    const auto _J1_D1D2_zt6 = (gC12 * _J1_D1D2_zt31);
+    const auto _J1_D1D2_zt10 = (gRdC5 * _J1_D1D2_zt12);
+    const auto _J1_D1D2_zt22 = (gRdC5 * _J1_D1D2_zt26);
+    const auto _J1_D1D2_zt24 = (_J1_D1D2_zt25 * 1.0);
+    const auto _J1_D1D2_zt30 = (_J1_D1D2_zt25 * _J1_D1D2_zt31);
+    const auto _J1_D1D2_zt34 = (_J1_D1D2_zt30 - _J1_D1D2_zt16);
+    const auto _J1_D1D2_zt0 = (gRdC5 * _J1_D1D2_zt6);
+    const auto _J1_D1D2_zt1 = (gRdC5 * _J1_D1D2_zt34);
+    const auto _J1_D1D2_zt3 = (_J1_D1D2_zt43 * _J1_D1D2_zt0);
+    const auto _J1_D1D2_zt9 = (_J1_D1D2_zt43 * _J1_D1D2_zt10);
+    const auto _J1_D1D2_zt20 = (-_J1_D1D2_zt24);
+    const auto _J1_D1D2_zt21 = (_J1_D1D2_zt43 * _J1_D1D2_zt22);
+    const auto _J1_D1D2_zt29 = (_J1_D1D2_zt43 * _J1_D1D2_zt1);
+    const auto _J1_D1D2_zt33 = (_J1_D1D2_zt42 * _J1_D1D2_zt3);
+    const auto _J1_D1D2_zt51 = (gC13 * _J1_D1D2_zt3);
+    const auto _J1_D1D2_zt8 = (_J1_D1D2_zt42 * _J1_D1D2_zt29);
+    const auto _J1_D1D2_zt14 = (gC12 * _J1_D1D2_zt51);
+    const auto _J1_D1D2_zt15 = (gC13 * _J1_D1D2_zt29);
+    const auto _J1_D1D2_zt17 = (gC12 * _J1_D1D2_zt33);
+    const auto _J1_D1D2_zt19 = (gRdC5 * _J1_D1D2_zt20);
+    const auto _J1_D1D2_zt28 = (_J1_D1D2_zt52 * _J1_D1D2_zt15);
+    const auto _J1_D1D2_zt7 = (_J1_D1D2_zt52 * _J1_D1D2_zt8);
+    const auto _J1_D1D2_zt18 = (_J1_D1D2_zt43 * _J1_D1D2_zt19);
+    const auto _J1_D1D2_zt27 = (_J1_D1D2_zt14 - _J1_D1D2_zt28);
+    const auto _J1_D1D2_zt2 = (gC13 * _J1_D1D2_zt27);
+    const auto _J1_D1D2_zt5 = (_J1_D1D2_zt17 - _J1_D1D2_zt7);
+    const auto _J1_D1D2_zt32 = (_J1_D1D2_zt23 * _J1_D1D2_zt5);
+    const auto _J1_D1D2_zt13 = (_J1_D1D2_zt2 - _J1_D1D2_zt32);
+    const auto _J1_D1D2_Z0_0 = (-((-(_J1_D1D2_zt23 * ((gC12 * (_J1_D1D2_zt3 * 1.0)) - (_J1_D1D2_zt52 * (_J1_D1D2_zt29 * 1.0))))) / _J1_D1D2_zt13));
+    const auto _J1_D1D2_Z0_1 = (((gC13 * (-(gC12 * (gC13 * _J1_D1D2_zt9)))) - (_J1_D1D2_zt23 * (-(gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt9))))) / _J1_D1D2_zt13);
+    const auto _J1_D1D2_Z1_1 = (((gC13 * (-((_J1_D1D2_zt52 * (gC13 * _J1_D1D2_zt18)) + (gC12 * (gC13 * _J1_D1D2_zt21))))) - (_J1_D1D2_zt23 * (-((_J1_D1D2_zt52 * (_J1_D1D2_zt42 * _J1_D1D2_zt18)) + (gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt21)))))) / _J1_D1D2_zt13);
+    double c0__J1_D1D2_voc1;
+    double c__J1_D1D2_voc1[10];
+    double c0__J1_D1D2_voc0;
+    double c__J1_D1D2_voc0[10];
+    double c0__J1_D1D2_zt72;
+    double c__J1_D1D2_zt72[10];
+    
+    for (int _k = 0; _k <= 10; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0 : 0.0;
+        const auto zC4 = (_k == 2) ? 1.0 : 0.0;
+        const auto zC12 = (_k == 3) ? 1.0 : 0.0;
+        const auto zR7C6 = (_k == 4) ? 1.0 : 0.0;
+        const auto zC13 = (_k == 5) ? 1.0 : 0.0;
+        const auto zR6C3 = (_k == 6) ? 1.0 : 0.0;
+        const auto zC11 = (_k == 7) ? 1.0 : 0.0;
+        const auto zR8C7 = (_k == 8) ? 1.0 : 0.0;
+        const auto zRdC5 = (_k == 9) ? 1.0 : 0.0;
+        const auto zR9C9 = (_k == 10) ? 1.0 : 0.0;
+        const auto _J1_D1D2_zt36 = (gR6C3 * vi);
+        const auto _J1_D1D2_zt38 = (gRfR10 * gR9C9);
+        const auto _J1_D1D2_zt41 = (gRfR10 * zR9C9);
+        const auto _J1_D1D2_zt57 = (zC12 + zC11);
+        const auto _J1_D1D2_zt58 = (_J1_D1D2_zt25 * zR9C9);
+        const auto _J1_D1D2_zt59 = (_J1_D1D2_zt25 * gR9C9);
+        const auto _J1_D1D2_zt69 = (gC12 * gR9C9);
+        const auto _J1_D1D2_zt71 = (gC12 * gRfR10);
+        const auto _J1_D1D2_zt77 = (zR7C6 + zR8C7);
+        const auto _J1_D1D2_zt78 = (gC12 * zR9C9);
+        const auto _J1_D1D2_zt80 = (gR7C6 + gR8C7);
+        const auto _J1_D1D2_zt35 = (_J1_D1D2_zt36 + zR6C3);
+        const auto _J1_D1D2_zt37 = (_J1_D1D2_zt80 + gRdC5);
+        const auto _J1_D1D2_zt46 = (_J1_D1D2_zt37 * _J1_D1D2_zt38);
+        const auto _J1_D1D2_zt49 = (_J1_D1D2_zt57 * _J1_D1D2_zt31);
+        const auto _J1_D1D2_zt54 = (gRdC5 * _J1_D1D2_zt71);
+        const auto _J1_D1D2_zt56 = (_J1_D1D2_zt57 * gRfR10);
+        const auto _J1_D1D2_zt61 = (zC4 + _J1_D1D2_zt35);
+        const auto _J1_D1D2_zt62 = (_J1_D1D2_zt37 * _J1_D1D2_zt59);
+        const auto _J1_D1D2_zt66 = (gRdC5 * _J1_D1D2_zt78);
+        const auto _J1_D1D2_zt68 = (_J1_D1D2_zt77 + zRdC5);
+        const auto _J1_D1D2_zt75 = (_J1_D1D2_zt56 - _J1_D1D2_zt58);
+        const auto _J1_D1D2_zt76 = (_J1_D1D2_zt68 * _J1_D1D2_zt59);
+        const auto _J1_D1D2_zt79 = (_J1_D1D2_zt37 * _J1_D1D2_zt69);
+        const auto _J1_D1D2_zt45 = (_J1_D1D2_zt61 * _J1_D1D2_zt46);
+        const auto _J1_D1D2_zt48 = (_J1_D1D2_zt49 - _J1_D1D2_zt41);
+        const auto _J1_D1D2_zt50 = (_J1_D1D2_zt68 * _J1_D1D2_zt38);
+        const auto _J1_D1D2_zt53 = (_J1_D1D2_zt43 * _J1_D1D2_zt54);
+        const auto _J1_D1D2_zt55 = (gRdC5 * _J1_D1D2_zt75);
+        const auto _J1_D1D2_zt60 = (_J1_D1D2_zt61 * _J1_D1D2_zt62);
+        const auto _J1_D1D2_zt67 = (_J1_D1D2_zt68 * _J1_D1D2_zt69);
+        const auto _J1_D1D2_zt70 = (_J1_D1D2_zt61 * _J1_D1D2_zt79);
+        const auto _J1_D1D2_zt74 = (_J1_D1D2_zt55 - _J1_D1D2_zt76);
+        const auto _J1_D1D2_zt40 = (gRdC5 * _J1_D1D2_zt48);
+        const auto _J1_D1D2_zt65 = (_J1_D1D2_zt66 + _J1_D1D2_zt67);
+        const auto _J1_D1D2_zt73 = (_J1_D1D2_zt43 * _J1_D1D2_zt74);
+        const auto _J1_D1D2_zt39 = (_J1_D1D2_zt40 - _J1_D1D2_zt50);
+        const auto _J1_D1D2_zt47 = (_J1_D1D2_zt43 * _J1_D1D2_zt39);
+        const auto _J1_D1D2_zt64 = (_J1_D1D2_zt43 * _J1_D1D2_zt65);
+        const auto _J1_D1D2_zt72 = (_J1_D1D2_zt73 + _J1_D1D2_zt60);
+        const auto _J1_D1D2_zt44 = (_J1_D1D2_zt45 + _J1_D1D2_zt47);
+        const auto _J1_D1D2_zt63 = (_J1_D1D2_zt64 - _J1_D1D2_zt70);
+        const auto _J1_D1D2_voc0 = ((((gC13 * ((zC12 * _J1_D1D2_zt15) - (gC12 * (gC13 * _J1_D1D2_zt44)))) - (_J1_D1D2_zt23 * ((zC12 * _J1_D1D2_zt8) - (gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt44))))) / _J1_D1D2_zt13) - (((zC13 * _J1_D1D2_zt27) - (_J1_D1D2_zt23 * ((gC12 * (_J1_D1D2_zt3 * zC13)) - (_J1_D1D2_zt52 * (_J1_D1D2_zt29 * zC13))))) / _J1_D1D2_zt13));
+        const auto _J1_D1D2_voc1 = (((gC13 * ((zC12 * (gC13 * _J1_D1D2_zt53)) - ((_J1_D1D2_zt52 * (gC13 * _J1_D1D2_zt72)) + (gC12 * (gC13 * _J1_D1D2_zt63))))) - (_J1_D1D2_zt23 * ((zC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt53)) - ((_J1_D1D2_zt52 * (_J1_D1D2_zt42 * _J1_D1D2_zt72)) + (gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt63)))))) / _J1_D1D2_zt13);
+        if (_k == 0) {
+            c0__J1_D1D2_voc1 = _J1_D1D2_voc1;
+            c0__J1_D1D2_voc0 = _J1_D1D2_voc0;
+            c0__J1_D1D2_zt72 = _J1_D1D2_zt72;
+        } else {
+            c__J1_D1D2_voc1[_k - 1] = _J1_D1D2_voc1 - c0__J1_D1D2_voc1;
+            c__J1_D1D2_voc0[_k - 1] = _J1_D1D2_voc0 - c0__J1_D1D2_voc0;
+            c__J1_D1D2_zt72[_k - 1] = _J1_D1D2_zt72 - c0__J1_D1D2_zt72;
+        }
+    }
+    
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto zC4 = state[ch].zC4;
@@ -264,122 +380,73 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            // --- Newton-Raphson solve: J1_D1D2
-            const auto _J1_D1D2_t4 = (gR6C3 * vi);
-            const auto _J1_D1D2_t7 = (gRL + gC13);
-            const auto _J1_D1D2_t13 = (zC12 + zC11);
-            const auto _J1_D1D2_t19 = (gRfR10 * gR9C9);
-            const auto _J1_D1D2_t22 = (gR9C9 + gRfR10);
-            const auto _J1_D1D2_t24 = (gRfR10 * gRfR10);
-            const auto _J1_D1D2_t26 = (1.0 / 1000.0);
-            const auto _J1_D1D2_t30 = (gC4 + gR6C3);
-            const auto _J1_D1D2_t37 = (gC12 * _J1_D1D2_t22);
-            const auto _J1_D1D2_t38 = (gR11 + gC12);
-            const auto _J1_D1D2_t41 = (gC13 + gR13);
-            const auto _J1_D1D2_t54 = (1.0 / D1N914_vt);
-            const auto _J1_D1D2_t69 = (gC12 * gRfR10);
-            const auto _J1_D1D2_t73 = (_J1_D1D2_t13 * gRfR10);
-            const auto _J1_D1D2_t75 = (zR7C6 + zR8C7);
-            const auto _J1_D1D2_t77 = (_J1_D1D2_t4 + zR6C3);
-            const auto _J1_D1D2_t85 = (gC12 * gR9C9);
-            const auto _J1_D1D2_t86 = (gR7C6 + gR8C7);
-            const auto _J1_D1D2_t87 = (gRdC5 * _J1_D1D2_t69);
-            const auto _J1_D1D2_t92 = (gC12 + gC11);
-            const auto _J1_D1D2_t97 = (zC4 + _J1_D1D2_t77);
-            const auto _J1_D1D2_t12 = (_J1_D1D2_t13 * _J1_D1D2_t22);
-            const auto _J1_D1D2_t18 = (_J1_D1D2_t75 + zRdC5);
-            const auto _J1_D1D2_t21 = (gRdC5 * _J1_D1D2_t37);
-            const auto _J1_D1D2_t39 = (_J1_D1D2_t92 + gRfR10);
-            const auto _J1_D1D2_t61 = (_J1_D1D2_t30 * _J1_D1D2_t21);
-            const auto _J1_D1D2_t68 = (_J1_D1D2_t30 * _J1_D1D2_t87);
-            const auto _J1_D1D2_t78 = (_J1_D1D2_t86 + gRdC5);
-            const auto _J1_D1D2_t84 = (_J1_D1D2_t18 * _J1_D1D2_t85);
-            const auto _J1_D1D2_t94 = (_J1_D1D2_t39 * gR9C9);
-            const auto _J1_D1D2_t98 = (_J1_D1D2_t78 * _J1_D1D2_t85);
-            const auto _J1_D1D2_t9 = (_J1_D1D2_t78 * _J1_D1D2_t19);
-            const auto _J1_D1D2_t17 = (_J1_D1D2_t18 * _J1_D1D2_t19);
-            const auto _J1_D1D2_t31 = (_J1_D1D2_t39 * _J1_D1D2_t22);
-            const auto _J1_D1D2_t34 = (gC13 * _J1_D1D2_t61);
-            const auto _J1_D1D2_t60 = (_J1_D1D2_t41 * _J1_D1D2_t61);
-            const auto _J1_D1D2_t74 = (_J1_D1D2_t18 * _J1_D1D2_t94);
-            const auto _J1_D1D2_t93 = (_J1_D1D2_t78 * _J1_D1D2_t94);
-            const auto _J1_D1D2_t96 = (_J1_D1D2_t97 * _J1_D1D2_t98);
-            const auto _J1_D1D2_t3 = (_J1_D1D2_t97 * _J1_D1D2_t9);
-            const auto _J1_D1D2_t8 = (_J1_D1D2_t31 - _J1_D1D2_t24);
-            const auto _J1_D1D2_t33 = (gC12 * _J1_D1D2_t34);
-            const auto _J1_D1D2_t35 = (gRdC5 * _J1_D1D2_t8);
-            const auto _J1_D1D2_t59 = (gC12 * _J1_D1D2_t60);
-            const auto _J1_D1D2_t76 = (_J1_D1D2_t97 * _J1_D1D2_t93);
-            const auto _J1_D1D2_t1 = (_J1_D1D2_t30 * _J1_D1D2_t35);
-            const auto _J1_D1D2_t23 = (_J1_D1D2_t41 * _J1_D1D2_t1);
-            const auto _J1_D1D2_t57 = (gC13 * _J1_D1D2_t1);
-            const auto _J1_D1D2_t62 = (_J1_D1D2_t38 * _J1_D1D2_t23);
-            const auto _J1_D1D2_t36 = (_J1_D1D2_t59 - _J1_D1D2_t62);
-            const auto _J1_D1D2_t56 = (_J1_D1D2_t38 * _J1_D1D2_t57);
-            const auto _J1_D1D2_t58 = (_J1_D1D2_t7 * _J1_D1D2_t36);
-            const auto _J1_D1D2_t20 = (_J1_D1D2_t33 - _J1_D1D2_t56);
-            const auto _J1_D1D2_t32 = (gC13 * _J1_D1D2_t20);
-            const auto _J1_D1D2_t55 = (1.0 / (_J1_D1D2_t32 - _J1_D1D2_t58));
-            const auto _J1_D1D2_t104 = (zC12 * (gC13 * _J1_D1D2_t68));
-            const auto _J1_D1D2_t105 = (zC12 * (_J1_D1D2_t41 * _J1_D1D2_t68));
-            const auto _J1_D1D2_t106 = (zC12 * _J1_D1D2_t57);
-            const auto _J1_D1D2_t107 = (zC12 * _J1_D1D2_t23);
-            const auto _J1_D1D2_t108 = (zC13 * _J1_D1D2_t20);
+            // --- Newton-Raphson solve (N-port): J1_D1D2
+            const auto _J1_D1D2_voc1 = c0__J1_D1D2_voc1 + c__J1_D1D2_voc1[0] * vi + c__J1_D1D2_voc1[1] * zC4 + c__J1_D1D2_voc1[2] * zC12 + c__J1_D1D2_voc1[3] * zR7C6 + c__J1_D1D2_voc1[4] * zC13 + c__J1_D1D2_voc1[5] * zR6C3 + c__J1_D1D2_voc1[6] * zC11 + c__J1_D1D2_voc1[7] * zR8C7 + c__J1_D1D2_voc1[8] * zRdC5 + c__J1_D1D2_voc1[9] * zR9C9;
+            const auto _J1_D1D2_voc0 = c0__J1_D1D2_voc0 + c__J1_D1D2_voc0[0] * vi + c__J1_D1D2_voc0[1] * zC4 + c__J1_D1D2_voc0[2] * zC12 + c__J1_D1D2_voc0[3] * zR7C6 + c__J1_D1D2_voc0[4] * zC13 + c__J1_D1D2_voc0[5] * zR6C3 + c__J1_D1D2_voc0[6] * zC11 + c__J1_D1D2_voc0[7] * zR8C7 + c__J1_D1D2_voc0[8] * zRdC5 + c__J1_D1D2_voc0[9] * zR9C9;
+            const auto _J1_D1D2_zt72 = c0__J1_D1D2_zt72 + c__J1_D1D2_zt72[0] * vi + c__J1_D1D2_zt72[1] * zC4 + c__J1_D1D2_zt72[2] * zC12 + c__J1_D1D2_zt72[3] * zR7C6 + c__J1_D1D2_zt72[4] * zC13 + c__J1_D1D2_zt72[5] * zR6C3 + c__J1_D1D2_zt72[6] * zC11 + c__J1_D1D2_zt72[7] * zR8C7 + c__J1_D1D2_zt72[8] * zRdC5 + c__J1_D1D2_zt72[9] * zR9C9;
+            const auto _J1_D1D2_zt36 = (gR6C3 * vi);
+            const auto _J1_D1D2_zt38 = (gRfR10 * gR9C9);
+            const auto _J1_D1D2_zt41 = (gRfR10 * zR9C9);
+            const auto _J1_D1D2_zt57 = (zC12 + zC11);
+            const auto _J1_D1D2_zt58 = (_J1_D1D2_zt25 * zR9C9);
+            const auto _J1_D1D2_zt59 = (_J1_D1D2_zt25 * gR9C9);
+            const auto _J1_D1D2_zt69 = (gC12 * gR9C9);
+            const auto _J1_D1D2_zt71 = (gC12 * gRfR10);
+            const auto _J1_D1D2_zt77 = (zR7C6 + zR8C7);
+            const auto _J1_D1D2_zt78 = (gC12 * zR9C9);
+            const auto _J1_D1D2_zt80 = (gR7C6 + gR8C7);
+            const auto _J1_D1D2_zt35 = (_J1_D1D2_zt36 + zR6C3);
+            const auto _J1_D1D2_zt37 = (_J1_D1D2_zt80 + gRdC5);
+            const auto _J1_D1D2_zt46 = (_J1_D1D2_zt37 * _J1_D1D2_zt38);
+            const auto _J1_D1D2_zt49 = (_J1_D1D2_zt57 * _J1_D1D2_zt31);
+            const auto _J1_D1D2_zt54 = (gRdC5 * _J1_D1D2_zt71);
+            const auto _J1_D1D2_zt56 = (_J1_D1D2_zt57 * gRfR10);
+            const auto _J1_D1D2_zt61 = (zC4 + _J1_D1D2_zt35);
+            const auto _J1_D1D2_zt62 = (_J1_D1D2_zt37 * _J1_D1D2_zt59);
+            const auto _J1_D1D2_zt66 = (gRdC5 * _J1_D1D2_zt78);
+            const auto _J1_D1D2_zt68 = (_J1_D1D2_zt77 + zRdC5);
+            const auto _J1_D1D2_zt75 = (_J1_D1D2_zt56 - _J1_D1D2_zt58);
+            const auto _J1_D1D2_zt76 = (_J1_D1D2_zt68 * _J1_D1D2_zt59);
+            const auto _J1_D1D2_zt79 = (_J1_D1D2_zt37 * _J1_D1D2_zt69);
+            const auto _J1_D1D2_zt45 = (_J1_D1D2_zt61 * _J1_D1D2_zt46);
+            const auto _J1_D1D2_zt48 = (_J1_D1D2_zt49 - _J1_D1D2_zt41);
+            const auto _J1_D1D2_zt50 = (_J1_D1D2_zt68 * _J1_D1D2_zt38);
+            const auto _J1_D1D2_zt53 = (_J1_D1D2_zt43 * _J1_D1D2_zt54);
+            const auto _J1_D1D2_zt55 = (gRdC5 * _J1_D1D2_zt75);
+            const auto _J1_D1D2_zt60 = (_J1_D1D2_zt61 * _J1_D1D2_zt62);
+            const auto _J1_D1D2_zt67 = (_J1_D1D2_zt68 * _J1_D1D2_zt69);
+            const auto _J1_D1D2_zt70 = (_J1_D1D2_zt61 * _J1_D1D2_zt79);
+            const auto _J1_D1D2_zt74 = (_J1_D1D2_zt55 - _J1_D1D2_zt76);
+            const auto _J1_D1D2_zt40 = (gRdC5 * _J1_D1D2_zt48);
+            const auto _J1_D1D2_zt65 = (_J1_D1D2_zt66 + _J1_D1D2_zt67);
+            const auto _J1_D1D2_zt73 = (_J1_D1D2_zt43 * _J1_D1D2_zt74);
+            const auto _J1_D1D2_zt39 = (_J1_D1D2_zt40 - _J1_D1D2_zt50);
+            const auto _J1_D1D2_zt47 = (_J1_D1D2_zt43 * _J1_D1D2_zt39);
+            const auto _J1_D1D2_zt64 = (_J1_D1D2_zt43 * _J1_D1D2_zt65);
+            const auto _J1_D1D2_zt44 = (_J1_D1D2_zt45 + _J1_D1D2_zt47);
+            const auto _J1_D1D2_zt63 = (_J1_D1D2_zt64 - _J1_D1D2_zt70);
+            const auto _J1_D1D2_pt0 = (1.0 / 1000.0);
+            const auto _J1_D1D2_pt11 = (1.0 / D1N914_vt);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
-                const auto _J1_D1D2_t29 = (vGSJ1 - _2N5485_vp);
-                const auto _J1_D1D2_t45 = (vD1D2 / D1N914_vt);
-                const auto _J1_D1D2_t52 = math_exp_approx(_J1_D1D2_t45);
-                const auto _J1_D1D2_t83 = (1.0 / _J1_D1D2_t52);
-                const auto _J1_D1D2_t103 = (_J1_D1D2_t29 + _J1_D1D2_t26);
-                const auto _J1_D1D2_t16 = (_J1_D1D2_t52 - _J1_D1D2_t83);
-                const auto _J1_D1D2_t25 = (_J1_D1D2_t103 * _J1_D1D2_t103);
-                const auto _J1_D1D2_t28 = (_2N5485_Beta * _J1_D1D2_t25);
-                const auto _J1_D1D2_t44 = (_J1_D1D2_t52 / D1N914_vt);
-                const auto _J1_D1D2_t53 = (_J1_D1D2_t54 / _J1_D1D2_t52);
-                const auto _J1_D1D2_t91 = (D1N914_Is * _J1_D1D2_t16);
-                const auto _J1_D1D2_t101 = (_J1_D1D2_t103 + _J1_D1D2_t103);
-                const auto _J1_D1D2_t102 = (_2N5485_Beta * _J1_D1D2_t101);
-                const auto _J1_D1D2_t15 = (zR9C9 + _J1_D1D2_t91);
-                const auto _J1_D1D2_t27 = (zC13 + _J1_D1D2_t28);
-                const auto _J1_D1D2_t49 = (_J1_D1D2_t44 + _J1_D1D2_t53);
-                const auto _J1_D1D2_t51 = (D1N914_Is * _J1_D1D2_t49);
-                const auto _J1_D1D2_t65 = (gRfR10 * _J1_D1D2_t51);
-                const auto _J1_D1D2_t90 = (_J1_D1D2_t39 * _J1_D1D2_t15);
-                const auto _J1_D1D2_t95 = (gC12 * _J1_D1D2_t15);
-                const auto _J1_D1D2_t14 = (gRfR10 * _J1_D1D2_t15);
-                const auto _J1_D1D2_t43 = (_J1_D1D2_t39 * _J1_D1D2_t51);
-                const auto _J1_D1D2_t48 = (gC12 * _J1_D1D2_t51);
-                const auto _J1_D1D2_t63 = (gRdC5 * _J1_D1D2_t65);
-                const auto _J1_D1D2_t64 = (_J1_D1D2_t30 * _J1_D1D2_t63);
-                const auto _J1_D1D2_t82 = (gRdC5 * _J1_D1D2_t95);
-                const auto _J1_D1D2_t89 = (_J1_D1D2_t73 - _J1_D1D2_t90);
-                const auto _J1_D1D2_t6 = (_J1_D1D2_t12 - _J1_D1D2_t14);
-                const auto _J1_D1D2_t11 = (gRdC5 * _J1_D1D2_t6);
-                const auto _J1_D1D2_t42 = (gRdC5 * _J1_D1D2_t43);
-                const auto _J1_D1D2_t47 = (gRdC5 * _J1_D1D2_t48);
-                const auto _J1_D1D2_t50 = (_J1_D1D2_t30 * _J1_D1D2_t42);
-                const auto _J1_D1D2_t72 = (gRdC5 * _J1_D1D2_t89);
-                const auto _J1_D1D2_t81 = (_J1_D1D2_t82 + _J1_D1D2_t84);
-                const auto _J1_D1D2_t10 = (_J1_D1D2_t11 - _J1_D1D2_t17);
-                const auto _J1_D1D2_t46 = (_J1_D1D2_t30 * _J1_D1D2_t47);
-                const auto _J1_D1D2_t71 = (_J1_D1D2_t72 - _J1_D1D2_t74);
-                const auto _J1_D1D2_t80 = (_J1_D1D2_t30 * _J1_D1D2_t81);
-                const auto _J1_D1D2_t88 = (_J1_D1D2_t30 * _J1_D1D2_t71);
-                const auto _J1_D1D2_t5 = (_J1_D1D2_t30 * _J1_D1D2_t10);
-                const auto _J1_D1D2_t70 = (_J1_D1D2_t88 + _J1_D1D2_t76);
-                const auto _J1_D1D2_t79 = (_J1_D1D2_t80 - _J1_D1D2_t96);
-                const auto _J1_D1D2_t100 = (((_J1_D1D2_t7 * ((gC12 * (_J1_D1D2_t102 * _J1_D1D2_t61)) - (_J1_D1D2_t38 * (_J1_D1D2_t102 * _J1_D1D2_t1)))) * _J1_D1D2_t55) - 1.0);
-                const auto _J1_D1D2_t2 = (_J1_D1D2_t3 + _J1_D1D2_t5);
-                const auto _J1_D1D2_t40 = ((((_J1_D1D2_t7 * ((gC12 * (_J1_D1D2_t41 * _J1_D1D2_t46)) - (_J1_D1D2_t38 * (_J1_D1D2_t41 * _J1_D1D2_t50)))) - (gC13 * ((gC12 * (gC13 * _J1_D1D2_t46)) - (_J1_D1D2_t38 * (gC13 * _J1_D1D2_t50))))) * _J1_D1D2_t55) - 1.0);
-                const auto _J1_D1D2_t67 = (((gC13 * (_J1_D1D2_t104 - ((_J1_D1D2_t38 * (gC13 * _J1_D1D2_t70)) + (gC12 * (gC13 * _J1_D1D2_t79))))) - (_J1_D1D2_t7 * (_J1_D1D2_t105 - ((_J1_D1D2_t38 * (_J1_D1D2_t41 * _J1_D1D2_t70)) + (gC12 * (_J1_D1D2_t41 * _J1_D1D2_t79)))))) * _J1_D1D2_t55);
-                const auto _J1_D1D2_t99 = (_J1_D1D2_t100 * _J1_D1D2_t40);
-                const auto _J1_D1D2_t0 = ((((gC13 * (_J1_D1D2_t106 - (gC12 * (gC13 * _J1_D1D2_t2)))) - (_J1_D1D2_t7 * (_J1_D1D2_t107 - (gC12 * (_J1_D1D2_t41 * _J1_D1D2_t2))))) * _J1_D1D2_t55) - ((_J1_D1D2_t108 - (_J1_D1D2_t7 * ((gC12 * (_J1_D1D2_t27 * _J1_D1D2_t61)) - (_J1_D1D2_t38 * (_J1_D1D2_t27 * _J1_D1D2_t1))))) * _J1_D1D2_t55));
-                const auto _J1_D1D2_t66 = (vD1D2 - _J1_D1D2_t67);
-                const auto res_vGSJ1 = (_J1_D1D2_t0 - vGSJ1);
-                const auto delta_vGSJ1 = ((((vGSJ1 - _J1_D1D2_t0) * _J1_D1D2_t40) - ((((gC13 * (gC12 * (gC13 * _J1_D1D2_t64))) - (_J1_D1D2_t7 * (gC12 * (_J1_D1D2_t41 * _J1_D1D2_t64)))) * _J1_D1D2_t55) * _J1_D1D2_t66)) / _J1_D1D2_t99);
-                const auto res_vD1D2 = (_J1_D1D2_t67 - vD1D2);
-                const auto delta_vD1D2 = ((_J1_D1D2_t100 * _J1_D1D2_t66) / _J1_D1D2_t99);
+                const auto _J1_D1D2_pt2 = (vGSJ1 - _2N5485_vp);
+                const auto _J1_D1D2_pt4 = (vD1D2 / D1N914_vt);
+                const auto _J1_D1D2_pt1 = (_J1_D1D2_pt2 + _J1_D1D2_pt0);
+                const auto _J1_D1D2_pt3 = math_exp_approx(_J1_D1D2_pt4);
+                const auto _J1_D1D2_i0 = (_2N5485_Beta * (_J1_D1D2_pt1 * _J1_D1D2_pt1));
+                const auto _J1_D1D2_i1 = (D1N914_Is * (_J1_D1D2_pt3 - (1.0 / _J1_D1D2_pt3)));
+                const auto _J1_D1D2_g0_0 = (_2N5485_Beta * (_J1_D1D2_pt1 + _J1_D1D2_pt1));
+                const auto _J1_D1D2_g1_1 = (D1N914_Is * ((_J1_D1D2_pt3 / D1N914_vt) + (_J1_D1D2_pt11 / _J1_D1D2_pt3)));
+                const auto _J1_D1D2_pt5 = ((_J1_D1D2_voc0 + (_J1_D1D2_Z0_0 * _J1_D1D2_i0)) + (_J1_D1D2_Z0_1 * _J1_D1D2_i1));
+                const auto _J1_D1D2_pt6 = (_J1_D1D2_voc1 + (_J1_D1D2_Z1_1 * _J1_D1D2_i1));
+                const auto _J1_D1D2_pt7 = ((_J1_D1D2_Z1_1 * _J1_D1D2_g1_1) - 1.0);
+                const auto _J1_D1D2_pt8 = (vD1D2 - _J1_D1D2_pt6);
+                const auto _J1_D1D2_pt10 = ((_J1_D1D2_Z0_0 * _J1_D1D2_g0_0) - 1.0);
+                const auto _J1_D1D2_pt9 = (_J1_D1D2_pt10 * _J1_D1D2_pt7);
+                const auto res_vGSJ1 = (_J1_D1D2_pt5 - vGSJ1);
+                const auto res_vD1D2 = (_J1_D1D2_pt6 - vD1D2);
+                const auto delta_vGSJ1 = ((((vGSJ1 - _J1_D1D2_pt5) * _J1_D1D2_pt7) - ((_J1_D1D2_Z0_1 * _J1_D1D2_g1_1) * _J1_D1D2_pt8)) / _J1_D1D2_pt9);
+                const auto delta_vD1D2 = ((_J1_D1D2_pt10 * _J1_D1D2_pt8) / _J1_D1D2_pt9);
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vGSJ1 * res_vGSJ1;
@@ -389,7 +456,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 step_norm_sq += delta_vD1D2 * delta_vD1D2;
             
                 vGSJ1 = limit_jfet_vgs(vGSJ1 + (delta_vGSJ1), _2N5485_vp);
-                vD1D2 = limit_junction_voltage(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
+                vD1D2 = limit_junction_voltage_sym(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
             
                 if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
                     break;
@@ -538,17 +605,18 @@ static float reset (Params params, State* state, int num_channels, float sample_
     double vGSJ1 = 0;
     double vD1D2 = 0;
 
-    // --- Newton-Raphson solve: J1
-    const auto _J1_t1 = (1.0 / 1000.0);
-    const auto _J1_t3 = (1.0 / (gR13 + (1.0 / 1000000000.0)));
+    const auto _J1_Z0_0 = (-(1.0 / (gR13 + (1.0 / 1000000000.0))));
+    // --- Newton-Raphson solve (N-port): J1
+    const auto _J1_pt1 = (1.0 / 1000.0);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _J1_t2 = (vGSJ1 - _2N5485_vp);
-        const auto _J1_t5 = (_J1_t2 + _J1_t1);
-        const auto _J1_t0 = ((_2N5485_Beta * (_J1_t5 * _J1_t5)) * _J1_t3);
-        const auto _J1_t4 = (_J1_t0 + vGSJ1);
-        const auto res_vGSJ1 = (-_J1_t4);
-        const auto delta_vGSJ1 = (-(_J1_t4 / (((_2N5485_Beta * (_J1_t5 + _J1_t5)) * _J1_t3) + 1.0)));
+        const auto _J1_pt0 = (vGSJ1 - _2N5485_vp);
+        const auto _J1_pt2 = (_J1_pt0 + _J1_pt1);
+        const auto _J1_i0 = (_2N5485_Beta * (_J1_pt2 * _J1_pt2));
+        const auto _J1_g0_0 = (_2N5485_Beta * (_J1_pt2 + _J1_pt2));
+        const auto _J1_pt3 = (_J1_Z0_0 * _J1_i0);
+        const auto res_vGSJ1 = (_J1_pt3 - vGSJ1);
+        const auto delta_vGSJ1 = ((vGSJ1 - _J1_pt3) / ((_J1_Z0_0 * _J1_g0_0) - 1.0));
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vGSJ1 * res_vGSJ1;
@@ -561,27 +629,27 @@ static float reset (Params params, State* state, int num_channels, float sample_
             break;
         
     }
-    // --- Newton-Raphson solve: D1D2
-    const auto _D1D2_t5 = (1.0 / 1000000000.0);
-    const auto _D1D2_t6 = (gRfR10 + _D1D2_t5);
-    const auto _D1D2_t4 = (1.0 / ((_D1D2_t6 * _D1D2_t6) - (gRfR10 * gRfR10)));
-    const auto _D1D2_t7 = (_D1D2_t6 * D1N914_Is);
-    const auto _D1D2_t8 = (1.0 / D1N914_vt);
+    const auto _D1D2_zt1 = (1.0 / 1000000000.0);
+    const auto _D1D2_zt0 = (gRfR10 + _D1D2_zt1);
+    const auto _D1D2_Z0_0 = (-((_D1D2_zt0 * 1.0) / ((_D1D2_zt0 * _D1D2_zt0) - (gRfR10 * gRfR10))));
+    // --- Newton-Raphson solve (N-port): D1D2
+    const auto _D1D2_pt3 = (1.0 / D1N914_vt);
     for (int newton_iter = 0; newton_iter < 10000; ++newton_iter)
     {
-        const auto _D1D2_t2 = (vD1D2 / D1N914_vt);
-        const auto _D1D2_t3 = math_exp_approx(_D1D2_t2);
-        const auto _D1D2_t1 = ((_D1D2_t6 * (D1N914_Is * (_D1D2_t3 - (1.0 / _D1D2_t3)))) * _D1D2_t4);
-        const auto _D1D2_t0 = (_D1D2_t1 + vD1D2);
-        const auto res_vD1D2 = (-_D1D2_t0);
-        const auto delta_vD1D2 = (-(_D1D2_t0 / (((_D1D2_t7 * ((_D1D2_t3 / D1N914_vt) + (_D1D2_t8 / _D1D2_t3))) * _D1D2_t4) + 1.0)));
+        const auto _D1D2_pt0 = (vD1D2 / D1N914_vt);
+        const auto _D1D2_pt1 = math_exp_approx(_D1D2_pt0);
+        const auto _D1D2_i0 = (D1N914_Is * (_D1D2_pt1 - (1.0 / _D1D2_pt1)));
+        const auto _D1D2_g0_0 = (D1N914_Is * ((_D1D2_pt1 / D1N914_vt) + (_D1D2_pt3 / _D1D2_pt1)));
+        const auto _D1D2_pt2 = (_D1D2_Z0_0 * _D1D2_i0);
+        const auto res_vD1D2 = (_D1D2_pt2 - vD1D2);
+        const auto delta_vD1D2 = ((vD1D2 - _D1D2_pt2) / ((_D1D2_Z0_0 * _D1D2_g0_0) - 1.0));
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1D2 * res_vD1D2;
         auto step_norm_sq = 0.0;
         step_norm_sq += delta_vD1D2 * delta_vD1D2;
     
-        vD1D2 = limit_junction_voltage(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
+        vD1D2 = limit_junction_voltage_sym(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
     
         if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
             break;

@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen rc_cascade_stability.net rc_cascade_stability_c.h -lang c
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen rc_cascade_stability.net rc_cascade_stability_c.h -opt_port_matrix -lang c
 
 #pragma once
 

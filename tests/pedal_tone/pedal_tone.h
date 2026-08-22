@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen pedal_tone.net pedal_tone.h
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen pedal_tone.net pedal_tone.h -opt_port_matrix
 
 #pragma once
 

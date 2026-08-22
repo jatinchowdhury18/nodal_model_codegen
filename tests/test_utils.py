@@ -51,6 +51,8 @@ def netlist_codegen(netlist_file, header_file, lang="cpp", dtype=None, namespace
         codegen_exe,
         netlist_file,
         header_file,
+        "-opt_port_matrix",
+        # "-stats",
     ]
     if lang != "cpp":
         cmd += ["-lang", lang]

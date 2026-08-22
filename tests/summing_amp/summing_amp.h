@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version d1e5ccb.
-// Command: netlist_codegen summing_amp.net summing_amp.h
+// Auto-generated with netlist_codegen version de49196.
+// Command: netlist_codegen summing_amp.net summing_amp.h -opt_port_matrix
 
 #pragma once
 

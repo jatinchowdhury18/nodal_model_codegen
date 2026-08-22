@@ -238,10 +238,29 @@ device_model_param_names :: (type: Element_Type, m: Nonlinear_Model) -> [..] str
 // True if any element in `elements` has an unknown using this limiter kind.
 // Used to decide which limiter helper functions to emit.
 circuit_uses_limiter_kind :: (elements: [] Element, kind: Limiter_Kind) -> bool {
+    // Helpers are chosen at the top level, before generate_unit() runs
+    // reduce_circuit(), so the DIODE_PAIRs the antiparallel collapse is about
+    // to create aren't in `elements` yet and have to be anticipated.
+    paired: [..] bool;
+    paired.allocator = temp;
+    array_resize(*paired, elements.count);
+    consumed: [..] bool;
+    consumed.allocator = temp;
+    array_resize(*consumed, elements.count);
+    for i : 0..elements.count-1 {
+        if consumed[i] || elements[i].type != .DIODE  continue;
+        for j : 0..elements.count-1 {
+            if j == i || consumed[j]  continue;
+            if !diodes_are_antiparallel_pair(elements[i], elements[j])  continue;
+            paired[i] = true;   paired[j] = true;
+            consumed[i] = true; consumed[j] = true;
+            break;
+        }
+    }
+
     for el, i : elements {
         if el.type == .DIODE {
-            pending := ifx find_antiparallel_partner(elements, i) >= 0
-                       then Limiter_Kind.EXP_JUNCTION_SYM else .EXP_JUNCTION;
+            pending := ifx paired[i] then Limiter_Kind.EXP_JUNCTION_SYM else .EXP_JUNCTION;
             if kind == pending  return true;
             continue;
         }

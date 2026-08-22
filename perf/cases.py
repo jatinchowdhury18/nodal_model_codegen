@@ -1,10 +1,11 @@
 """The representative circuits used by the perf harness. They span
 small/large and linear/nonlinear without every run taking forever.
 
-Each case may carry an optional "extra_args" list of extra netlist_codegen
-CLI flags (e.g. ["-opt_port_matrix"]), so a flag-gated variant is generated
-and measured by the harness itself rather than hand-generated into
-perf/generated/.
+A case may carry an optional "extra_args" list of extra netlist_codegen CLI
+flags, for a flag that only makes sense for that one circuit. To sweep a flag
+across every case instead, pass `--codegen-arg` to run_perf.py rather than
+editing this file: the harness deliberately knows nothing about which codegen
+flags exist.
 """
 
 CASES = [
@@ -12,8 +13,6 @@ CASES = [
     {"name": "eq_filter2",     "net": "eq_filter2/eq_filter2.net",         "dtype": "float"},
     {"name": "diode_clipper",  "net": "diode_clipper/diode_clipper.net",   "dtype": "float"},
     {"name": "common_emitter", "net": "common_emitter/common_emitter.net", "dtype": "float"},
-    # pedal_drive needs double -- the coupled 3-unknown cluster's Cramer's-rule
-    # closed forms lose too much precision in float.
     {"name": "pedal_drive",    "net": "pedal_drive/pedal_drive.net",       "dtype": "double"},
     # Tests nonlinear cluster de-coupling.
     {"name": "pedal_model",    "net": "pedal_model/pedal_model.net",       "dtype": "double"},
