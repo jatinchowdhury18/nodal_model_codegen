@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2.h -opt_port_matrix -type_name float
 
 #pragma once
@@ -69,6 +69,7 @@ struct Params_stage1 {
 struct State_stage1 {
     float zR3C1 {};
     float vD1 {};
+    float vD1_prev {};
 };
 
 static void compute_stage1 (const float* const* input, float** output, int num_channels, int num_samples, Params_stage1 params, State_stage1* state, float sample_rate)
@@ -115,9 +116,14 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
     {
         auto zR3C1 = state[ch].zR3C1;
         auto vD1 = state[ch].vD1;
+        auto vD1_prev = state[ch].vD1_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vD1 - vD1_prev; vD1_prev = vD1;
+vD1 = limit_junction_voltage(vD1 + (_prev_step), vD1, D1N914_vt, vcrit_D1N914_vt);
+            }
 
             // --- Newton-Raphson solve (N-port): D1
             const auto _D1_voc0 = c0__D1_voc0 + c__D1_voc0[0] * vi + c__D1_voc0[1] * zR3C1;
@@ -133,12 +139,10 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD1 * res_vD1;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vD1 * delta_vD1;
             
                 vD1 = limit_junction_voltage(vD1 + (delta_vD1), vD1, D1N914_vt, vcrit_D1N914_vt);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -152,6 +156,7 @@ static void compute_stage1 (const float* const* input, float** output, int num_c
         }
         state[ch].zR3C1 = zR3C1;
         state[ch].vD1 = vD1;
+        state[ch].vD1_prev = vD1_prev;
     }
 }
 
@@ -198,12 +203,10 @@ static float reset_stage1 (Params_stage1 params, State_stage1* state, int num_ch
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1 * res_vD1;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vD1 * delta_vD1;
     
         vD1 = limit_junction_voltage(vD1 + (delta_vD1), vD1, D1N914_vt, vcrit_D1N914_vt);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -214,6 +217,7 @@ static float reset_stage1 (Params_stage1 params, State_stage1* state, int num_ch
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vD1 = vD1;
+        state[ch].vD1_prev = vD1;
         state[ch].zR3C1 = zR3C1;
     }
     return vo1_dc_out;
@@ -230,6 +234,7 @@ struct Params_stage2 {
 struct State_stage2 {
     float zR3xC1x {};
     float vD1x {};
+    float vD1x_prev {};
 };
 
 static void compute_stage2 (const float* const* input, float** output, int num_channels, int num_samples, Params_stage2 params, State_stage2* state, float sample_rate)
@@ -269,9 +274,14 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
     {
         auto zR3xC1x = state[ch].zR3xC1x;
         auto vD1x = state[ch].vD1x;
+        auto vD1x_prev = state[ch].vD1x_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vo1 = input[ch][n];
+
+            { const auto _prev_step = vD1x - vD1x_prev; vD1x_prev = vD1x;
+vD1x = limit_junction_voltage(vD1x + (_prev_step), vD1x, D1N914_vt, vcrit_D1N914_vt);
+            }
 
             // --- Newton-Raphson solve (N-port): D1x
             const auto _D1x_voc0 = c0__D1x_voc0 + c__D1x_voc0[0] * vo1 + c__D1x_voc0[1] * zR3xC1x;
@@ -287,12 +297,10 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD1x * res_vD1x;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vD1x * delta_vD1x;
             
                 vD1x = limit_junction_voltage(vD1x + (delta_vD1x), vD1x, D1N914_vt, vcrit_D1N914_vt);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -306,6 +314,7 @@ static void compute_stage2 (const float* const* input, float** output, int num_c
         }
         state[ch].zR3xC1x = zR3xC1x;
         state[ch].vD1x = vD1x;
+        state[ch].vD1x_prev = vD1x_prev;
     }
 }
 
@@ -347,12 +356,10 @@ static float reset_stage2 (Params_stage2 params, State_stage2* state, int num_ch
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1x * res_vD1x;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vD1x * delta_vD1x;
     
         vD1x = limit_junction_voltage(vD1x + (delta_vD1x), vD1x, D1N914_vt, vcrit_D1N914_vt);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -363,6 +370,7 @@ static float reset_stage2 (Params_stage2 params, State_stage2* state, int num_ch
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vD1x = vD1x;
+        state[ch].vD1x_prev = vD1x;
         state[ch].zR3xC1x = zR3xC1x;
     }
     return vo2_dc_out;

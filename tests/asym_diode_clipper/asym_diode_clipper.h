@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen asym_diode_clipper.net asym_diode_clipper.h -opt_port_matrix
 
 #pragma once
@@ -95,7 +95,9 @@ struct Params {
 struct State {
     float zC1 {};
     float vD3 {};
+    float vD3_prev {};
     float vD1D2 {};
+    float vD1D2_prev {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -144,10 +146,19 @@ static void compute (const float* const* input, float** output, int num_channels
     {
         auto zC1 = state[ch].zC1;
         auto vD3 = state[ch].vD3;
+        auto vD3_prev = state[ch].vD3_prev;
         auto vD1D2 = state[ch].vD1D2;
+        auto vD1D2_prev = state[ch].vD1D2_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vD3 - vD3_prev; vD3_prev = vD3;
+vD3 = limit_junction_voltage(vD3 + (_prev_step), vD3, D1N914_vt, vcrit_D1N914_vt);
+            }
+            { const auto _prev_step = vD1D2 - vD1D2_prev; vD1D2_prev = vD1D2;
+vD1D2 = limit_junction_voltage_sym(vD1D2 + (_prev_step), vD1D2, D1N914_vt, vcrit_D1N914_vt);
+            }
 
             // --- Newton-Raphson solve (N-port): D3_D1D2
             const auto _D3_D1D2_voc1 = c0__D3_D1D2_voc1 + c__D3_D1D2_voc1[0] * vi + c__D3_D1D2_voc1[1] * zC1;
@@ -184,14 +195,11 @@ static void compute (const float* const* input, float** output, int num_channels
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vD3 * res_vD3;
                 residual_norm_sq += res_vD1D2 * res_vD1D2;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vD3 * delta_vD3;
-                step_norm_sq += delta_vD1D2 * delta_vD1D2;
             
                 vD3 = limit_junction_voltage(vD3 + (delta_vD3), vD3, D1N914_vt, vcrit_D1N914_vt);
                 vD1D2 = limit_junction_voltage_sym(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -206,7 +214,9 @@ static void compute (const float* const* input, float** output, int num_channels
         }
         state[ch].zC1 = zC1;
         state[ch].vD3 = vD3;
+        state[ch].vD3_prev = vD3_prev;
         state[ch].vD1D2 = vD1D2;
+        state[ch].vD1D2_prev = vD1D2_prev;
     }
 }
 
@@ -272,14 +282,11 @@ static float reset (Params params, State* state, int num_channels, float sample_
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vD3 * res_vD3;
         residual_norm_sq += res_vD1D2 * res_vD1D2;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vD3 * delta_vD3;
-        step_norm_sq += delta_vD1D2 * delta_vD1D2;
     
         vD3 = limit_junction_voltage(vD3 + (delta_vD3), vD3, D1N914_vt, vcrit_D1N914_vt);
         vD1D2 = limit_junction_voltage_sym(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -290,7 +297,9 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vD3 = vD3;
+        state[ch].vD3_prev = vD3;
         state[ch].vD1D2 = vD1D2;
+        state[ch].vD1D2_prev = vD1D2;
         state[ch].zC1 = zC1;
     }
     return vo_dc_out;

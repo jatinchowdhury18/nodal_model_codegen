@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen common_drain.net common_drain.h -opt_port_matrix -type_name double
 
 #pragma once
@@ -31,6 +31,7 @@ struct State {
     double zC12 {};
     double zC13 {};
     double vGSJ1 {};
+    double vGSJ1_prev {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -84,9 +85,14 @@ static void compute (const float* const* input, float** output, int num_channels
         auto zC12 = state[ch].zC12;
         auto zC13 = state[ch].zC13;
         auto vGSJ1 = state[ch].vGSJ1;
+        auto vGSJ1_prev = state[ch].vGSJ1_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vGSJ1 - vGSJ1_prev; vGSJ1_prev = vGSJ1;
+vGSJ1 = limit_jfet_vgs(vGSJ1 + (_prev_step), _2N5485_vp);
+            }
 
             // --- Newton-Raphson solve (N-port): J1
             const auto _J1_voc0 = c0__J1_voc0 + c__J1_voc0[0] * vi + c__J1_voc0[1] * zC12 + c__J1_voc0[2] * zC13;
@@ -103,12 +109,10 @@ static void compute (const float* const* input, float** output, int num_channels
             
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vGSJ1 * res_vGSJ1;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vGSJ1 * delta_vGSJ1;
             
                 vGSJ1 = limit_jfet_vgs(vGSJ1 + (delta_vGSJ1), _2N5485_vp);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -129,6 +133,7 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zC12 = zC12;
         state[ch].zC13 = zC13;
         state[ch].vGSJ1 = vGSJ1;
+        state[ch].vGSJ1_prev = vGSJ1_prev;
     }
 }
 
@@ -173,12 +178,10 @@ static float reset (Params params, State* state, int num_channels, float sample_
     
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vGSJ1 * res_vGSJ1;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vGSJ1 * delta_vGSJ1;
     
         vGSJ1 = limit_jfet_vgs(vGSJ1 + (delta_vGSJ1), _2N5485_vp);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -190,6 +193,7 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vGSJ1 = vGSJ1;
+        state[ch].vGSJ1_prev = vGSJ1;
         state[ch].zC12 = zC12;
         state[ch].zC13 = zC13;
     }

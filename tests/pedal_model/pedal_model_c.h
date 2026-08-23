@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen pedal_model.net pedal_model_c.h -opt_port_matrix -lang c -type_name double
 
 #pragma once
@@ -104,7 +104,9 @@ typedef struct {
     double zRdC5;
     double zR9C9;
     double vGSJ1;
+    double vGSJ1_prev;
     double vD1D2;
+    double vD1D2_prev;
 } State;
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -364,10 +366,19 @@ static void compute (const float* const* input, float** output, int num_channels
         double zRdC5 = state[ch].zRdC5;
         double zR9C9 = state[ch].zR9C9;
         double vGSJ1 = state[ch].vGSJ1;
+        double vGSJ1_prev = state[ch].vGSJ1_prev;
         double vD1D2 = state[ch].vD1D2;
+        double vD1D2_prev = state[ch].vD1D2_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const double vi = input[ch][n];
+
+            { const double _prev_step = vGSJ1 - vGSJ1_prev; vGSJ1_prev = vGSJ1;
+vGSJ1 = limit_jfet_vgs(vGSJ1 + (_prev_step), _2N5485_vp);
+            }
+            { const double _prev_step = vD1D2 - vD1D2_prev; vD1D2_prev = vD1D2;
+vD1D2 = limit_junction_voltage_sym(vD1D2 + (_prev_step), vD1D2, D1N914_vt, vcrit_D1N914_vt);
+            }
 
             // --- Newton-Raphson solve (N-port): J1_D1D2
             const double _J1_D1D2_voc1 = c0__J1_D1D2_voc1 + c__J1_D1D2_voc1[0] * vi + c__J1_D1D2_voc1[1] * zC4 + c__J1_D1D2_voc1[2] * zC12 + c__J1_D1D2_voc1[3] * zR7C6 + c__J1_D1D2_voc1[4] * zC13 + c__J1_D1D2_voc1[5] * zR6C3 + c__J1_D1D2_voc1[6] * zC11 + c__J1_D1D2_voc1[7] * zR8C7 + c__J1_D1D2_voc1[8] * zRdC5 + c__J1_D1D2_voc1[9] * zR9C9;
@@ -440,14 +451,11 @@ static void compute (const float* const* input, float** output, int num_channels
                 double residual_norm_sq = 0.0;
                 residual_norm_sq += res_vGSJ1 * res_vGSJ1;
                 residual_norm_sq += res_vD1D2 * res_vD1D2;
-                double step_norm_sq = 0.0;
-                step_norm_sq += delta_vGSJ1 * delta_vGSJ1;
-                step_norm_sq += delta_vD1D2 * delta_vD1D2;
             
                 vGSJ1 = limit_jfet_vgs(vGSJ1 + (delta_vGSJ1), _2N5485_vp);
                 vD1D2 = limit_junction_voltage_sym(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -519,7 +527,9 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zRdC5 = zRdC5;
         state[ch].zR9C9 = zR9C9;
         state[ch].vGSJ1 = vGSJ1;
+        state[ch].vGSJ1_prev = vGSJ1_prev;
         state[ch].vD1D2 = vD1D2;
+        state[ch].vD1D2_prev = vD1D2_prev;
     }
 }
 
@@ -609,12 +619,10 @@ static float reset (Params params, State* state, int num_channels, float sample_
     
         double residual_norm_sq = 0.0;
         residual_norm_sq += res_vGSJ1 * res_vGSJ1;
-        double step_norm_sq = 0.0;
-        step_norm_sq += delta_vGSJ1 * delta_vGSJ1;
     
         vGSJ1 = limit_jfet_vgs(vGSJ1 + (delta_vGSJ1), _2N5485_vp);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -635,12 +643,10 @@ static float reset (Params params, State* state, int num_channels, float sample_
     
         double residual_norm_sq = 0.0;
         residual_norm_sq += res_vD1D2 * res_vD1D2;
-        double step_norm_sq = 0.0;
-        step_norm_sq += delta_vD1D2 * delta_vD1D2;
     
         vD1D2 = limit_junction_voltage_sym(vD1D2 + (delta_vD1D2), vD1D2, D1N914_vt, vcrit_D1N914_vt);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -659,7 +665,9 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vGSJ1 = vGSJ1;
+        state[ch].vGSJ1_prev = vGSJ1;
         state[ch].vD1D2 = vD1D2;
+        state[ch].vD1D2_prev = vD1D2;
         state[ch].zC4 = zC4;
         state[ch].zC12 = zC12;
         state[ch].zR7C6 = zR7C6;

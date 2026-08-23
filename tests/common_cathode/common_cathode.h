@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen common_cathode.net common_cathode.h -opt_port_matrix -type_name double
 
 #pragma once
@@ -63,7 +63,9 @@ struct State {
     double zCout {};
     double zRkCk {};
     double vPKX1 {};
+    double vPKX1_prev {};
     double vGKX1 {};
+    double vGKX1_prev {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -165,10 +167,19 @@ static void compute (const float* const* input, float** output, int num_channels
         auto zCout = state[ch].zCout;
         auto zRkCk = state[ch].zRkCk;
         auto vPKX1 = state[ch].vPKX1;
+        auto vPKX1_prev = state[ch].vPKX1_prev;
         auto vGKX1 = state[ch].vGKX1;
+        auto vGKX1_prev = state[ch].vGKX1_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vPKX1 - vPKX1_prev; vPKX1_prev = vPKX1;
+vPKX1 = vPKX1 + (_prev_step);
+            }
+            { const auto _prev_step = vGKX1 - vGKX1_prev; vGKX1_prev = vGKX1;
+vGKX1 = vGKX1 + (_prev_step);
+            }
 
             // --- Newton-Raphson solve (N-port): X1
             const auto _X1_voc0 = c0__X1_voc0 + c__X1_voc0[0] * vi + c__X1_voc0[1] * zCin + c__X1_voc0[2] * zCout + c__X1_voc0[3] * zRkCk;
@@ -226,14 +237,11 @@ static void compute (const float* const* input, float** output, int num_channels
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vPKX1 * res_vPKX1;
                 residual_norm_sq += res_vGKX1 * res_vGKX1;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vPKX1 * delta_vPKX1;
-                step_norm_sq += delta_vGKX1 * delta_vGKX1;
             
                 vPKX1 = vPKX1 + (delta_vPKX1);
                 vGKX1 = vGKX1 + (delta_vGKX1);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -262,7 +270,9 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zCout = zCout;
         state[ch].zRkCk = zRkCk;
         state[ch].vPKX1 = vPKX1;
+        state[ch].vPKX1_prev = vPKX1_prev;
         state[ch].vGKX1 = vGKX1;
+        state[ch].vGKX1_prev = vGKX1_prev;
     }
 }
 
@@ -363,14 +373,11 @@ static float reset (Params params, State* state, int num_channels, float sample_
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vPKX1 * res_vPKX1;
         residual_norm_sq += res_vGKX1 * res_vGKX1;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vPKX1 * delta_vPKX1;
-        step_norm_sq += delta_vGKX1 * delta_vGKX1;
     
         vPKX1 = vPKX1 + (delta_vPKX1);
         vGKX1 = vGKX1 + (delta_vGKX1);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -383,7 +390,9 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vPKX1 = vPKX1;
+        state[ch].vPKX1_prev = vPKX1;
         state[ch].vGKX1 = vGKX1;
+        state[ch].vGKX1_prev = vGKX1;
         state[ch].zCin = zCin;
         state[ch].zCout = zCout;
         state[ch].zRkCk = zRkCk;

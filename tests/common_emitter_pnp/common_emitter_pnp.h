@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen common_emitter_pnp.net common_emitter_pnp.h -opt_port_matrix
 
 #pragma once
@@ -75,7 +75,9 @@ struct State {
     float zC1 {};
     float zC2 {};
     float vCBQ1 {};
+    float vCBQ1_prev {};
     float vEBQ1 {};
+    float vEBQ1_prev {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -172,10 +174,19 @@ static void compute (const float* const* input, float** output, int num_channels
         auto zC1 = state[ch].zC1;
         auto zC2 = state[ch].zC2;
         auto vCBQ1 = state[ch].vCBQ1;
+        auto vCBQ1_prev = state[ch].vCBQ1_prev;
         auto vEBQ1 = state[ch].vEBQ1;
+        auto vEBQ1_prev = state[ch].vEBQ1_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vCBQ1 - vCBQ1_prev; vCBQ1_prev = vCBQ1;
+vCBQ1 = limit_junction_voltage(vCBQ1 + (_prev_step), vCBQ1, Q2N5087_vt, vcrit_Q2N5087_vt);
+            }
+            { const auto _prev_step = vEBQ1 - vEBQ1_prev; vEBQ1_prev = vEBQ1;
+vEBQ1 = limit_junction_voltage(vEBQ1 + (_prev_step), vEBQ1, Q2N5087_vt, vcrit_Q2N5087_vt);
+            }
 
             // --- Newton-Raphson solve (N-port): Q1
             const auto _Q1_voc0 = c0__Q1_voc0 + c__Q1_voc0[0] * vi + c__Q1_voc0[1] * zC1 + c__Q1_voc0[2] * zC2;
@@ -219,14 +230,11 @@ static void compute (const float* const* input, float** output, int num_channels
                 auto residual_norm_sq = 0.0;
                 residual_norm_sq += res_vCBQ1 * res_vCBQ1;
                 residual_norm_sq += res_vEBQ1 * res_vEBQ1;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vCBQ1 * delta_vCBQ1;
-                step_norm_sq += delta_vEBQ1 * delta_vEBQ1;
             
                 vCBQ1 = limit_junction_voltage(vCBQ1 + (delta_vCBQ1), vCBQ1, Q2N5087_vt, vcrit_Q2N5087_vt);
                 vEBQ1 = limit_junction_voltage(vEBQ1 + (delta_vEBQ1), vEBQ1, Q2N5087_vt, vcrit_Q2N5087_vt);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -251,7 +259,9 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zC1 = zC1;
         state[ch].zC2 = zC2;
         state[ch].vCBQ1 = vCBQ1;
+        state[ch].vCBQ1_prev = vCBQ1_prev;
         state[ch].vEBQ1 = vEBQ1;
+        state[ch].vEBQ1_prev = vEBQ1_prev;
     }
 }
 
@@ -342,14 +352,11 @@ static float reset (Params params, State* state, int num_channels, float sample_
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vCBQ1 * res_vCBQ1;
         residual_norm_sq += res_vEBQ1 * res_vEBQ1;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vCBQ1 * delta_vCBQ1;
-        step_norm_sq += delta_vEBQ1 * delta_vEBQ1;
     
         vCBQ1 = limit_junction_voltage(vCBQ1 + (delta_vCBQ1), vCBQ1, Q2N5087_vt, vcrit_Q2N5087_vt);
         vEBQ1 = limit_junction_voltage(vEBQ1 + (delta_vEBQ1), vEBQ1, Q2N5087_vt, vcrit_Q2N5087_vt);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -361,7 +368,9 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vCBQ1 = vCBQ1;
+        state[ch].vCBQ1_prev = vCBQ1;
         state[ch].vEBQ1 = vEBQ1;
+        state[ch].vEBQ1_prev = vEBQ1;
         state[ch].zC1 = zC1;
         state[ch].zC2 = zC2;
     }

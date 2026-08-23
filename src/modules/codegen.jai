@@ -652,9 +652,6 @@ generate_amp_clip_active_set_step :: (cluster: Nonlinear_Cluster, builder: *Stri
 
     print_to_builder(builder, "%1 residual_norm_sq = res_%2_active * res_%2_active", backend.decl_type, c.name);
     for u : others  print_to_builder(builder, " + res_%1_active * res_%1_active", u.name);
-    append(builder, ";\n");
-    print_to_builder(builder, "%1 step_norm_sq = delta_%2_active * delta_%2_active", backend.decl_type, c.name);
-    for u : others  print_to_builder(builder, " + delta_%1_active * delta_%1_active", u.name);
     append(builder, ";\n\n");
 
     for u : others  emit_unknown_update(builder, u, tprint("delta_%_active", u.name));
@@ -749,8 +746,6 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
     } else {
         print_to_builder(*inner_builder, "\n%1 residual_norm_sq = 0.0;\n", backend.decl_type);
         for u : cluster.unknowns  print_to_builder(*inner_builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
-        print_to_builder(*inner_builder, "%1 step_norm_sq = 0.0;\n", backend.decl_type);
-        for u : cluster.unknowns  print_to_builder(*inner_builder, "step_norm_sq += %1 * %1;\n", u.delta_name);
         append(*inner_builder, "\n");
         for u : cluster.unknowns {
             if u.model.limiter_kind == .AMP_CLIP {
@@ -767,7 +762,7 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
             }
         }
     }
-    append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");
+    append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq)\n    break;\n");
 
     inner_text := builder_to_string(*inner_builder);
     indented := indent_lines(inner_text, "    ");
@@ -891,11 +886,9 @@ generate_cluster_port_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr
     ty := backend.decl_type;
     print_to_builder(*inner, "\n%1 residual_norm_sq = 0.0;\n", ty);
     for u : cluster.unknowns  print_to_builder(*inner, "residual_norm_sq += %1 * %1;\n", u.residual_name);
-    print_to_builder(*inner, "%1 step_norm_sq = 0.0;\n", ty);
-    for u : cluster.unknowns  print_to_builder(*inner, "step_norm_sq += %1 * %1;\n", u.delta_name);
     append(*inner, "\n");
     for u : cluster.unknowns  emit_unknown_update(*inner, u, u.delta_name);
-    append(*inner, "\nif (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)\n    break;\n");
+    append(*inner, "\nif (residual_norm_sq < newton_tol_sq)\n    break;\n");
 
     append(*builder, "    ");
     append(*builder, indent_lines(builder_to_string(*inner), "    "));

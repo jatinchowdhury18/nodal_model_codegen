@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen rc_cascade_stability.net rc_cascade_stability_c.h -opt_port_matrix -lang c
 
 #pragma once

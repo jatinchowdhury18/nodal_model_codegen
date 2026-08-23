@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen tube_compressor.net tube_compressor.h -opt_port_matrix -type_name double -instrument
 
 #pragma once
@@ -96,10 +96,15 @@ struct State {
     double zCsc {};
     double zRk2Ck2 {};
     double vPKX1 {};
+    double vPKX1_prev {};
     double vGKX1 {};
+    double vGKX1_prev {};
     double vPKX2 {};
+    double vPKX2_prev {};
     double vGKX2 {};
+    double vGKX2_prev {};
     double vD1 {};
+    double vD1_prev {};
     long long nr_solves_X1_X2_D1 {};
     long long nr_iters_X1_X2_D1 {};
 };
@@ -482,15 +487,36 @@ static void compute (const float* const* input, float** output, int num_channels
         auto zCsc = state[ch].zCsc;
         auto zRk2Ck2 = state[ch].zRk2Ck2;
         auto vPKX1 = state[ch].vPKX1;
+        auto vPKX1_prev = state[ch].vPKX1_prev;
         auto vGKX1 = state[ch].vGKX1;
+        auto vGKX1_prev = state[ch].vGKX1_prev;
         auto vPKX2 = state[ch].vPKX2;
+        auto vPKX2_prev = state[ch].vPKX2_prev;
         auto vGKX2 = state[ch].vGKX2;
+        auto vGKX2_prev = state[ch].vGKX2_prev;
         auto vD1 = state[ch].vD1;
+        auto vD1_prev = state[ch].vD1_prev;
         long long nr_solves_X1_X2_D1 = state[ch].nr_solves_X1_X2_D1;
         long long nr_iters_X1_X2_D1 = state[ch].nr_iters_X1_X2_D1;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vPKX1 - vPKX1_prev; vPKX1_prev = vPKX1;
+vPKX1 = vPKX1 + (_prev_step);
+            }
+            { const auto _prev_step = vGKX1 - vGKX1_prev; vGKX1_prev = vGKX1;
+vGKX1 = vGKX1 + (_prev_step);
+            }
+            { const auto _prev_step = vPKX2 - vPKX2_prev; vPKX2_prev = vPKX2;
+vPKX2 = vPKX2 + (_prev_step);
+            }
+            { const auto _prev_step = vGKX2 - vGKX2_prev; vGKX2_prev = vGKX2;
+vGKX2 = vGKX2 + (_prev_step);
+            }
+            { const auto _prev_step = vD1 - vD1_prev; vD1_prev = vD1;
+vD1 = limit_junction_voltage(vD1 + (_prev_step), vD1, D1N914_vt, vcrit_D1N914_vt);
+            }
 
             // --- Newton-Raphson solve (N-port): X1_X2_D1
             const auto _X1_X2_D1_voc2 = c0__X1_X2_D1_voc2 + c__X1_X2_D1_voc2[0] * vi + c__X1_X2_D1_voc2[1] * zCin + c__X1_X2_D1_voc2[2] * zRk1Ck1 + c__X1_X2_D1_voc2[3] * zCc12 + c__X1_X2_D1_voc2[4] * zRrelCenv + c__X1_X2_D1_voc2[5] * zCout + c__X1_X2_D1_voc2[6] * zCsc + c__X1_X2_D1_voc2[7] * zRk2Ck2;
@@ -893,12 +919,6 @@ static void compute (const float* const* input, float** output, int num_channels
                 residual_norm_sq += res_vPKX2 * res_vPKX2;
                 residual_norm_sq += res_vGKX2 * res_vGKX2;
                 residual_norm_sq += res_vD1 * res_vD1;
-                auto step_norm_sq = 0.0;
-                step_norm_sq += delta_vPKX1 * delta_vPKX1;
-                step_norm_sq += delta_vGKX1 * delta_vGKX1;
-                step_norm_sq += delta_vPKX2 * delta_vPKX2;
-                step_norm_sq += delta_vGKX2 * delta_vGKX2;
-                step_norm_sq += delta_vD1 * delta_vD1;
             
                 vPKX1 = vPKX1 + (delta_vPKX1);
                 vGKX1 = vGKX1 + (delta_vGKX1);
@@ -906,7 +926,7 @@ static void compute (const float* const* input, float** output, int num_channels
                 vGKX2 = vGKX2 + (delta_vGKX2);
                 vD1 = limit_junction_voltage(vD1 + (delta_vD1), vD1, D1N914_vt, vcrit_D1N914_vt);
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -1014,10 +1034,15 @@ static void compute (const float* const* input, float** output, int num_channels
         state[ch].zCsc = zCsc;
         state[ch].zRk2Ck2 = zRk2Ck2;
         state[ch].vPKX1 = vPKX1;
+        state[ch].vPKX1_prev = vPKX1_prev;
         state[ch].vGKX1 = vGKX1;
+        state[ch].vGKX1_prev = vGKX1_prev;
         state[ch].vPKX2 = vPKX2;
+        state[ch].vPKX2_prev = vPKX2_prev;
         state[ch].vGKX2 = vGKX2;
+        state[ch].vGKX2_prev = vGKX2_prev;
         state[ch].vD1 = vD1;
+        state[ch].vD1_prev = vD1_prev;
         state[ch].nr_solves_X1_X2_D1 = nr_solves_X1_X2_D1;
         state[ch].nr_iters_X1_X2_D1 = nr_iters_X1_X2_D1;
     }
@@ -1226,16 +1251,12 @@ static float reset (Params params, State* state, int num_channels, float sample_
         residual_norm_sq += res_vPKX1 * res_vPKX1;
         residual_norm_sq += res_vGKX1 * res_vGKX1;
         residual_norm_sq += res_vD1 * res_vD1;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vPKX1 * delta_vPKX1;
-        step_norm_sq += delta_vGKX1 * delta_vGKX1;
-        step_norm_sq += delta_vD1 * delta_vD1;
     
         vPKX1 = vPKX1 + (delta_vPKX1);
         vGKX1 = vGKX1 + (delta_vGKX1);
         vD1 = limit_junction_voltage(vD1 + (delta_vD1), vD1, D1N914_vt, vcrit_D1N914_vt);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -1351,14 +1372,11 @@ static float reset (Params params, State* state, int num_channels, float sample_
         auto residual_norm_sq = 0.0;
         residual_norm_sq += res_vPKX2 * res_vPKX2;
         residual_norm_sq += res_vGKX2 * res_vGKX2;
-        auto step_norm_sq = 0.0;
-        step_norm_sq += delta_vPKX2 * delta_vPKX2;
-        step_norm_sq += delta_vGKX2 * delta_vGKX2;
     
         vPKX2 = vPKX2 + (delta_vPKX2);
         vGKX2 = vGKX2 + (delta_vGKX2);
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -1375,10 +1393,15 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vPKX1 = vPKX1;
+        state[ch].vPKX1_prev = vPKX1;
         state[ch].vGKX1 = vGKX1;
+        state[ch].vGKX1_prev = vGKX1;
         state[ch].vD1 = vD1;
+        state[ch].vD1_prev = vD1;
         state[ch].vPKX2 = vPKX2;
+        state[ch].vPKX2_prev = vPKX2;
         state[ch].vGKX2 = vGKX2;
+        state[ch].vGKX2_prev = vGKX2;
         state[ch].zCin = zCin;
         state[ch].zRk1Ck1 = zRk1Ck1;
         state[ch].zCc12 = zCc12;

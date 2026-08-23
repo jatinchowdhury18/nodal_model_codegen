@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen opamp_clipping.net opamp_clipping.h -opt_port_matrix
 
 #pragma once
@@ -29,6 +29,7 @@ struct Params {
 
 struct State {
     float vclip_Eop {};
+    float vclip_Eop_prev {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -61,9 +62,14 @@ static void compute (const float* const* input, float** output, int num_channels
     for (int ch = 0; ch < num_channels; ++ch)
     {
         auto vclip_Eop = state[ch].vclip_Eop;
+        auto vclip_Eop_prev = state[ch].vclip_Eop_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vclip_Eop - vclip_Eop_prev; vclip_Eop_prev = vclip_Eop;
+vclip_Eop = vclip_Eop + (_prev_step);
+            }
 
             // --- Newton-Raphson solve: Eop
             const auto _Eop_t4 = c0__Eop_t4 + c__Eop_t4[0] * vi;
@@ -94,10 +100,9 @@ static void compute (const float* const* input, float** output, int num_channels
                 }
             
                 auto residual_norm_sq = res_vclip_Eop_active * res_vclip_Eop_active;
-                auto step_norm_sq = delta_vclip_Eop_active * delta_vclip_Eop_active;
             
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -108,6 +113,7 @@ static void compute (const float* const* input, float** output, int num_channels
             output[ch][n] = vo;
         }
         state[ch].vclip_Eop = vclip_Eop;
+        state[ch].vclip_Eop_prev = vclip_Eop_prev;
     }
 }
 
@@ -157,10 +163,9 @@ static float reset (Params params, State* state, int num_channels, float sample_
         }
     
         auto residual_norm_sq = res_vclip_Eop_active * res_vclip_Eop_active;
-        auto step_norm_sq = delta_vclip_Eop_active * delta_vclip_Eop_active;
     
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -169,6 +174,7 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vclip_Eop = vclip_Eop;
+        state[ch].vclip_Eop_prev = vclip_Eop;
     }
     return vo_dc_out;
 }

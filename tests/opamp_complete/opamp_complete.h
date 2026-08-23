@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version ac50416.
+// Auto-generated with netlist_codegen version 5608cd2.
 // Command: netlist_codegen opamp_complete.net opamp_complete.h -opt_port_matrix
 
 #pragma once
@@ -37,6 +37,7 @@ struct Params {
 struct State {
     float zEraw_Ccomp {};
     float vclip_Eraw {};
+    float vclip_Eraw_prev {};
 };
 
 static void compute (const float* const* input, float** output, int num_channels, int num_samples, Params params, State* state, float sample_rate)
@@ -117,9 +118,14 @@ static void compute (const float* const* input, float** output, int num_channels
     {
         auto zEraw_Ccomp = state[ch].zEraw_Ccomp;
         auto vclip_Eraw = state[ch].vclip_Eraw;
+        auto vclip_Eraw_prev = state[ch].vclip_Eraw_prev;
         for (int n = 0; n < num_samples; ++n)
         {
             const auto vi = input[ch][n];
+
+            { const auto _prev_step = vclip_Eraw - vclip_Eraw_prev; vclip_Eraw_prev = vclip_Eraw;
+vclip_Eraw = vclip_Eraw + (_prev_step);
+            }
 
             // --- Newton-Raphson solve: Eraw
             const auto _Eraw_t17 = c0__Eraw_t17 + c__Eraw_t17[0] * vi + c__Eraw_t17[1] * zEraw_Ccomp;
@@ -163,10 +169,9 @@ static void compute (const float* const* input, float** output, int num_channels
                 }
             
                 auto residual_norm_sq = res_vclip_Eraw_active * res_vclip_Eraw_active;
-                auto step_norm_sq = delta_vclip_Eraw_active * delta_vclip_Eraw_active;
             
             
-                if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+                if (residual_norm_sq < newton_tol_sq)
                     break;
                 
             }
@@ -184,6 +189,7 @@ static void compute (const float* const* input, float** output, int num_channels
         }
         state[ch].zEraw_Ccomp = zEraw_Ccomp;
         state[ch].vclip_Eraw = vclip_Eraw;
+        state[ch].vclip_Eraw_prev = vclip_Eraw_prev;
     }
 }
 
@@ -255,10 +261,9 @@ static float reset (Params params, State* state, int num_channels, float sample_
         }
     
         auto residual_norm_sq = res_vclip_Eraw_active * res_vclip_Eraw_active;
-        auto step_norm_sq = delta_vclip_Eraw_active * delta_vclip_Eraw_active;
     
     
-        if (residual_norm_sq < newton_tol_sq && step_norm_sq < newton_tol_sq)
+        if (residual_norm_sq < newton_tol_sq)
             break;
         
     }
@@ -269,6 +274,7 @@ static float reset (Params params, State* state, int num_channels, float sample_
     for (int ch = 0; ch < num_channels; ++ch)
     {
         state[ch].vclip_Eraw = vclip_Eraw;
+        state[ch].vclip_Eraw_prev = vclip_Eraw;
         state[ch].zEraw_Ccomp = zEraw_Ccomp;
     }
     return vo_dc_out;
