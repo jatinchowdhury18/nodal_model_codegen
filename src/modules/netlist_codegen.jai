@@ -893,8 +893,13 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     append(*builder, generate_params_struct(elements_copy, values, backend, suffix));
     append(*builder, "\n");
 
+    // v[n-1] (the unknown itself, warm start) and v[n-2] (for the
+    // extrapolated initial guess below).
     extra_state_names: [..] string;
-    for c : clusters  for u : c.unknowns  array_add(*extra_state_names, u.name);
+    for c : clusters  for u : c.unknowns {
+        array_add(*extra_state_names, u.name);
+        array_add(*extra_state_names, newton_prev_state_name(u.name));
+    }
 
     // -instrument: one solve counter and one iteration counter per cluster.
     counter_names: [..] string;
@@ -964,6 +969,17 @@ generate_unit :: (elements: [..] Element, inputs: [] string, outputs: [] string,
     }
 
     if has_nonlinear {
+        // Extrapolated initial guess: v_pred = 2*v[n-1] - v[n-2], applied as
+        // a step through the unknown's own limiter.
+        for c : clusters {
+            for u : c.unknowns {
+                prev_name := newton_prev_state_name(u.name);
+                print_to_builder(*builder, "            { const %1 _prev_step = %2 - %3; %3 = %2;\n", backend.decl_type, u.name, prev_name);
+                emit_unknown_update(*builder, u, "_prev_step");
+                append(*builder, "            }\n");
+            }
+        }
+        append(*builder, "\n");
         for newton_code : cluster_newton_inner {
             append(*builder, tprint("%\n", indent(newton_code, "            ")));
         }

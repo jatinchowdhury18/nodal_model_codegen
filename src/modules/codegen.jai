@@ -178,6 +178,12 @@ newton_counter_names :: (cluster_name: string) -> (solves: string, iters: string
     return tprint("nr_solves_%", cluster_name), tprint("nr_iters_%", cluster_name);
 }
 
+// v[n-2] State field for a Newton unknown, for the extrapolated initial
+// guess v_pred = 2*v[n-1] - v[n-2].
+newton_prev_state_name :: (unknown_name: string) -> string {
+    return tprint("%_prev", unknown_name);
+}
+
 NEWTON_COUNTER_TYPE :: "long long";
 
 generate_state_struct :: (elements: [] Element, extra_state_names: [] string, backend: Backend = .{}, unit_name := "", counter_names: [] string = .[]) -> string, [] string {
@@ -1056,6 +1062,8 @@ generate_reset_function :: (elements: [] Element, inputs: [] string, outputs: []
             print_to_builder(*builder, "        state[ch].%1 = %1;\n", u.name);
             // zslew_<name> starts at the same DC-settled value.
             if u.model.has_slew  print_to_builder(*builder, "        state[ch].%1 = %2;\n", u.model.zslew_name, u.name);
+            // v[n-2] starts at the same DC-settled value as v[n-1]
+            print_to_builder(*builder, "        state[ch].%1 = %2;\n", newton_prev_state_name(u.name), u.name);
         }
     }
     for zv : z_init_vars  print_to_builder(*builder, "        state[ch].%1 = %1;\n", zv.name);
