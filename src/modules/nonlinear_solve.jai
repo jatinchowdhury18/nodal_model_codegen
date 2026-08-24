@@ -483,6 +483,8 @@ extract_port_form :: (members: [] int,
                       port_syms_by_device: [] [..] Expr_ID,
                       port_names_by_device: [] [..] string,
                       pool: *Expr_Pool) -> Port_Form {
+    auto_release_temp();
+
     result: Port_Form;
 
     // Port form doesn't support op-amp clip stages (for now)
@@ -905,31 +907,34 @@ build_nonlinear_clusters :: (elements: [] Element,
     for ru, i : raw_unknowns  table_set(*raw_unknown_by_name, ru.name, i);
 
     // Union devices whose branch-current symbols appear in each other's
-    // linear_form (checked both directions; see module comment).
-    device_refs: [..] Table(string, bool);
-    device_refs.allocator = temp;
-    for d : 0..devices.count-1 {
-        refs_set: Table(string, bool);
-        refs_set.allocator = temp;
-        for ru_i : device_to_ru(device_to_ru_flat, device_to_ru_offsets, d) {
-            refs: [..] string;
-            refs.allocator = temp;
-            collect_symbol_names(raw_unknowns[ru_i].linear_form, pool.exprs, *refs);
-            for n : refs  if !table_contains(*refs_set, n)  table_add(*refs_set, n, true);
-        }
-        array_add(*device_refs, refs_set);
-    }
 
     uf := uf_make(devices.count);
-    for a : 0..devices.count-1 {
-        a_names := branch_current_names(devices[a]);
-        for b : a+1..devices.count-1 {
-            b_names := branch_current_names(devices[b]);
-            coupled := false;
-            for n : b_names  if table_contains(*device_refs[a], n)  coupled = true;
-            for n : a_names  if table_contains(*device_refs[b], n)  coupled = true;
+    {
+        auto_release_temp();
+        device_refs: [..] Table(string, bool);
+        device_refs.allocator = temp;
+        for d : 0..devices.count-1 {
+            refs_set: Table(string, bool);
+            refs_set.allocator = temp;
+            for ru_i : device_to_ru(device_to_ru_flat, device_to_ru_offsets, d) {
+                refs: [..] string;
+                refs.allocator = temp;
+                collect_symbol_names(raw_unknowns[ru_i].linear_form, pool.exprs, *refs);
+                for n : refs  if !table_contains(*refs_set, n)  table_add(*refs_set, n, true);
+            }
+            array_add(*device_refs, refs_set);
+        }
 
-            if coupled  uf_union(*uf, a, b);
+        for a : 0..devices.count-1 {
+            a_names := branch_current_names(devices[a]);
+            for b : a+1..devices.count-1 {
+                b_names := branch_current_names(devices[b]);
+                coupled := false;
+                for n : b_names  if table_contains(*device_refs[a], n)  coupled = true;
+                for n : a_names  if table_contains(*device_refs[b], n)  coupled = true;
+
+                if coupled  uf_union(*uf, a, b);
+            }
         }
     }
 
@@ -1012,14 +1017,17 @@ build_nonlinear_clusters :: (elements: [] Element,
     }
 
     // Substitute every branch-current symbol with its I-V law, in place.
-    law_by_name: Table(string, Expr_ID);
-    law_by_name.allocator = temp;
-    for id, i : iv_law_ids  table_add(*law_by_name, iv_law_names[i], id);
-    for ex, node_id : pool.exprs {
-        if ex.kind != .SYMBOL  continue;
-        found, law_id := table_find(*law_by_name, ex.name);
-        if !found  continue;
-        substitute(node_id, law_id, pool);
+    {
+        auto_release_temp();
+        law_by_name: Table(string, Expr_ID);
+        law_by_name.allocator = temp;
+        for id, i : iv_law_ids  table_add(*law_by_name, iv_law_names[i], id);
+        for ex, node_id : pool.exprs {
+            if ex.kind != .SYMBOL  continue;
+            found, law_id := table_find(*law_by_name, ex.name);
+            if !found  continue;
+            substitute(node_id, law_id, pool);
+        }
     }
 
     // Build one Nonlinear_Cluster per connected component.

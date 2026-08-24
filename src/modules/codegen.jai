@@ -1364,7 +1364,9 @@ should_extract :: (region_items: [] Gen_Var, terminal_names: [] string, basis_na
 select_extraction_terminals :: (eligible: [] string, full_items: [] Gen_Var, exprs: [] Expr, basis_names: [] string, backend: Backend) -> [] string {
     costs: [..] float;
     costs.allocator = temp;
+    array_reserve(*costs, eligible.count);
     for t : eligible {
+        auto_release_temp();
         solo_closure := collect_region_closure(.[t], full_items, exprs);
         flops := count_flops(solo_closure, exprs, backend.transcendental_approx);
         array_add(*costs, estimate_flop_cost(flops, backend.cpu));
@@ -1383,6 +1385,7 @@ select_extraction_terminals :: (eligible: [] string, full_items: [] Gen_Var, exp
 
     accepted: [..] string;
     for idx : order {
+        auto_release_temp();
         trial: [..] string;
         for a : accepted  array_add(*trial, a);
         array_add(*trial, eligible[idx]);

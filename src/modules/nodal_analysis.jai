@@ -1049,6 +1049,8 @@ Circuit_Partition :: struct {
 // Each resulting group is matched to whichever decl's in_node/out_node it
 // touches. Only exact for a decl boundary that's a true ideal-source node.
 partition_circuit :: (elements: [] Element, decls: [] Sub_Circuit_Decl) -> [] Circuit_Partition {
+    auto_release_temp();
+
     if decls.count == 0 {
         single: Circuit_Partition;
         array_copy(*single.elements, elements);
