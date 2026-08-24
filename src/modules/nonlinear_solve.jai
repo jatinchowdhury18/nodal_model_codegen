@@ -493,10 +493,8 @@ extract_port_form :: (members: [] int,
     // Ports and unknowns, both in ascending device order. root_members and
     // raw_unknowns are filled in the same order and share the same indices.
     unknown_syms: [..] Expr_ID;
-    members_set: Table(int, bool);
-    for m : members  table_add(*members_set, m, true);
     for ru : raw_unknowns {
-        if !table_contains(*members_set, ru.device_idx)  continue;
+        if !array_find(members, ru.device_idx)  continue;
         array_add(*unknown_syms, expr_symbol(ru.name, pool));
     }
 
@@ -523,11 +521,15 @@ extract_port_form :: (members: [] int,
     // is silent: linearize() would treat it as a constant and fold a device
     // current into voc.
     port_by_name: Table(string, int);
+    port_by_name.allocator = temp;
     for pn, m : result.port_names  table_add(*port_by_name, pn, m);
 
     var_ids:  [..] Expr_ID;
     var_port: [..] int; // parallel to var_ids: which port each alias belongs to
+    var_ids.allocator  = temp;
+    var_port.allocator = temp;
     port_matched: [..] bool;
+    port_matched.allocator = temp;
     array_resize(*port_matched, k);
     pool_count := pool.exprs.count;
     for node_id : 0..pool_count-1 {
@@ -546,7 +548,7 @@ extract_port_form :: (members: [] int,
     for pn, m : result.port_names  assert(port_matched[m], "Port form: branch current '%' (port %) never appears in the cluster's linear forms; N-port extraction would silently fold it into voc.", pn, m);
 
     for ru : raw_unknowns {
-        if !table_contains(*members_set, ru.device_idx)  continue;
+        if !array_find(members, ru.device_idx)  continue;
 
         form := copy_expr(ru.linear_form, pool);
         simplify(form, pool);
@@ -750,6 +752,7 @@ derive_port_newton :: (pf: *Port_Form, unknowns: [] Cluster_Unknown, cluster_nam
     in_z_items := collect_region_closure(z_seed_names, zv_cse, pool.exprs);
 
     in_z: Table(string, bool);
+    in_z.allocator = temp;
     for cv : in_z_items  table_add(*in_z, cv.name, true);
 
     for cv : zv_cse {
@@ -898,15 +901,19 @@ build_nonlinear_clusters :: (elements: [] Element,
 
     // name -> index into raw_unknowns.
     raw_unknown_by_name: Table(string, int);
+    raw_unknown_by_name.allocator = temp;
     for ru, i : raw_unknowns  table_set(*raw_unknown_by_name, ru.name, i);
 
     // Union devices whose branch-current symbols appear in each other's
     // linear_form (checked both directions; see module comment).
     device_refs: [..] Table(string, bool);
+    device_refs.allocator = temp;
     for d : 0..devices.count-1 {
         refs_set: Table(string, bool);
+        refs_set.allocator = temp;
         for ru_i : device_to_ru(device_to_ru_flat, device_to_ru_offsets, d) {
             refs: [..] string;
+            refs.allocator = temp;
             collect_symbol_names(raw_unknowns[ru_i].linear_form, pool.exprs, *refs);
             for n : refs  if !table_contains(*refs_set, n)  table_add(*refs_set, n, true);
         }
@@ -1006,6 +1013,7 @@ build_nonlinear_clusters :: (elements: [] Element,
 
     // Substitute every branch-current symbol with its I-V law, in place.
     law_by_name: Table(string, Expr_ID);
+    law_by_name.allocator = temp;
     for id, i : iv_law_ids  table_add(*law_by_name, iv_law_names[i], id);
     for ex, node_id : pool.exprs {
         if ex.kind != .SYMBOL  continue;
@@ -1025,11 +1033,9 @@ build_nonlinear_clusters :: (elements: [] Element,
         cluster.port = port_forms[ci];
 
         // Collect this cluster's unknowns (all raw_unknowns whose device is a member).
-        members_set: Table(int, bool);
-        for m : members  table_add(*members_set, m, true);
         cluster_unknown_names: [..] string;
         for ru : raw_unknowns {
-            if !table_contains(*members_set, ru.device_idx)  continue;
+            if !array_find(members, ru.device_idx)  continue;
             array_add(*cluster_unknown_names, ru.name);
         }
 

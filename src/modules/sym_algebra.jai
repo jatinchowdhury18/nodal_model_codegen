@@ -164,6 +164,7 @@ substitute_batch :: (subs: [] Substitution, pool: *Expr_Pool) {
     // old_expr -> its (possibly further-chained) replacement. Keyed by the
     // handful of Expr_IDs actually substituted in this batch.
     forward: Table(Expr_ID, Expr_ID);
+    forward.allocator = temp;
 
     chase :: (id: Expr_ID, forward: *Table(Expr_ID, Expr_ID)) -> Expr_ID {
         cur := id;
@@ -1590,10 +1591,13 @@ cse :: (gen_var_ids: [] Expr_ID, pool: *Expr_Pool, prefix: string = "_t") -> [..
 // in the correct dependency order.
 sort_cse_topological :: (cse_vars: *[..] CSE_Var, exprs: [] Expr) {
     sorted:  [..] CSE_Var;
+    sorted.allocator = temp;
     emitted: [..] bool;
+    emitted.allocator = temp;
     for _ : 0..cse_vars.count-1  array_add(*emitted, false);
 
     name_to_idx: Table(string, int);
+    name_to_idx.allocator = temp;
     for v, i : cse_vars.*  table_add(*name_to_idx, v.name, i);
     assert(name_to_idx.count == cse_vars.count, "sort_cse_topological: duplicate CSE_Var name");
 
@@ -1859,7 +1863,9 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
                 variant_base: [] string, prefix: string = "_t") {
     // Classify each CSE temp as inner (loop-variant) or outer (loop-invariant).
     variant_cse_names: [..] string;
+    variant_cse_names.allocator = temp;
     variant_set: Table(string, bool);
+    variant_set.allocator = temp;
     for cv : cse_vars.* {
         if expr_is_loop_variant(cv.expr_id, pool.exprs, variant_base, variant_cse_names) {
             array_add(*variant_cse_names, cv.name);
@@ -1876,7 +1882,9 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
         outer_refs:  int;   // Times referenced (any position) by other outer-loop expressions.
     }
     infos: [..] Div_Info;
+    infos.allocator = temp;
     name_to_idx: Table(string, int);
+    name_to_idx.allocator = temp;
     for cv, idx : cse_vars.* {
         if !table_contains(*variant_set, cv.name) {
             table_add(*name_to_idx, cv.name, infos.count);
@@ -1888,6 +1896,8 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
     // Count inner-loop uses: one walk per expression, all names at once.
     inner_div:   [..] int;
     inner_other: [..] int;
+    inner_div.allocator   = temp;
+    inner_other.allocator = temp;
     array_resize(*inner_div,   infos.count);
     array_resize(*inner_other, infos.count);
     for gv_id : gen_var_ids
@@ -1905,6 +1915,8 @@ recip_hoist :: (gen_var_ids: [] Expr_ID, cse_vars: *[..] CSE_Var, pool: *Expr_Po
     for cv : cse_vars.* {
         if table_contains(*variant_set, cv.name)  continue;
         d: [..] int; o: [..] int;
+        d.allocator = temp;
+        o.allocator = temp;
         array_resize(*d, infos.count);
         array_resize(*o, infos.count);
         count_sym_uses_multi(cv.expr_id, *name_to_idx, pool.exprs, d, o);

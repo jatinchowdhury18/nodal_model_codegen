@@ -1091,22 +1091,25 @@ partition_circuit :: (elements: [] Element, decls: [] Sub_Circuit_Decl) -> [] Ci
     for i : 0..elements.count-1  array_add(*parent, i);
 
     node_elements: Table(string, [..] int);
+    node_elements.allocator = temp;
     for i : real_idxs {
         for term : elements[i].terminals {
             if !is_real(term, decls)  continue;
             list := table_find_pointer(*node_elements, term);
-            if !list { empty: [..] int; list = table_add(*node_elements, term, empty); }
+            if !list { empty: [..] int; empty.allocator = temp; list = table_add(*node_elements, term, empty); }
             array_add(list, i);
         }
     }
     for list : node_elements  for k : 1..list.count-1  dsu_union(parent, list[0], list[k]);
 
     group_of_root: Table(int, int);
+    group_of_root.allocator = temp;
     groups: [..] [..] int;
+    groups.allocator = temp;
     for i : real_idxs {
         r := find(parent, i);
         found, gi := table_find(*group_of_root, r);
-        if !found { gi = groups.count; table_add(*group_of_root, r, gi); empty: [..] int; array_add(*groups, empty); }
+        if !found { gi = groups.count; table_add(*group_of_root, r, gi); empty: [..] int; empty.allocator = temp; array_add(*groups, empty); }
         array_add(*groups[gi], i);
     }
 
@@ -1116,6 +1119,7 @@ partition_circuit :: (elements: [] Element, decls: [] Sub_Circuit_Decl) -> [] Ci
     }
 
     matched: [..] int; // decl index -> group index, -1 if unmatched
+    matched.allocator = temp;
     for d : decls {
         gi := -1;
         for g, i : groups  if touches(elements, g, d.in_node) && touches(elements, g, d.out_node) { gi = i; break; }
