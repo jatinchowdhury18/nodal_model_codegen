@@ -522,6 +522,9 @@ extract_port_form :: (members: [] int,
     // linearize() compares, and fold every alias into one column. Missing one
     // is silent: linearize() would treat it as a constant and fold a device
     // current into voc.
+    port_by_name: Table(string, int);
+    for pn, m : result.port_names  table_add(*port_by_name, pn, m);
+
     var_ids:  [..] Expr_ID;
     var_port: [..] int; // parallel to var_ids: which port each alias belongs to
     port_matched: [..] bool;
@@ -530,13 +533,11 @@ extract_port_form :: (members: [] int,
     for node_id : 0..pool_count-1 {
         ex := pool.exprs[node_id];
         if ex.kind != .SYMBOL  continue;
-        for pn, m : result.port_names {
-            if ex.name != pn  continue;
-            array_add(*var_ids, node_id);
-            array_add(*var_port, m);
-            port_matched[m] = true;
-            break;
-        }
+        found, m := table_find(*port_by_name, ex.name);
+        if !found  continue;
+        array_add(*var_ids, node_id);
+        array_add(*var_port, m);
+        port_matched[m] = true;
     }
     // A port whose symbol never appears elsewhere in the pool would silently
     // fold that device's current into voc instead of a Z column, producing the
@@ -1004,11 +1005,13 @@ build_nonlinear_clusters :: (elements: [] Element,
     }
 
     // Substitute every branch-current symbol with its I-V law, in place.
-    for id, i : iv_law_ids {
-        name := iv_law_names[i];
-        matches: [..] Expr_ID;
-        for ex, node_id : pool.exprs  if ex.kind == .SYMBOL && ex.name == name  array_add(*matches, node_id);
-        for m : matches  substitute(m, id, pool);
+    law_by_name: Table(string, Expr_ID);
+    for id, i : iv_law_ids  table_add(*law_by_name, iv_law_names[i], id);
+    for ex, node_id : pool.exprs {
+        if ex.kind != .SYMBOL  continue;
+        found, law_id := table_find(*law_by_name, ex.name);
+        if !found  continue;
+        substitute(node_id, law_id, pool);
     }
 
     // Build one Nonlinear_Cluster per connected component.

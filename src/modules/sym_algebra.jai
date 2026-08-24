@@ -157,6 +157,41 @@ substitute :: (old_expr: Expr_ID, new_expr: Expr_ID, pool: *Expr_Pool) -> Expr_I
     return new_expr;
 }
 
+Substitution :: struct { old_expr: Expr_ID; new_expr: Expr_ID; }
+
+// Applies a sequence of substitute() calls (in order) as one pass over the pool.
+substitute_batch :: (subs: [] Substitution, pool: *Expr_Pool) {
+    // old_expr -> its (possibly further-chained) replacement. Keyed by the
+    // handful of Expr_IDs actually substituted in this batch.
+    forward: Table(Expr_ID, Expr_ID);
+
+    chase :: (id: Expr_ID, forward: *Table(Expr_ID, Expr_ID)) -> Expr_ID {
+        cur := id;
+        found, next := table_find(forward, cur);
+        while found {
+            cur = next;
+            found, next = table_find(forward, cur);
+        }
+        return cur;
+    }
+
+    for sub : subs {
+        target := chase(sub.new_expr, *forward);
+        if pool.exprs[target].kind == .SYMBOL {
+            pool.exprs[sub.old_expr] = .{ kind = .NULL };
+            table_add(*forward, sub.old_expr, target);
+        } else {
+            pool.exprs[sub.old_expr] = pool.exprs[target];
+        }
+    }
+
+    if forward.count == 0  return;
+    for *expr : pool.exprs {
+        expr.left  = chase(expr.left,  *forward);
+        expr.right = chase(expr.right, *forward);
+    }
+}
+
 //==================================================
 
 // Sentinel meaning "zero / absent expression"

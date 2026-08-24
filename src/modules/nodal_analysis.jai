@@ -681,12 +681,8 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
     equations : [..] Expr_ID;
     for _ : eqn_nodes array_add(*equations, NO_EXPR);
 
-    Sub_Expr :: struct {
-        id: Expr_ID;
-        replace_id: Expr_ID;
-    }
-    currents: [..] Sub_Expr;
-    voltages: [..] Sub_Expr;
+    currents: [..] Substitution;
+    voltages: [..] Substitution;
 
     solve_vars: [..]Expr_ID;
     for node : eqn_nodes array_add(*solve_vars, expr_symbol(node, *pool));
@@ -939,9 +935,13 @@ generate_kcl_equations :: (elements_in: [] Element, inputs: [] string, dc_mode :
         }
     }
 
-    // substitute current and voltage expressions
-    for current_sub : currents  substitute(current_sub.id, current_sub.replace_id, *pool);
-    for voltage_sub : voltages  substitute(voltage_sub.id, voltage_sub.replace_id, *pool);
+    // substitute current and voltage expressions.
+    all_subs: [..] Substitution;
+    all_subs.allocator = temp;
+    array_reserve(*all_subs, currents.count + voltages.count);
+    for c : currents   array_add(*all_subs, c);
+    for v : voltages   array_add(*all_subs, v);
+    substitute_batch(all_subs, *pool);
 
     // At DC, a node reachable only through a dropped capacitor and a diode
     // branch gets a KCL row with no solve_var at all (just "-iDiode = 0").
