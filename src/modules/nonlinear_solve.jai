@@ -524,6 +524,8 @@ extract_port_form :: (members: [] int,
     // current into voc.
     var_ids:  [..] Expr_ID;
     var_port: [..] int; // parallel to var_ids: which port each alias belongs to
+    port_matched: [..] bool;
+    array_resize(*port_matched, k);
     pool_count := pool.exprs.count;
     for node_id : 0..pool_count-1 {
         ex := pool.exprs[node_id];
@@ -532,9 +534,15 @@ extract_port_form :: (members: [] int,
             if ex.name != pn  continue;
             array_add(*var_ids, node_id);
             array_add(*var_port, m);
+            port_matched[m] = true;
             break;
         }
     }
+    // A port whose symbol never appears elsewhere in the pool would silently
+    // fold that device's current into voc instead of a Z column, producing the
+    // wrong N-port matrix. Every port's branch-current symbol must appear at
+    // least once outside its own I-V law.
+    for pn, m : result.port_names  assert(port_matched[m], "Port form: branch current '%' (port %) never appears in the cluster's linear forms; N-port extraction would silently fold it into voc.", pn, m);
 
     for ru : raw_unknowns {
         if !table_contains(*members_set, ru.device_idx)  continue;
@@ -654,6 +662,158 @@ port_jacobian_expr :: (pf: *Port_Form, j: int, n: int, pool: *Expr_Pool) -> Expr
     }
     if j == n  result = expr_sub(result, expr_const(1, pool), pool);
     return result;
+}
+
+// Symbolic Newton derivation for one cluster: residual f_j = closed_form_j -
+// unknown_j, Jacobian by differentiation, then J*delta = -f. Returns the
+// res_<name>/delta_<name> Gen_Var pairs plus f_ids.
+derive_symbolic_newton :: (cluster_unknown_names: [] string, raw_unknown_by_name: *Table(string, int),
+                           raw_unknowns: [] Raw_Unknown, pool: *Expr_Pool) -> (gen_vars: [..] Gen_Var, f_ids: [..] Expr_ID) {
+    f_ids: [..] Expr_ID; // parallel to cluster_unknown_names
+    for name : cluster_unknown_names {
+        _, ru_idx := table_find(raw_unknown_by_name, name);
+        closed_form := copy_expr(raw_unknowns[ru_idx].linear_form, pool);
+        simplify(closed_form, pool);
+        unknown_symbol := expr_symbol(name, pool);
+        f := simplify(expr_sub(closed_form, unknown_symbol, pool), pool);
+        array_add(*f_ids, f);
+    }
+
+    k := cluster_unknown_names.count;
+
+    // Jacobian: J[j][m] = d(f_j)/d(unknown_m)
+    jacobian: [..] Expr_ID; // row-major, k*k
+    array_reserve(*jacobian, k * k);
+    for j : 0..k-1 {
+        for m : 0..k-1 {
+            unknown_m := expr_symbol(cluster_unknown_names[m], pool);
+            dj := differentiate(f_ids[j], unknown_m, pool);
+            simplify(dj, pool);
+            array_add(*jacobian, dj);
+        }
+    }
+
+    // Newton delta solve: J*delta = -f, i.e. f_j + sum_m(J[j][m]*delta_m) = 0.
+    delta_ids: [..] Expr_ID;
+    for name : cluster_unknown_names  array_add(*delta_ids, expr_symbol(tprint("delta_%", name), pool));
+
+    delta_equations: [..] Expr_ID;
+    for j : 0..k-1 {
+        eq := f_ids[j];
+        for m : 0..k-1 {
+            eq = expr_add(eq, expr_mul(jacobian[j*k + m], delta_ids[m], pool), pool);
+        }
+        array_add(*delta_equations, eq);
+    }
+    delta_solutions := solve(delta_equations, delta_ids, pool);
+
+    gen_vars: [..] Gen_Var;
+    for name, j : cluster_unknown_names {
+        array_add(*gen_vars, Gen_Var.{ name = tprint("res_%", name),   expr_id = f_ids[j] });
+        array_add(*gen_vars, Gen_Var.{ name = tprint("delta_%", name), expr_id = delta_solutions[j] });
+    }
+
+    return gen_vars, f_ids;
+}
+
+// Device laws for N-port form. i_m and G_mn reference only this cluster's
+// own unknowns and model params. A BJT's iB and iC share both exp() terms,
+// and a triode's iP and iG share the whole cathode-current subtree, so CSE
+// matters here even though the expressions are small. Populates pf's
+// z/voc/invariant/iteration items (and their *_names) in place.
+derive_port_newton :: (pf: *Port_Form, unknowns: [] Cluster_Unknown, cluster_name: string,
+                       cluster_unknown_names: [] string, pool: *Expr_Pool) {
+    port_gen_vars: [..] Gen_Var;
+    name_port_exprs_1d(pf.iv, cluster_name, "i", *pf.iv_names, *port_gen_vars);
+    name_port_exprs_2d(pf.g, pf.k, cluster_name, "g", *pf.g_names, *port_gen_vars);
+
+    // Z and voc must be CSE'd in ONE pass. cse() rewrites pool nodes in
+    // place, so two separate passes let the second rewrite subtrees the
+    // first has already captured.
+    z_gen_vars:   [..] Gen_Var;
+    voc_gen_vars: [..] Gen_Var;
+    name_port_exprs_2d(pf.z, pf.k, cluster_name, "Z", *pf.z_names, *z_gen_vars);
+    name_port_exprs_1d(pf.voc, cluster_name, "voc", *pf.voc_names, *voc_gen_vars);
+
+    zv_ids: [..] Expr_ID;
+    for gv : z_gen_vars    array_add(*zv_ids, gv.expr_id);
+    for gv : voc_gen_vars  array_add(*zv_ids, gv.expr_id);
+    zv_prefix := tprint("_%1_zt", cluster_name);
+    zv_cse := cse(zv_ids, pool, zv_prefix);
+    sort_cse_topological(*zv_cse, pool.exprs);
+
+    // Split the shared temps by reachability from Z.
+    z_seed_names: [..] string;
+    z_seed_names.allocator = temp;
+    for gv : z_gen_vars  collect_symbol_names(gv.expr_id, pool.exprs, *z_seed_names);
+    in_z_items := collect_region_closure(z_seed_names, zv_cse, pool.exprs);
+
+    in_z: Table(string, bool);
+    for cv : in_z_items  table_add(*in_z, cv.name, true);
+
+    for cv : zv_cse {
+        if table_contains(*in_z, cv.name)  array_add(*pf.z_items,   Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+        else                               array_add(*pf.voc_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+    }
+    for gv : z_gen_vars    array_add(*pf.z_items,   gv);
+    for gv : voc_gen_vars  array_add(*pf.voc_items, gv);
+
+    // F_j (residual) and J_jn (Jacobian), as Expr trees over the z/voc/iv/g names.
+    F_ids: [..] Expr_ID; // k, in unknowns order
+    for j : 0..pf.k-1  array_add(*F_ids, port_residual_expr(pf, j, unknowns[j].name, pool));
+    for j : 0..pf.k-1  array_add(*port_gen_vars, Gen_Var.{ name = unknowns[j].residual_name, expr_id = F_ids[j] });
+
+    J_ids: [..] Expr_ID; // k*k
+    for j : 0..pf.k-1  for n : 0..pf.k-1  array_add(*J_ids, port_jacobian_expr(pf, j, n, pool));
+
+    if pf.k <= PORT_CRAMER_MAX_K {
+        port_delta_ids: [..] Expr_ID;
+        for j : 0..pf.k-1  array_add(*port_delta_ids, expr_symbol(unknowns[j].delta_name, pool));
+        delta_equations: [..] Expr_ID;
+        for j : 0..pf.k-1 {
+            eq := F_ids[j];
+            for n : 0..pf.k-1 {
+                // Emit NO_EXPR for structural zero values.
+                if J_ids[j*pf.k + n] == NO_EXPR  continue;
+                eq = expr_add(eq, expr_mul(J_ids[j*pf.k + n], port_delta_ids[n], pool), pool);
+            }
+            array_add(*delta_equations, eq);
+        }
+        deltas := solve(delta_equations, port_delta_ids, pool);
+        for j : 0..pf.k-1  array_add(*port_gen_vars, Gen_Var.{ name = unknowns[j].delta_name, expr_id = deltas[j] });
+    } else {
+        // k > PORT_CRAMER_MAX_K: partial pivoting is control flow that
+        // Expr trees can't represent, so the solve itself stays a
+        // hand-emitted pivoted-LU text block.
+        name_port_exprs_2d(J_ids, pf.k, cluster_name, "J", *pf.j_names, *port_gen_vars);
+    }
+
+    port_ids: [..] Expr_ID;
+    for gv : port_gen_vars  array_add(*port_ids, gv.expr_id);
+
+    // F and J reference i_m/G_mn by their already-named symbols, not by
+    // re-deriving them, so those names must count as loop-variant too.
+    port_variant_base: [..] string;
+    for n : cluster_unknown_names  array_add(*port_variant_base, n);
+    for n : pf.iv_names  if n.count > 0  array_add(*port_variant_base, n);
+    for n : pf.g_names   if n.count > 0  array_add(*port_variant_base, n);
+
+    port_prefix := tprint("_%1_pt", cluster_name);
+    port_cse := cse(port_ids, pool, port_prefix);
+    sort_cse_topological(*port_cse, pool.exprs);
+    licm(port_ids, *port_cse, pool, port_variant_base, port_prefix);
+    recip_hoist(port_ids, *port_cse, pool, port_variant_base, port_prefix);
+
+    port_variant_names: [..] string;
+    for cv : port_cse {
+        if expr_is_loop_variant(cv.expr_id, pool.exprs, port_variant_base, port_variant_names) {
+            array_add(*port_variant_names, cv.name);
+            array_add(*pf.iteration_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+        } else {
+            array_add(*pf.invariant_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+        }
+    }
+    for gv : port_gen_vars  array_add(*pf.iteration_items, gv);
 }
 
 build_nonlinear_clusters :: (elements: [] Element,
@@ -870,70 +1030,23 @@ build_nonlinear_clusters :: (elements: [] Element,
             array_add(*cluster_unknown_names, ru.name);
         }
 
-        // Don'tdo symbolic derivation if using N-port form.
-        derive_symbolic := !(backend.opt_port_matrix && cluster.port.valid);
-        f_ids:     [..] Expr_ID; // parallel to cluster_unknown_names
-        if derive_symbolic  {
-            for name : cluster_unknown_names {
-                _, ru_idx := table_find(*raw_unknown_by_name, name);
-                closed_form := copy_expr(raw_unknowns[ru_idx].linear_form, pool);
-                simplify(closed_form, pool);
-                unknown_symbol := expr_symbol(name, pool);
-                f := simplify(expr_sub(closed_form, unknown_symbol, pool), pool);
-                array_add(*f_ids, f);
-            }
-        }
-
-        k := cluster_unknown_names.count;
-
-        // Jacobian: J[j][m] = d(f_j)/d(unknown_m)
-        delta_solutions: [] Expr_ID;
-        if derive_symbolic {
-        jacobian: [..] Expr_ID; // row-major, k*k
-        array_reserve(*jacobian, k * k);
-        for j : 0..k-1 {
-            for m : 0..k-1 {
-                unknown_m := expr_symbol(cluster_unknown_names[m], pool);
-                dj := differentiate(f_ids[j], unknown_m, pool);
-                simplify(dj, pool);
-                array_add(*jacobian, dj);
-            }
-        }
-
-        // Newton delta solve: J*delta = -f, i.e. f_j + sum_m(J[j][m]*delta_m) = 0.
-        delta_ids: [..] Expr_ID;
-        for name : cluster_unknown_names  array_add(*delta_ids, expr_symbol(tprint("delta_%", name), pool));
-
-        delta_equations: [..] Expr_ID;
-        for j : 0..k-1 {
-            eq := f_ids[j];
-            for m : 0..k-1 {
-                eq = expr_add(eq, expr_mul(jacobian[j*k + m], delta_ids[m], pool), pool);
-            }
-            array_add(*delta_equations, eq);
-        }
-        delta_solutions = solve(delta_equations, delta_ids, pool);
-        }
+        // The N-port form and the symbolic derivation are mutually exclusive per cluster.
+        use_port := use_port_form(cluster, backend);
 
         // Named Gen_Vars: residual (for the convergence check) and delta
-        // (the Newton update) per unknown.
-        // The residual/delta *names* are shared by both paths (the N-port
-        // emitter declares locals with these names), so cluster.unknowns is
-        // populated either way; only the Gen_Vars backing them are symbolic.
+        // (the Newton update) per unknown. The residual/delta *names* are
+        // shared by both paths, so cluster.unknowns is populated either way;
+        // only the Gen_Vars backing them (gen_vars, symbolic-only) differ.
         gen_vars: [..] Gen_Var;
-        for name, j : cluster_unknown_names {
-            residual_name := tprint("res_%", name);
-            delta_name    := tprint("delta_%", name);
-            if derive_symbolic {
-                array_add(*gen_vars, Gen_Var.{ name = residual_name, expr_id = f_ids[j] });
-                array_add(*gen_vars, Gen_Var.{ name = delta_name,    expr_id = delta_solutions[j] });
-            }
+        f_ids: [..] Expr_ID; // symbolic-only; needed pre-CSE by the AMP_CLIP reduction below
+        if !use_port  gen_vars, f_ids = derive_symbolic_newton(cluster_unknown_names, *raw_unknown_by_name, raw_unknowns, pool);
 
+        for name : cluster_unknown_names {
             _, name_ru_idx := table_find(*raw_unknown_by_name, name);
             ru := raw_unknowns[name_ru_idx];
             array_add(*cluster.unknowns, Cluster_Unknown.{
                 name = name, model = ru.model,
-                residual_name = residual_name, delta_name = delta_name });
+                residual_name = tprint("res_%", name), delta_name = tprint("delta_%", name) });
         }
 
         // Cluster-unique temp prefix, since this Newton-loop code shares a
@@ -981,133 +1094,30 @@ build_nonlinear_clusters :: (elements: [] Element,
             cluster.lo_iteration_items = lo_iter;
         }
 
-        // N-port form's device laws, over a smaller expression set: i_m and G_mn
-        // reference only this cluster's own unknowns and model params. A BJT's iB
-        // and iC share both exp() terms, and a triode's iP and iG share the whole
-        // cathode-current subtree, so CSE matters here even though the expressions are small.
-        if cluster.port.valid {
-            pf := *cluster.port;
-            port_gen_vars: [..] Gen_Var;
-            name_port_exprs_1d(pf.iv, cluster.name, "i", *pf.iv_names, *port_gen_vars);
-            name_port_exprs_2d(pf.g, pf.k, cluster.name, "g", *pf.g_names, *port_gen_vars);
+        if use_port {
+            derive_port_newton(*cluster.port, cluster.unknowns, cluster.name, cluster_unknown_names, pool);
+        } else {
+            // Same CSE/LICM/recip_hoist recipe as solve_and_codegen(), but the
+            // loop-variant base is this cluster's unknowns.
+            gen_var_ids: [..] Expr_ID;
+            for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
 
-            // Z and voc must be CSE'd in ONE pass. cse() rewrites pool nodes in
-            // place, so two separate passes let the second rewrite subtrees the
-            // first has already captured. They share a lot: both are cofactor ratios
-            // over the same MNA determinant.
-            z_gen_vars:   [..] Gen_Var;
-            voc_gen_vars: [..] Gen_Var;
-            name_port_exprs_2d(pf.z, pf.k, cluster.name, "Z", *pf.z_names, *z_gen_vars);
-            name_port_exprs_1d(pf.voc, cluster.name, "voc", *pf.voc_names, *voc_gen_vars);
+            cse_vars := cse(gen_var_ids, pool, temp_prefix);
+            sort_cse_topological(*cse_vars, pool.exprs);
+            licm(gen_var_ids, *cse_vars, pool, cluster_unknown_names, temp_prefix);
+            recip_hoist(gen_var_ids, *cse_vars, pool, cluster_unknown_names, temp_prefix);
 
-            zv_ids: [..] Expr_ID;
-            for gv : z_gen_vars    array_add(*zv_ids, gv.expr_id);
-            for gv : voc_gen_vars  array_add(*zv_ids, gv.expr_id);
-            zv_prefix := tprint("_%1_zt", cluster.name);
-            zv_cse := cse(zv_ids, pool, zv_prefix);
-            sort_cse_topological(*zv_cse, pool.exprs);
-
-            // Split the shared temps by reachability from Z.
-            z_seed_names: [..] string;
-            z_seed_names.allocator = temp;
-            for gv : z_gen_vars  collect_symbol_names(gv.expr_id, pool.exprs, *z_seed_names);
-            in_z_items := collect_region_closure(z_seed_names, zv_cse, pool.exprs);
-
-            in_z: Table(string, bool);
-            for cv : in_z_items  table_add(*in_z, cv.name, true);
-
-            for cv : zv_cse {
-                if table_contains(*in_z, cv.name)  array_add(*pf.z_items,   Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
-                else                               array_add(*pf.voc_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
-            }
-            for gv : z_gen_vars    array_add(*pf.z_items,   gv);
-            for gv : voc_gen_vars  array_add(*pf.voc_items, gv);
-
-            // F_j (residual) and J_jn (Jacobian), as Expr trees over the z/voc/iv/g names.
-            F_ids: [..] Expr_ID; // k, in cluster.unknowns order
-            for j : 0..pf.k-1  array_add(*F_ids, port_residual_expr(pf, j, cluster.unknowns[j].name, pool));
-            for j : 0..pf.k-1  array_add(*port_gen_vars, Gen_Var.{ name = cluster.unknowns[j].residual_name, expr_id = F_ids[j] });
-
-            J_ids: [..] Expr_ID; // k*k
-            for j : 0..pf.k-1  for n : 0..pf.k-1  array_add(*J_ids, port_jacobian_expr(pf, j, n, pool));
-
-            if pf.k <= PORT_CRAMER_MAX_K {
-                // Same delta_equations[j] = F_j + sum_n J_jn*delta_n shape the
-                // symbolic path builds for its own Newton delta system; solve()
-                // does the Cramer's-rule solve, with its memoized cofactor cache.
-                port_delta_ids: [..] Expr_ID;
-                for j : 0..pf.k-1  array_add(*port_delta_ids, expr_symbol(cluster.unknowns[j].delta_name, pool));
-                delta_equations: [..] Expr_ID;
-                for j : 0..pf.k-1 {
-                    eq := F_ids[j];
-                    for n : 0..pf.k-1 {
-                        // Emit NO_EXPR for structural zero values.
-                        if J_ids[j*pf.k + n] == NO_EXPR  continue;
-                        eq = expr_add(eq, expr_mul(J_ids[j*pf.k + n], port_delta_ids[n], pool), pool);
-                    }
-                    array_add(*delta_equations, eq);
-                }
-                deltas := solve(delta_equations, port_delta_ids, pool);
-                for j : 0..pf.k-1  array_add(*port_gen_vars, Gen_Var.{ name = cluster.unknowns[j].delta_name, expr_id = deltas[j] });
-            } else {
-                // k > PORT_CRAMER_MAX_K: partial pivoting is control flow that
-                // Expr trees can't represent, so the solve itself stays a
-                // hand-emitted pivoted-LU text block. That block needs J in a
-                // named local per entry to read into its array; delta comes out
-                // of the LU solve, not from here.
-                name_port_exprs_2d(J_ids, pf.k, cluster.name, "J", *pf.j_names, *port_gen_vars);
-            }
-
-            port_ids: [..] Expr_ID;
-            for gv : port_gen_vars  array_add(*port_ids, gv.expr_id);
-
-            // F and J reference i_m/G_mn by their already-named symbols, not by
-            // re-deriving them, so those names must count as loop-variant too.
-            port_variant_base: [..] string;
-            for n : cluster_unknown_names  array_add(*port_variant_base, n);
-            for n : pf.iv_names  if n.count > 0  array_add(*port_variant_base, n);
-            for n : pf.g_names   if n.count > 0  array_add(*port_variant_base, n);
-
-            port_prefix := tprint("_%1_pt", cluster.name);
-            port_cse := cse(port_ids, pool, port_prefix);
-            sort_cse_topological(*port_cse, pool.exprs);
-            licm(port_ids, *port_cse, pool, port_variant_base, port_prefix);
-            recip_hoist(port_ids, *port_cse, pool, port_variant_base, port_prefix);
-
-            port_variant_names: [..] string;
-            for cv : port_cse {
-                if expr_is_loop_variant(cv.expr_id, pool.exprs, port_variant_base, port_variant_names) {
-                    array_add(*port_variant_names, cv.name);
-                    array_add(*pf.iteration_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+            variant_cse_names: [..] string;
+            for cv : cse_vars {
+                if expr_is_loop_variant(cv.expr_id, pool.exprs, cluster_unknown_names, variant_cse_names) {
+                    array_add(*variant_cse_names, cv.name);
+                    array_add(*cluster.iteration_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
                 } else {
-                    array_add(*pf.invariant_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
+                    array_add(*cluster.invariant_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
                 }
             }
-            for gv : port_gen_vars  array_add(*pf.iteration_items, gv);
+            for gv : gen_vars  array_add(*cluster.iteration_items, gv);
         }
-
-        // Same CSE/LICM/recip_hoist recipe as solve_and_codegen(), but the
-        // loop-variant base is this cluster's own unknowns, one loop level
-        // in from the per-sample base, so it hoists Newton-invariant
-        // subexpressions automatically.
-        gen_var_ids: [..] Expr_ID;
-        for gv : gen_vars  array_add(*gen_var_ids, gv.expr_id);
-
-        cse_vars := cse(gen_var_ids, pool, temp_prefix);
-        sort_cse_topological(*cse_vars, pool.exprs);
-        licm(gen_var_ids, *cse_vars, pool, cluster_unknown_names, temp_prefix);
-        recip_hoist(gen_var_ids, *cse_vars, pool, cluster_unknown_names, temp_prefix);
-
-        variant_cse_names: [..] string;
-        for cv : cse_vars {
-            if expr_is_loop_variant(cv.expr_id, pool.exprs, cluster_unknown_names, variant_cse_names) {
-                array_add(*variant_cse_names, cv.name);
-                array_add(*cluster.iteration_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
-            } else {
-                array_add(*cluster.invariant_items, Gen_Var.{ name = cv.name, expr_id = cv.expr_id });
-            }
-        }
-        for gv : gen_vars  array_add(*cluster.iteration_items, gv);
 
         array_add(*clusters, cluster);
     }

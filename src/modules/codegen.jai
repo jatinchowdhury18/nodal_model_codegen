@@ -699,6 +699,41 @@ indent_lines :: (text: string, indent: string) -> string {
     return builder_to_string(*builder);
 }
 
+// -instrument: "++nr_solves_<cluster>", once per compute() call before the
+// Newton loop. No-op unless count_iterations.
+emit_newton_solve_counter :: (builder: *String_Builder, cluster: Nonlinear_Cluster, count_iterations: bool) {
+    if !count_iterations  return;
+    solves_name, _ := newton_counter_names(cluster.name);
+    print_to_builder(builder, "++%;\n", solves_name);
+}
+
+// -instrument: "++nr_iters_<cluster>", once per Newton iteration. No-op unless count_iterations.
+emit_newton_iter_counter :: (builder: *String_Builder, cluster: Nonlinear_Cluster, count_iterations: bool) {
+    if !count_iterations  return;
+    _, iters_name := newton_counter_names(cluster.name);
+    print_to_builder(builder, "++%;\n", iters_name);
+}
+
+// Declares residual_norm_sq and accumulates every unknown's residual^2 into it.
+emit_residual_norm_sq :: (builder: *String_Builder, cluster: Nonlinear_Cluster, backend: Backend) {
+    print_to_builder(builder, "\n%1 residual_norm_sq = 0.0;\n", backend.decl_type);
+    for u : cluster.unknowns  print_to_builder(builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
+}
+
+// Per-unknown Newton state update, v = limit(v + delta).
+emit_newton_unknown_updates :: (builder: *String_Builder, cluster: Nonlinear_Cluster, backend: Backend, apply_slew: bool) {
+    for u : cluster.unknowns {
+        if u.model.limiter_kind == .AMP_CLIP {
+            v_prev := ifx u.model.has_slew && apply_slew then u.model.zslew_name else "_v";
+            slew_max_step := ifx u.model.has_slew && apply_slew then tprint("(%/sample_rate)", u.model.slew_name) else "1.0e30";
+            print_to_builder(builder, "const %8 _v = (%5)(%1 + %2);\n%1 = clamp_opamp_output(_v, %6, %7, %3, %4);\n",
+                             u.name, u.delta_name, u.model.vsat_n_name, u.model.vsat_p_name, backend.type_name, v_prev, slew_max_step, backend.decl_type);
+        } else {
+            emit_unknown_update(builder, u, u.delta_name);
+        }
+    }
+}
+
 // Newton-Raphson solve for one cluster, to be inserted inside the per-sample
 // loop. `basis_names` should be extraction_basis_names()'s output (inputs +
 // z-state only; `non_basis_variant_names` should include that function's
@@ -723,17 +758,11 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
         emit_invariant_region(cluster.lo_invariant_items, exprs, backend, enable_extraction, basis_names, other_variant_names, *outer_builder, *builder);
     }
 
-    if count_iterations {
-        solves_name, _ := newton_counter_names(cluster.name);
-        print_to_builder(*builder, "++%;\n", solves_name);
-    }
+    emit_newton_solve_counter(*builder, cluster, count_iterations);
 
     print_to_builder(*builder, "for (int newton_iter = 0; newton_iter < %; ++newton_iter)\n{\n", max_iter);
     inner_builder: String_Builder;
-    if count_iterations {
-        _, iters_name := newton_counter_names(cluster.name);
-        print_to_builder(*inner_builder, "++%;\n", iters_name);
-    }
+    emit_newton_iter_counter(*inner_builder, cluster, count_iterations);
     emit_topological_order(cluster.iteration_items, exprs, *inner_builder, backend);
     if cluster.amp_clip_idx >= 0 {
         emit_topological_order(cluster.hi_iteration_items, exprs, *inner_builder, backend);
@@ -744,23 +773,9 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
         append(*inner_builder, "\n");
         generate_amp_clip_active_set_step(cluster, *inner_builder, backend, apply_slew);
     } else {
-        print_to_builder(*inner_builder, "\n%1 residual_norm_sq = 0.0;\n", backend.decl_type);
-        for u : cluster.unknowns  print_to_builder(*inner_builder, "residual_norm_sq += %1 * %1;\n", u.residual_name);
+        emit_residual_norm_sq(*inner_builder, cluster, backend);
         append(*inner_builder, "\n");
-        for u : cluster.unknowns {
-            if u.model.limiter_kind == .AMP_CLIP {
-                // Plain post-step clamp, only reached for 0 or 2+ AMP_CLIP
-                // unknowns per cluster, which is unsupported by the active-set
-                // path above. Every real circuit here has amp_clip_idx >= 0 instead,
-                // so this is untested against an actual C fixture.
-                v_prev := ifx u.model.has_slew && apply_slew then u.model.zslew_name else "_v";
-                slew_max_step := ifx u.model.has_slew && apply_slew then tprint("(%/sample_rate)", u.model.slew_name) else "1.0e30";
-                print_to_builder(*inner_builder, "const %8 _v = (%5)(%1 + %2);\n%1 = clamp_opamp_output(_v, %6, %7, %3, %4);\n",
-                                 u.name, u.delta_name, u.model.vsat_n_name, u.model.vsat_p_name, backend.type_name, v_prev, slew_max_step, backend.decl_type);
-            } else {
-                emit_unknown_update(*inner_builder, u, u.delta_name);
-            }
-        }
+        emit_newton_unknown_updates(*inner_builder, cluster, backend, apply_slew);
     }
     append(*inner_builder, "\nif (residual_norm_sq < newton_tol_sq)\n    break;\n");
 
@@ -781,7 +796,7 @@ generate_cluster_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr, bac
 // leaving the solution in `b`.
 //
 // For k <= 6 the cost is k(k-1)/2 comparisons against k^3/3 eliminations.
-emit_unrolled_lu_solve :: (k: int, a: string, b: string, backend: Backend) -> string {
+emit_unrolled_lu_solve :: (k: int, a: string, b: string, backend: Backend, flops: *Flop_Count = null) -> string {
     builder: String_Builder;
     ty      := backend.type_name;
     abs_fn  := ifx backend.is_cpp then math_fn(backend, "abs") else math_fn(backend, "fabs");
@@ -808,12 +823,16 @@ emit_unrolled_lu_solve :: (k: int, a: string, b: string, backend: Backend) -> st
         // Eliminate below the pivot.
         if col < k - 1 {
             print_to_builder(*builder, "const %1 _r%2 = (%1)1 / %3[%2][%2];\n", ty, col, a);
+            if flops  flops.divs += 1;
             for r : col+1..k-1 {
                 print_to_builder(*builder, "{\n    const %1 _f = %2[%3][%4] * _r%4;\n", ty, a, r, col);
+                if flops  flops.muls += 1;
                 for c : col+1..k-1 {
                     print_to_builder(*builder, "    %1[%2][%3] -= _f * %1[%4][%3];\n", a, r, c, col);
+                    if flops { flops.muls += 1; flops.adds += 1; }
                 }
                 print_to_builder(*builder, "    %1[%2] -= _f * %1[%3];\n}\n", b, r, col);
+                if flops { flops.muls += 1; flops.adds += 1; }
             }
         }
     }
@@ -822,11 +841,16 @@ emit_unrolled_lu_solve :: (k: int, a: string, b: string, backend: Backend) -> st
     // finishes, so all k reciprocals are independent of each other and issue in
     // parallel; only the multiply-accumulate chain remains serial.
     print_to_builder(*builder, "const %1 _rb%2 = (%1)1 / %3[%2][%2];\n", ty, k-1, a);
+    if flops  flops.divs += 1;
     for row : 0..k-2  print_to_builder(*builder, "const %1 _rb%2 = _r%2;\n", ty, row);
     for < row : 0..k-1 {
         print_to_builder(*builder, "%1[%2] = (%1[%2]", b, row);
-        for c : row+1..k-1  print_to_builder(*builder, " - %1[%2][%3] * %4[%3]", a, row, c, b);
+        for c : row+1..k-1 {
+            print_to_builder(*builder, " - %1[%2][%3] * %4[%3]", a, row, c, b);
+            if flops { flops.muls += 1; flops.adds += 1; }
+        }
         print_to_builder(*builder, ") * _rb%1;\n", row);
+        if flops  flops.muls += 1;
     }
 
     return builder_to_string(*builder);
@@ -861,18 +885,12 @@ generate_cluster_port_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr
     emit_invariant_region(pf.voc_items, exprs, backend, enable_extraction, basis_names, other_variant_names, *outer_builder, *builder);
     emit_invariant_region(pf.invariant_items, exprs, backend, enable_extraction, basis_names, other_variant_names, *outer_builder, *builder);
 
-    if count_iterations {
-        solves_name, _ := newton_counter_names(cluster.name);
-        print_to_builder(*builder, "++%;\n", solves_name);
-    }
+    emit_newton_solve_counter(*builder, cluster, count_iterations);
 
     print_to_builder(*builder, "for (int newton_iter = 0; newton_iter < %; ++newton_iter)\n{\n", max_iter);
 
     inner: String_Builder;
-    if count_iterations {
-        _, iters_name := newton_counter_names(cluster.name);
-        print_to_builder(*inner, "++%;\n", iters_name);
-    }
+    emit_newton_iter_counter(*inner, cluster, count_iterations);
 
     // Device laws i_m(v), block-diagonal G_mn = di_m/dv_n, the residual F_j,
     // and (k <= PORT_CRAMER_MAX_K) the Cramer's-rule delta.
@@ -883,11 +901,9 @@ generate_cluster_port_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr
     if k > PORT_CRAMER_MAX_K  append(*inner, emit_port_solve_block(cluster, backend));
 
     // Convergence test and state update.
-    ty := backend.decl_type;
-    print_to_builder(*inner, "\n%1 residual_norm_sq = 0.0;\n", ty);
-    for u : cluster.unknowns  print_to_builder(*inner, "residual_norm_sq += %1 * %1;\n", u.residual_name);
+    emit_residual_norm_sq(*inner, cluster, backend);
     append(*inner, "\n");
-    for u : cluster.unknowns  emit_unknown_update(*inner, u, u.delta_name);
+    emit_newton_unknown_updates(*inner, cluster, backend, true);
     append(*inner, "\nif (residual_norm_sq < newton_tol_sq)\n    break;\n");
 
     append(*builder, "    ");
@@ -898,7 +914,8 @@ generate_cluster_port_newton_code :: (cluster: Nonlinear_Cluster, exprs: [] Expr
 }
 
 // The pivoted-LU linear solve for one N-port Newton iteration, k > PORT_CRAMER_MAX_K.
-emit_port_solve_block :: (cluster: Nonlinear_Cluster, backend: Backend) -> string {
+// `flops`, if non-null, accumulates the emitted block's arithmetic op count.
+emit_port_solve_block :: (cluster: Nonlinear_Cluster, backend: Backend, flops: *Flop_Count = null) -> string {
     pf := cluster.port;
     k  := pf.k;
     inner: String_Builder;
@@ -916,34 +933,13 @@ emit_port_solve_block :: (cluster: Nonlinear_Cluster, backend: Backend) -> strin
     print_to_builder(*inner, "%1 _b[%2] = { ", backend.type_name, k);
     for j : 0..k-1  print_to_builder(*inner, "%1-%2", ifx j > 0 then ", " else "", cluster.unknowns[j].residual_name);
     append(*inner, " };\n");
+    if flops  flops.adds += k;
 
-    append(*inner, emit_unrolled_lu_solve(k, "_J", "_b", backend));
+    append(*inner, emit_unrolled_lu_solve(k, "_J", "_b", backend, flops));
 
     for j : 0..k-1  print_to_builder(*inner, "const %1 %2 = _b[%3];\n", ty, cluster.unknowns[j].delta_name, j);
 
     return builder_to_string(*inner);
-}
-
-// Arithmetic ops in a block of emitted C, counted from the text.
-count_flops_text :: (code: string) -> Flop_Count {
-    result: Flop_Count;
-    i := 0;
-    while i < code.count {
-        c := code[i];
-        // Skip // comments to end of line.
-        if c == #char "/" && i + 1 < code.count && code[i + 1] == #char "/" {
-            while i < code.count && code[i] != #char "\n"  i += 1;
-            continue;
-        }
-        if c == {
-            case #char "*"; result.muls += 1;
-            case #char "/"; result.divs += 1;
-            case #char "+"; result.adds += 1;
-            case #char "-"; result.adds += 1; // includes unary negation; close enough
-        }
-        i += 1;
-    }
-    return result;
 }
 
 // Per-iteration cost of one N-port Newton loop: the device-law expressions
@@ -951,10 +947,11 @@ count_flops_text :: (code: string) -> Flop_Count {
 port_newton_iteration_flops :: (cluster: Nonlinear_Cluster, exprs: [] Expr, backend: Backend) -> Flop_Count {
     result := count_flops(cluster.port.iteration_items, exprs, backend.transcendental_approx);
     if cluster.port.k > PORT_CRAMER_MAX_K {
-        block := count_flops_text(emit_port_solve_block(cluster, backend));
-        result.muls += block.muls;
-        result.divs += block.divs;
-        result.adds += block.adds;
+        block_flops: Flop_Count;
+        emit_port_solve_block(cluster, backend, *block_flops);
+        result.muls += block_flops.muls;
+        result.divs += block_flops.divs;
+        result.adds += block_flops.adds;
     }
     return result;
 }
