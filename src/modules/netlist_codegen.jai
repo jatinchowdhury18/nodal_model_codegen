@@ -514,6 +514,11 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 log("Adding output node: %\n", output);
                 array_add(*outputs, output);
             }
+            if String.begins_with(line, "input:") {
+                input := String.trim(String.slice(line, 6, line.count - 6));
+                log("Adding input node: %\n", input);
+                array_add(*inputs, input);
+            }
             if String.begins_with(line, "sub-circuit:") {
                 rest := String.trim(String.slice(line, 12, line.count - 12));
                 rest_tokens_raw := String.split(rest, #char " ");
@@ -617,7 +622,7 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 if is_fixed {
                     etype = .FIXED_VOLTAGE;
                 } else {
-                    array_add(*inputs, n1); // treat voltage source as input node
+                    array_add_if_unique(*inputs, n1); // treat voltage source as input node
                     continue; // don't include in elements
                 }
             case "D";

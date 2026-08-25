@@ -5,6 +5,7 @@
 VCC vp 0 DC 250
 
 * Input
+* input:vi
 V1 vi 0 SIN(0 1 500)
 Cin vi vg1 0.1u
 Rg1 vg1 0 470k

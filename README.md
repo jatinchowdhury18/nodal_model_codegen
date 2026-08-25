@@ -114,7 +114,8 @@ Inputs are picked up **implicitly**: any non-`fixed`, non-`DC` voltage
 source (e.g. `V1 vi 0 PULSE(...)` or `SIN(...)`) is treated as a per-sample
 input, named after its positive node. If a voltage source is specified as "DC"
 or "fixed", the source will instead be treated as a **constant** and folded
-into the `Params` struct.
+into the `Params` struct. Alternatively, inputs can be specified explicitly
+using a `* input:<node>` comment line.
 
 ```
 VCC vp 0 DC 250      ; constant, becomes a Params field

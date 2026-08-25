@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version 9b18bb0.
-// Command: netlist_codegen tube_compressor.net tube_compressor.h -stats -type_name double -instrument
+// Auto-generated with netlist_codegen version a2974f6.
+// Command: netlist_codegen tube_compressor.net tube_compressor.h -type_name double -instrument
 
 #pragma once
 
