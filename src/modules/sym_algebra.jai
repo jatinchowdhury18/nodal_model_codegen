@@ -216,6 +216,7 @@ linear_is_constant :: (l: Linear) -> bool {
 // in it) as an opaque constant coefficient, as long as it doesn't depend on
 // the variables being solved for.
 expr_depends_on :: (e: Expr_ID, vars: [] Expr_ID, exprs: [] Expr) -> bool {
+    if e == NO_EXPR  return false; // absent/zero subtree: can't depend on anything
     for v : vars  if v == e  return true;
     ex := exprs[e];
     if ex.kind == .CONST || ex.kind == .SYMBOL || ex.kind == .NULL  return false;
@@ -815,6 +816,14 @@ solve :: (equations: [] Expr_ID, solve_for: [] Expr_ID, pool: *Expr_Pool,
     array_reserve(*b, n);
 
     for i: 0..n-1 {
+        // A completely empty equation means this unknown has no KCL
+        // contributions at all (e.g. a floating node).
+        if equations[i] == NO_EXPR {
+            unknown_expr := pool.exprs[solve_for[i]];
+            unknown_name := ifx unknown_expr.kind == .SYMBOL then unknown_expr.name else "?";
+            assert(false, "Netlist error: no equation for unknown '%' - it has no connecting elements (a floating node, or every element touching it was dropped/misparsed by the netlist parser). Check for a missing or malformed source driving this node.", unknown_name);
+        }
+
         lin := linearize(equations[i], solve_for, pool);
         row_start := A.count;
         for j: 0..n-1 {

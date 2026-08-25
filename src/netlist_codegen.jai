@@ -45,7 +45,15 @@ get_codegen_version :: () -> string {
 
 CODEGEN_VERSION :: #run get_codegen_version();
 
+netlist_codegen_assertion_failed :: (loc: Source_Code_Location, message: string) -> bool {
+    runtime_support_assertion_failed(loc, message);
+    exit(1);
+    return false;
+}
+
 main :: () {
+    context.assertion_failed = netlist_codegen_assertion_failed;
+
     success, args, is_set, free_args := Command_Line.parse_arguments(Args, argument_flags);
     if !success  exit(1);
 

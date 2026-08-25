@@ -595,7 +595,10 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                 etype = .INDUCTOR;
             case "E";
                 // Ideal op-amp: `E<name> out ref pos neg <gain>`
-                // (gain is ignored here).
+                // (gain is ignored here). An arbitrary-expression source
+                // is treated as an error.
+                assert(tokens.count < 4 || String.to_lower_copy(tokens[3]) != "value",
+                       "Netlist error: element '%' uses an arbitrary-expression source ('value={...}') which netlist_codegen doesn't parse directly. Mark the line '; netlist_skip' if it's unused (e.g. a scaled monitoring output), or add '; nodal_model: <name> ...' to route it through the op-amp behavioral model.", name);
                 add_element(name, .AMP, .[tokens[1], tokens[4], tokens[3]]);
                 continue;
             case "V";
