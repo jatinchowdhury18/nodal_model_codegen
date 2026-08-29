@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen common_emitter_pnp.net common_emitter_pnp_c.h -lang c -type_name double
 
 #pragma once
@@ -127,6 +127,10 @@ static void compute (const float* const* input, float** output, int num_channels
     double c__Q1_voc0[3];
     double c0__Q1_voc1;
     double c__Q1_voc1[3];
+    double c0__Q1_zt6;
+    double c__Q1_zt6[3];
+    double c0__Q1_zt9;
+    double c__Q1_zt9[3];
     
     for (int _k = 0; _k <= 3; ++_k)
     {
@@ -143,9 +147,13 @@ static void compute (const float* const* input, float** output, int num_channels
         if (_k == 0) {
             c0__Q1_voc0 = _Q1_voc0;
             c0__Q1_voc1 = _Q1_voc1;
+            c0__Q1_zt6 = _Q1_zt6;
+            c0__Q1_zt9 = _Q1_zt9;
         } else {
             c__Q1_voc0[_k - 1] = _Q1_voc0 - c0__Q1_voc0;
             c__Q1_voc1[_k - 1] = _Q1_voc1 - c0__Q1_voc1;
+            c__Q1_zt6[_k - 1] = _Q1_zt6 - c0__Q1_zt6;
+            c__Q1_zt9[_k - 1] = _Q1_zt9 - c0__Q1_zt9;
         }
     }
     
@@ -171,11 +179,11 @@ vEBQ1 = limit_junction_voltage(vEBQ1 + (_prev_step), vEBQ1, Q2N5087_vt, vcrit_Q2
             // --- Newton-Raphson solve (N-port): Q1
             const double _Q1_voc0 = c0__Q1_voc0 + c__Q1_voc0[0] * vi + c__Q1_voc0[1] * zC1 + c__Q1_voc0[2] * zC2;
             const double _Q1_voc1 = c0__Q1_voc1 + c__Q1_voc1[0] * vi + c__Q1_voc1[1] * zC1 + c__Q1_voc1[2] * zC2;
+            const double _Q1_zt6 = c0__Q1_zt6 + c__Q1_zt6[0] * vi + c__Q1_zt6[1] * zC1 + c__Q1_zt6[2] * zC2;
+            const double _Q1_zt9 = c0__Q1_zt9 + c__Q1_zt9[0] * vi + c__Q1_zt9[1] * zC1 + c__Q1_zt9[2] * zC2;
             const double _Q1_zt8 = (gR1 * VEE);
             const double _Q1_zt10 = (gC1 * vi);
             const double _Q1_zt7 = (_Q1_zt10 - zC1);
-            const double _Q1_zt9 = (_Q1_zt7 + _Q1_zt8);
-            const double _Q1_zt6 = (_Q1_zt9 / _Q1_zt2);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const double _Q1_pt0 = (vEBQ1 / Q2N5087_vt);

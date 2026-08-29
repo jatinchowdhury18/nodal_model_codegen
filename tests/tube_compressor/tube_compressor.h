@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen tube_compressor.net tube_compressor.h -type_name double -instrument
 
 #pragma once
@@ -337,22 +337,24 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _X1_X2_D1_Z4_1 = _X1_X2_D1_zt77;
     const auto _X1_X2_D1_Z4_2 = (((_X1_X2_D1_zt34 * ((gRatt * _X1_X2_D1_zt83) - (_X1_X2_D1_zt63 * _X1_X2_D1_zt83))) + (gRfb * (gRfb * _X1_X2_D1_zt83))) / _X1_X2_D1_zt74);
     const auto _X1_X2_D1_Z4_4 = ((((_X1_X2_D1_zt34 * ((gRatt * _X1_X2_D1_zt98) - (_X1_X2_D1_zt63 * _X1_X2_D1_zt98))) + (gRfb * (gRfb * _X1_X2_D1_zt98))) / _X1_X2_D1_zt74) + (((_X1_X2_D1_zt34 * (_X1_X2_D1_zt63 * _X1_X2_D1_zt104)) - (gRfb * (gRfb * _X1_X2_D1_zt104))) / _X1_X2_D1_zt74));
-    double c0__X1_X2_D1_voc2;
-    double c__X1_X2_D1_voc2[8];
     double c0__X1_X2_D1_voc4;
     double c__X1_X2_D1_voc4[8];
+    double c0__X1_X2_D1_voc2;
+    double c__X1_X2_D1_voc2[8];
     double c0__X1_X2_D1_voc3;
     double c__X1_X2_D1_voc3[8];
-    double c0__X1_X2_D1_zt183;
-    double c__X1_X2_D1_zt183[8];
-    double c0__X1_X2_D1_voc0;
-    double c__X1_X2_D1_voc0[8];
-    double c0__X1_X2_D1_zt125;
-    double c__X1_X2_D1_zt125[8];
     double c0__X1_X2_D1_zt141;
     double c__X1_X2_D1_zt141[8];
+    double c0__X1_X2_D1_voc0;
+    double c__X1_X2_D1_voc0[8];
+    double c0__X1_X2_D1_zt183;
+    double c__X1_X2_D1_zt183[8];
+    double c0__X1_X2_D1_zt142;
+    double c__X1_X2_D1_zt142[8];
     double c0__X1_X2_D1_zt184;
     double c__X1_X2_D1_zt184[8];
+    double c0__X1_X2_D1_voc1;
+    double c__X1_X2_D1_voc1[8];
     
     for (int _k = 0; _k <= 8; ++_k)
     {
@@ -453,27 +455,30 @@ static void compute (const float* const* input, float** output, int num_channels
         const auto _X1_X2_D1_zt113 = (_X1_X2_D1_zt114 / _X1_X2_D1_zt74);
         const auto _X1_X2_D1_zt141 = (_X1_X2_D1_zt142 / _X1_X2_D1_zt74);
         const auto _X1_X2_D1_voc0 = ((((_X1_X2_D1_zt34 * ((gRatt * _X1_X2_D1_zt107) - (_X1_X2_D1_zt63 * _X1_X2_D1_zt107))) + (gRfb * (gRfb * _X1_X2_D1_zt107))) / _X1_X2_D1_zt74) - _X1_X2_D1_zt113);
+        const auto _X1_X2_D1_voc1 = (-(((-((gCin * vi) - zCin)) / _X1_X2_D1_zt14) + _X1_X2_D1_zt113));
         const auto _X1_X2_D1_voc2 = ((((_X1_X2_D1_zt34 * ((gRatt * _X1_X2_D1_zt125) - (_X1_X2_D1_zt63 * _X1_X2_D1_zt125))) + (gRfb * (gRfb * _X1_X2_D1_zt125))) / _X1_X2_D1_zt74) - _X1_X2_D1_zt141);
         const auto _X1_X2_D1_voc3 = ((((_X1_X2_D1_zt34 * ((gRatt * _X1_X2_D1_zt156) - (_X1_X2_D1_zt63 * _X1_X2_D1_zt156))) + (gRfb * (gRfb * _X1_X2_D1_zt156))) / _X1_X2_D1_zt74) - _X1_X2_D1_zt141);
         const auto _X1_X2_D1_voc4 = ((((_X1_X2_D1_zt34 * ((gRatt * _X1_X2_D1_zt183) - (_X1_X2_D1_zt63 * _X1_X2_D1_zt183))) + (gRfb * (gRfb * _X1_X2_D1_zt183))) / _X1_X2_D1_zt74) + (((_X1_X2_D1_zt34 * _X1_X2_D1_zt117) + (_X1_X2_D1_zt40 * zRk1Ck1)) / _X1_X2_D1_zt74));
         if (_k == 0) {
-            c0__X1_X2_D1_voc2 = _X1_X2_D1_voc2;
             c0__X1_X2_D1_voc4 = _X1_X2_D1_voc4;
+            c0__X1_X2_D1_voc2 = _X1_X2_D1_voc2;
             c0__X1_X2_D1_voc3 = _X1_X2_D1_voc3;
-            c0__X1_X2_D1_zt183 = _X1_X2_D1_zt183;
-            c0__X1_X2_D1_voc0 = _X1_X2_D1_voc0;
-            c0__X1_X2_D1_zt125 = _X1_X2_D1_zt125;
             c0__X1_X2_D1_zt141 = _X1_X2_D1_zt141;
+            c0__X1_X2_D1_voc0 = _X1_X2_D1_voc0;
+            c0__X1_X2_D1_zt183 = _X1_X2_D1_zt183;
+            c0__X1_X2_D1_zt142 = _X1_X2_D1_zt142;
             c0__X1_X2_D1_zt184 = _X1_X2_D1_zt184;
+            c0__X1_X2_D1_voc1 = _X1_X2_D1_voc1;
         } else {
-            c__X1_X2_D1_voc2[_k - 1] = _X1_X2_D1_voc2 - c0__X1_X2_D1_voc2;
             c__X1_X2_D1_voc4[_k - 1] = _X1_X2_D1_voc4 - c0__X1_X2_D1_voc4;
+            c__X1_X2_D1_voc2[_k - 1] = _X1_X2_D1_voc2 - c0__X1_X2_D1_voc2;
             c__X1_X2_D1_voc3[_k - 1] = _X1_X2_D1_voc3 - c0__X1_X2_D1_voc3;
-            c__X1_X2_D1_zt183[_k - 1] = _X1_X2_D1_zt183 - c0__X1_X2_D1_zt183;
-            c__X1_X2_D1_voc0[_k - 1] = _X1_X2_D1_voc0 - c0__X1_X2_D1_voc0;
-            c__X1_X2_D1_zt125[_k - 1] = _X1_X2_D1_zt125 - c0__X1_X2_D1_zt125;
             c__X1_X2_D1_zt141[_k - 1] = _X1_X2_D1_zt141 - c0__X1_X2_D1_zt141;
+            c__X1_X2_D1_voc0[_k - 1] = _X1_X2_D1_voc0 - c0__X1_X2_D1_voc0;
+            c__X1_X2_D1_zt183[_k - 1] = _X1_X2_D1_zt183 - c0__X1_X2_D1_zt183;
+            c__X1_X2_D1_zt142[_k - 1] = _X1_X2_D1_zt142 - c0__X1_X2_D1_zt142;
             c__X1_X2_D1_zt184[_k - 1] = _X1_X2_D1_zt184 - c0__X1_X2_D1_zt184;
+            c__X1_X2_D1_voc1[_k - 1] = _X1_X2_D1_voc1 - c0__X1_X2_D1_voc1;
         }
     }
     
@@ -519,14 +524,15 @@ vD1 = limit_junction_voltage(vD1 + (_prev_step), vD1, D1N914_vt, vcrit_D1N914_vt
             }
 
             // --- Newton-Raphson solve (N-port): X1_X2_D1
-            const auto _X1_X2_D1_voc2 = c0__X1_X2_D1_voc2 + c__X1_X2_D1_voc2[0] * vi + c__X1_X2_D1_voc2[1] * zCin + c__X1_X2_D1_voc2[2] * zRk1Ck1 + c__X1_X2_D1_voc2[3] * zCc12 + c__X1_X2_D1_voc2[4] * zRrelCenv + c__X1_X2_D1_voc2[5] * zCout + c__X1_X2_D1_voc2[6] * zCsc + c__X1_X2_D1_voc2[7] * zRk2Ck2;
             const auto _X1_X2_D1_voc4 = c0__X1_X2_D1_voc4 + c__X1_X2_D1_voc4[0] * vi + c__X1_X2_D1_voc4[1] * zCin + c__X1_X2_D1_voc4[2] * zRk1Ck1 + c__X1_X2_D1_voc4[3] * zCc12 + c__X1_X2_D1_voc4[4] * zRrelCenv + c__X1_X2_D1_voc4[5] * zCout + c__X1_X2_D1_voc4[6] * zCsc + c__X1_X2_D1_voc4[7] * zRk2Ck2;
+            const auto _X1_X2_D1_voc2 = c0__X1_X2_D1_voc2 + c__X1_X2_D1_voc2[0] * vi + c__X1_X2_D1_voc2[1] * zCin + c__X1_X2_D1_voc2[2] * zRk1Ck1 + c__X1_X2_D1_voc2[3] * zCc12 + c__X1_X2_D1_voc2[4] * zRrelCenv + c__X1_X2_D1_voc2[5] * zCout + c__X1_X2_D1_voc2[6] * zCsc + c__X1_X2_D1_voc2[7] * zRk2Ck2;
             const auto _X1_X2_D1_voc3 = c0__X1_X2_D1_voc3 + c__X1_X2_D1_voc3[0] * vi + c__X1_X2_D1_voc3[1] * zCin + c__X1_X2_D1_voc3[2] * zRk1Ck1 + c__X1_X2_D1_voc3[3] * zCc12 + c__X1_X2_D1_voc3[4] * zRrelCenv + c__X1_X2_D1_voc3[5] * zCout + c__X1_X2_D1_voc3[6] * zCsc + c__X1_X2_D1_voc3[7] * zRk2Ck2;
-            const auto _X1_X2_D1_zt183 = c0__X1_X2_D1_zt183 + c__X1_X2_D1_zt183[0] * vi + c__X1_X2_D1_zt183[1] * zCin + c__X1_X2_D1_zt183[2] * zRk1Ck1 + c__X1_X2_D1_zt183[3] * zCc12 + c__X1_X2_D1_zt183[4] * zRrelCenv + c__X1_X2_D1_zt183[5] * zCout + c__X1_X2_D1_zt183[6] * zCsc + c__X1_X2_D1_zt183[7] * zRk2Ck2;
-            const auto _X1_X2_D1_voc0 = c0__X1_X2_D1_voc0 + c__X1_X2_D1_voc0[0] * vi + c__X1_X2_D1_voc0[1] * zCin + c__X1_X2_D1_voc0[2] * zRk1Ck1 + c__X1_X2_D1_voc0[3] * zCc12 + c__X1_X2_D1_voc0[4] * zRrelCenv + c__X1_X2_D1_voc0[5] * zCout + c__X1_X2_D1_voc0[6] * zCsc + c__X1_X2_D1_voc0[7] * zRk2Ck2;
-            const auto _X1_X2_D1_zt125 = c0__X1_X2_D1_zt125 + c__X1_X2_D1_zt125[0] * vi + c__X1_X2_D1_zt125[1] * zCin + c__X1_X2_D1_zt125[2] * zRk1Ck1 + c__X1_X2_D1_zt125[3] * zCc12 + c__X1_X2_D1_zt125[4] * zRrelCenv + c__X1_X2_D1_zt125[5] * zCout + c__X1_X2_D1_zt125[6] * zCsc + c__X1_X2_D1_zt125[7] * zRk2Ck2;
             const auto _X1_X2_D1_zt141 = c0__X1_X2_D1_zt141 + c__X1_X2_D1_zt141[0] * vi + c__X1_X2_D1_zt141[1] * zCin + c__X1_X2_D1_zt141[2] * zRk1Ck1 + c__X1_X2_D1_zt141[3] * zCc12 + c__X1_X2_D1_zt141[4] * zRrelCenv + c__X1_X2_D1_zt141[5] * zCout + c__X1_X2_D1_zt141[6] * zCsc + c__X1_X2_D1_zt141[7] * zRk2Ck2;
+            const auto _X1_X2_D1_voc0 = c0__X1_X2_D1_voc0 + c__X1_X2_D1_voc0[0] * vi + c__X1_X2_D1_voc0[1] * zCin + c__X1_X2_D1_voc0[2] * zRk1Ck1 + c__X1_X2_D1_voc0[3] * zCc12 + c__X1_X2_D1_voc0[4] * zRrelCenv + c__X1_X2_D1_voc0[5] * zCout + c__X1_X2_D1_voc0[6] * zCsc + c__X1_X2_D1_voc0[7] * zRk2Ck2;
+            const auto _X1_X2_D1_zt183 = c0__X1_X2_D1_zt183 + c__X1_X2_D1_zt183[0] * vi + c__X1_X2_D1_zt183[1] * zCin + c__X1_X2_D1_zt183[2] * zRk1Ck1 + c__X1_X2_D1_zt183[3] * zCc12 + c__X1_X2_D1_zt183[4] * zRrelCenv + c__X1_X2_D1_zt183[5] * zCout + c__X1_X2_D1_zt183[6] * zCsc + c__X1_X2_D1_zt183[7] * zRk2Ck2;
+            const auto _X1_X2_D1_zt142 = c0__X1_X2_D1_zt142 + c__X1_X2_D1_zt142[0] * vi + c__X1_X2_D1_zt142[1] * zCin + c__X1_X2_D1_zt142[2] * zRk1Ck1 + c__X1_X2_D1_zt142[3] * zCc12 + c__X1_X2_D1_zt142[4] * zRrelCenv + c__X1_X2_D1_zt142[5] * zCout + c__X1_X2_D1_zt142[6] * zCsc + c__X1_X2_D1_zt142[7] * zRk2Ck2;
             const auto _X1_X2_D1_zt184 = c0__X1_X2_D1_zt184 + c__X1_X2_D1_zt184[0] * vi + c__X1_X2_D1_zt184[1] * zCin + c__X1_X2_D1_zt184[2] * zRk1Ck1 + c__X1_X2_D1_zt184[3] * zCc12 + c__X1_X2_D1_zt184[4] * zRrelCenv + c__X1_X2_D1_zt184[5] * zCout + c__X1_X2_D1_zt184[6] * zCsc + c__X1_X2_D1_zt184[7] * zRk2Ck2;
+            const auto _X1_X2_D1_voc1 = c0__X1_X2_D1_voc1 + c__X1_X2_D1_voc1[0] * vi + c__X1_X2_D1_voc1[1] * zCin + c__X1_X2_D1_voc1[2] * zRk1Ck1 + c__X1_X2_D1_voc1[3] * zCc12 + c__X1_X2_D1_voc1[4] * zRrelCenv + c__X1_X2_D1_voc1[5] * zCout + c__X1_X2_D1_voc1[6] * zCsc + c__X1_X2_D1_voc1[7] * zRk2Ck2;
             const auto _X1_X2_D1_zt128 = (gCsc * zCsc);
             const auto _X1_X2_D1_zt131 = (zCout - zCsc);
             const auto _X1_X2_D1_zt136 = (-zCout);
@@ -609,9 +615,8 @@ vD1 = limit_junction_voltage(vD1 + (_prev_step), vD1, D1N914_vt, vcrit_D1N914_vt
             const auto _X1_X2_D1_zt137 = (VCC * _X1_X2_D1_zt138);
             const auto _X1_X2_D1_zt143 = (_X1_X2_D1_zt34 * _X1_X2_D1_zt161);
             const auto _X1_X2_D1_zt114 = (_X1_X2_D1_zt115 + _X1_X2_D1_zt116);
-            const auto _X1_X2_D1_zt142 = (_X1_X2_D1_zt143 + _X1_X2_D1_zt166);
+            const auto _X1_X2_D1_zt125 = (_X1_X2_D1_zt118 + _X1_X2_D1_zt137);
             const auto _X1_X2_D1_zt113 = (_X1_X2_D1_zt114 / _X1_X2_D1_zt74);
-            const auto _X1_X2_D1_voc1 = (-(((-((gCin * vi) - zCin)) / _X1_X2_D1_zt14) + _X1_X2_D1_zt113));
             const auto _X1_X2_D1_pt4 = (_12AX7_DEMPWOLF_Gamma - 1.0);
             const auto _X1_X2_D1_pt10 = (_12AX7_DEMPWOLF_Xi - 1.0);
             ++nr_solves_X1_X2_D1;

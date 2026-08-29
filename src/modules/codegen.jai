@@ -53,6 +53,69 @@ count_flops :: (items: [] Gen_Var, exprs: [] Expr, approx: Transcendental_Approx
     return result;
 }
 
+kind_latency :: (kind: Expr_Kind, cpu: CPU_Profile, approx: Transcendental_Approx) -> float {
+    if kind == {
+        case .MUL; return cpu.mul.latency;
+        case .DIV; return cpu.div.latency;
+        case .ADD; #through;
+        case .SUB; #through;
+        case .NEG; return cpu.add.latency;
+        case .EXP; return ifx approx.exact then 0.0 else estimate_flop_cost(exp_approx_flop_count(approx), cpu);
+        case .LOG; return ifx approx.exact then 0.0 else estimate_flop_cost(log_approx_flop_count(approx), cpu);
+        case .POW; return ifx approx.exact then 0.0 else estimate_flop_cost(pow_approx_flop_count(approx), cpu);
+    }
+    return 0.0;
+}
+
+// Latency-weighted height of the longest dependence chain through a region.
+// `items` must already be topologically sorted, so one forward sweep suffices.
+estimate_critical_path :: (items: [] Gen_Var, exprs: [] Expr, cpu: CPU_Profile, approx: Transcendental_Approx) -> float {
+    auto_release_temp();
+    name_to_height: Table(string, float);
+    name_to_height.allocator = temp;
+    table_ensure_space(*name_to_height, items.count);
+
+    // Memo is per-item: heights are only valid against the items resolved so
+    // far, and Expr_IDs aren't shared in a way that outlives that.
+    expr_height :: (e: Expr_ID, exprs: [] Expr, cpu: CPU_Profile, approx: Transcendental_Approx,
+                    name_to_height: *Table(string, float), memo: *Table(Expr_ID, float)) -> float {
+        if e == NO_EXPR  return 0.0;
+        found, cached := table_find(memo, e);
+        if found  return cached;
+
+        ex := exprs[e];
+        h: float;
+        if ex.kind == .SYMBOL {
+            dep_found, dep := table_find(name_to_height, ex.name);
+            h = ifx dep_found then dep else 0.0;
+        } else if ex.kind == .CONST || ex.kind == .NULL {
+            h = 0.0;
+        } else {
+            left := expr_height(ex.left, exprs, cpu, approx, name_to_height, memo);
+            operands := left;
+            if !is_unary(ex.kind) {
+                right := expr_height(ex.right, exprs, cpu, approx, name_to_height, memo);
+                operands = max(left, right);
+            }
+            h = operands + kind_latency(ex.kind, cpu, approx);
+        }
+
+        table_add(memo, e, h);
+        return h;
+    }
+
+    peak: float;
+    for item : items {
+        auto_release_temp(); // `memo` is dead once this item's height is known
+        memo: Table(Expr_ID, float);
+        memo.allocator = temp;
+        h := expr_height(item.expr_id, exprs, cpu, approx, *name_to_height, *memo);
+        table_set(*name_to_height, item.name, h);
+        if h > peak  peak = h;
+    }
+    return peak;
+}
+
 print_param_expr :: (expr: *Param_Expr, param_prefix: string = "params.") -> string {
     build_param_expr :: (e: *Param_Expr, param_prefix: string, builder: *String_Builder) {
         if e == null {
@@ -1332,27 +1395,47 @@ remaining_region_after_extraction :: (all_terminal_names: [] string, accepted: [
     return result;
 }
 
+// Cost of a code block under the standard two-bound model: it can go no faster
+// than its longest dependence chain, nor than the rate its ops can be issued.
+// `replication` copies of an independent block share the chain but multiply the
+// issue cost. FP and memory ops use disjoint pipes, hence max rather than sum.
+block_cost :: (depth: float, fp_resource: float, mem_resource: float, replication: float = 1.0) -> float {
+    return max(depth, max(replication * fp_resource, replication * mem_resource));
+}
+
 // Computes "straight-line" cost vs. "extracted" cost.
 // Accounts for register spill, and accounts for inner-loop
-// vs. outer-loop ops based on ASSUMED_BLOCK_SIZE.
+// vs. outer-loop ops based on backend.block_size.
 should_extract :: (region_items: [] Gen_Var, terminal_names: [] string, basis_names: [] string, exprs: [] Expr, backend: Backend) -> bool {
     if basis_names.count == 0 || region_items.count == 0  return false;
+    cpu := backend.cpu;
 
-    region_flops := count_flops(region_items, exprs, backend.transcendental_approx);
-    region_cost  := estimate_flop_cost(region_flops, backend.cpu);
+    region_flops    := count_flops(region_items, exprs, backend.transcendental_approx);
+    region_resource := estimate_flop_resource(region_flops, cpu);
+    region_depth    := estimate_critical_path(region_items, exprs, cpu, backend.transcendental_approx);
 
-    _, peak_live := schedule_for_register_pressure(region_items, exprs, backend.cpu.num_registers);
-    spill_count := max(0, peak_live - backend.cpu.num_registers);
-    spill_cost  := cast(float) spill_count * (backend.cpu.load.latency + backend.cpu.store.latency);
+    _, peak_live := schedule_for_register_pressure(region_items, exprs, cpu.num_registers);
+    spill_count := cast(float) max(0, peak_live - cpu.num_registers);
+    // A spill lengthens the chain it sits on and occupies the memory pipes.
+    spill_depth    := spill_count * (cpu.load.latency + cpu.store.latency);
+    spill_resource := spill_count * (cpu.load.throughput + cpu.store.throughput);
 
-    basis_count := basis_names.count;
-    straightline_cost := region_cost + spill_cost;
-    // Per-sample dot product: basis_count mul-adds (c0 + c[0]*b0 + ... +
-    // c[n-1]*b[n-1] has exactly basis_count '+' ops). See emit_extracted_region.
-    extracted_cost := (cast(float) (basis_count + 1)) * region_cost / ASSUMED_BLOCK_SIZE
-                     + cast(float) (terminal_names.count * basis_count) * (backend.cpu.mul.latency + backend.cpu.add.latency);
+    k := cast(float) basis_names.count;
+    m := cast(float) terminal_names.count;
 
-    return extracted_cost < straightline_cost;
+    straightline_cost := block_cost(region_depth + spill_depth, region_resource, spill_resource);
+
+    // The k+1 coefficient passes are independent copies of the region, so they
+    // overlap: same chain, (k+1)x the issue cost. Amortized over the block size.
+    coeff_cost := block_cost(region_depth + spill_depth, region_resource, spill_resource, k + 1) / cast(float) backend.block_size;
+
+    // Per-sample dot product: c0 + c[0]*b0 + ... + c[k-1]*b[k-1] (k mul-adds
+    // per terminal). The muls are independent and the adds form a k-deep chain;
+    // the m terminals are independent of each other.
+    dot_depth    := cpu.mul.latency + k * cpu.add.latency;
+    dot_resource := m * k * (cpu.mul.throughput + cpu.add.throughput);
+
+    return coeff_cost + block_cost(dot_depth, dot_resource, 0.0) < straightline_cost;
 }
 
 // Gradual extraction: Greedily grows an accepted set one terminal at
@@ -1369,7 +1452,8 @@ select_extraction_terminals :: (eligible: [] string, full_items: [] Gen_Var, exp
         auto_release_temp();
         solo_closure := collect_region_closure(.[t], full_items, exprs);
         flops := count_flops(solo_closure, exprs, backend.transcendental_approx);
-        array_add(*costs, estimate_flop_cost(flops, backend.cpu));
+        depth := estimate_critical_path(solo_closure, exprs, backend.cpu, backend.transcendental_approx);
+        array_add(*costs, block_cost(depth, estimate_flop_resource(flops, backend.cpu), 0.0));
     }
 
     order: [..] int;

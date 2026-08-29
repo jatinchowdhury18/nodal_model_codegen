@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen pedal_drive.net pedal_drive.h -type_name double
 
 #pragma once
@@ -259,10 +259,12 @@ static void compute (const float* const* input, float** output, int num_channels
     double c__Q1_D3D4_voc0[5];
     double c0__Q1_D3D4_zt85;
     double c__Q1_D3D4_zt85[5];
-    double c0__Q1_D3D4_zt101;
-    double c__Q1_D3D4_zt101[5];
     double c0__Q1_D3D4_voc1;
     double c__Q1_D3D4_voc1[5];
+    double c0__Q1_D3D4_zt101;
+    double c__Q1_D3D4_zt101[5];
+    double c0__Q1_D3D4_zt63;
+    double c__Q1_D3D4_zt63[5];
     
     for (int _k = 0; _k <= 5; ++_k)
     {
@@ -319,14 +321,16 @@ static void compute (const float* const* input, float** output, int num_channels
             c0__Q1_D3D4_voc2 = _Q1_D3D4_voc2;
             c0__Q1_D3D4_voc0 = _Q1_D3D4_voc0;
             c0__Q1_D3D4_zt85 = _Q1_D3D4_zt85;
-            c0__Q1_D3D4_zt101 = _Q1_D3D4_zt101;
             c0__Q1_D3D4_voc1 = _Q1_D3D4_voc1;
+            c0__Q1_D3D4_zt101 = _Q1_D3D4_zt101;
+            c0__Q1_D3D4_zt63 = _Q1_D3D4_zt63;
         } else {
             c__Q1_D3D4_voc2[_k - 1] = _Q1_D3D4_voc2 - c0__Q1_D3D4_voc2;
             c__Q1_D3D4_voc0[_k - 1] = _Q1_D3D4_voc0 - c0__Q1_D3D4_voc0;
             c__Q1_D3D4_zt85[_k - 1] = _Q1_D3D4_zt85 - c0__Q1_D3D4_zt85;
-            c__Q1_D3D4_zt101[_k - 1] = _Q1_D3D4_zt101 - c0__Q1_D3D4_zt101;
             c__Q1_D3D4_voc1[_k - 1] = _Q1_D3D4_voc1 - c0__Q1_D3D4_voc1;
+            c__Q1_D3D4_zt101[_k - 1] = _Q1_D3D4_zt101 - c0__Q1_D3D4_zt101;
+            c__Q1_D3D4_zt63[_k - 1] = _Q1_D3D4_zt63 - c0__Q1_D3D4_zt63;
         }
     }
     
@@ -360,8 +364,9 @@ vD3D4 = limit_junction_voltage_sym(vD3D4 + (_prev_step), vD3D4, D1N914_vt, vcrit
             const auto _Q1_D3D4_voc2 = c0__Q1_D3D4_voc2 + c__Q1_D3D4_voc2[0] * vi + c__Q1_D3D4_voc2[1] * zCout + c__Q1_D3D4_voc2[2] * zR19C5 + c__Q1_D3D4_voc2[3] * zC6 + c__Q1_D3D4_voc2[4] * zR17C12;
             const auto _Q1_D3D4_voc0 = c0__Q1_D3D4_voc0 + c__Q1_D3D4_voc0[0] * vi + c__Q1_D3D4_voc0[1] * zCout + c__Q1_D3D4_voc0[2] * zR19C5 + c__Q1_D3D4_voc0[3] * zC6 + c__Q1_D3D4_voc0[4] * zR17C12;
             const auto _Q1_D3D4_zt85 = c0__Q1_D3D4_zt85 + c__Q1_D3D4_zt85[0] * vi + c__Q1_D3D4_zt85[1] * zCout + c__Q1_D3D4_zt85[2] * zR19C5 + c__Q1_D3D4_zt85[3] * zC6 + c__Q1_D3D4_zt85[4] * zR17C12;
-            const auto _Q1_D3D4_zt101 = c0__Q1_D3D4_zt101 + c__Q1_D3D4_zt101[0] * vi + c__Q1_D3D4_zt101[1] * zCout + c__Q1_D3D4_zt101[2] * zR19C5 + c__Q1_D3D4_zt101[3] * zC6 + c__Q1_D3D4_zt101[4] * zR17C12;
             const auto _Q1_D3D4_voc1 = c0__Q1_D3D4_voc1 + c__Q1_D3D4_voc1[0] * vi + c__Q1_D3D4_voc1[1] * zCout + c__Q1_D3D4_voc1[2] * zR19C5 + c__Q1_D3D4_voc1[3] * zC6 + c__Q1_D3D4_voc1[4] * zR17C12;
+            const auto _Q1_D3D4_zt101 = c0__Q1_D3D4_zt101 + c__Q1_D3D4_zt101[0] * vi + c__Q1_D3D4_zt101[1] * zCout + c__Q1_D3D4_zt101[2] * zR19C5 + c__Q1_D3D4_zt101[3] * zC6 + c__Q1_D3D4_zt101[4] * zR17C12;
+            const auto _Q1_D3D4_zt63 = c0__Q1_D3D4_zt63 + c__Q1_D3D4_zt63[0] * vi + c__Q1_D3D4_zt63[1] * zCout + c__Q1_D3D4_zt63[2] * zR19C5 + c__Q1_D3D4_zt63[3] * zC6 + c__Q1_D3D4_zt63[4] * zR17C12;
             const auto _Q1_D3D4_zt65 = (gR19C5 * vi);
             const auto _Q1_D3D4_zt69 = (_Q1_D3D4_zt65 + zR19C5);
             const auto _Q1_D3D4_zt75 = (zCout - zR17C12);
@@ -399,7 +404,6 @@ vD3D4 = limit_junction_voltage_sym(vD3D4 + (_prev_step), vD3D4, D1N914_vt, vcrit
             const auto _Q1_D3D4_zt64 = (_Q1_D3D4_zt87 - _Q1_D3D4_zt67);
             const auto _Q1_D3D4_zt72 = (_Q1_D3D4_zt73 + _Q1_D3D4_zt102);
             const auto _Q1_D3D4_zt86 = (_Q1_D3D4_zt64 - _Q1_D3D4_zt95);
-            const auto _Q1_D3D4_zt63 = (_Q1_D3D4_zt86 - _Q1_D3D4_zt70);
             const auto _Q1_D3D4_zt71 = (_Q1_D3D4_zt72 + _Q1_D3D4_zt81);
             const auto _Q1_D3D4_pt38 = (1.0 / D1N914_vt);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)

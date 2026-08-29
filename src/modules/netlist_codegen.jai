@@ -1057,12 +1057,12 @@ generate_joined_unit :: (decls: [] Sub_Circuit_Decl, backend: Backend) -> string
 
 // Main entry point!
 netlist_codegen :: (netlist_str: string, type_name: string = "float", lang: string = "cpp", namespace: string = "", label: string = "", cpu_profile: CPU_Profile = CPU_PROFILE_GENERIC,
-                    enable_extraction := true, opt_port_matrix := true, instrument := false) -> string {
+                    enable_extraction := true, opt_port_matrix := true, instrument := false, block_size := DEFAULT_BLOCK_SIZE) -> string {
     // parse the netlist into our internal structure
     net := parse_netlist(netlist_str);
 
     // choose the language backend (C, C++, ...)
-    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx, enable_extraction, instrument, opt_port_matrix);
+    backend := make_backend(lang, type_name, cpu_profile, net.transcendental_approx, enable_extraction, instrument, opt_port_matrix, block_size);
 
     if net.outputs.count == 0 {
         log("Adding output node: vo\n");

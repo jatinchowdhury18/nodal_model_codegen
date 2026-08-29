@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen pedal_model.net pedal_model_c.h -lang c -type_name double
 
 #pragma once
@@ -280,12 +280,14 @@ static void compute (const float* const* input, float** output, int num_channels
     const double _J1_D1D2_Z0_0 = (-((-(_J1_D1D2_zt23 * ((gC12 * (_J1_D1D2_zt3 * 1.0)) - (_J1_D1D2_zt52 * (_J1_D1D2_zt29 * 1.0))))) / _J1_D1D2_zt13));
     const double _J1_D1D2_Z0_1 = (((gC13 * (-(gC12 * (gC13 * _J1_D1D2_zt9)))) - (_J1_D1D2_zt23 * (-(gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt9))))) / _J1_D1D2_zt13);
     const double _J1_D1D2_Z1_1 = (((gC13 * (-((_J1_D1D2_zt52 * (gC13 * _J1_D1D2_zt18)) + (gC12 * (gC13 * _J1_D1D2_zt21))))) - (_J1_D1D2_zt23 * (-((_J1_D1D2_zt52 * (_J1_D1D2_zt42 * _J1_D1D2_zt18)) + (gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt21)))))) / _J1_D1D2_zt13);
-    double c0__J1_D1D2_voc1;
-    double c__J1_D1D2_voc1[10];
     double c0__J1_D1D2_voc0;
     double c__J1_D1D2_voc0[10];
+    double c0__J1_D1D2_voc1;
+    double c__J1_D1D2_voc1[10];
     double c0__J1_D1D2_zt72;
     double c__J1_D1D2_zt72[10];
+    double c0__J1_D1D2_zt44;
+    double c__J1_D1D2_zt44[10];
     
     for (int _k = 0; _k <= 10; ++_k)
     {
@@ -344,13 +346,15 @@ static void compute (const float* const* input, float** output, int num_channels
         const double _J1_D1D2_voc0 = ((((gC13 * ((zC12 * _J1_D1D2_zt15) - (gC12 * (gC13 * _J1_D1D2_zt44)))) - (_J1_D1D2_zt23 * ((zC12 * _J1_D1D2_zt8) - (gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt44))))) / _J1_D1D2_zt13) - (((zC13 * _J1_D1D2_zt27) - (_J1_D1D2_zt23 * ((gC12 * (_J1_D1D2_zt3 * zC13)) - (_J1_D1D2_zt52 * (_J1_D1D2_zt29 * zC13))))) / _J1_D1D2_zt13));
         const double _J1_D1D2_voc1 = (((gC13 * ((zC12 * (gC13 * _J1_D1D2_zt53)) - ((_J1_D1D2_zt52 * (gC13 * _J1_D1D2_zt72)) + (gC12 * (gC13 * _J1_D1D2_zt63))))) - (_J1_D1D2_zt23 * ((zC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt53)) - ((_J1_D1D2_zt52 * (_J1_D1D2_zt42 * _J1_D1D2_zt72)) + (gC12 * (_J1_D1D2_zt42 * _J1_D1D2_zt63)))))) / _J1_D1D2_zt13);
         if (_k == 0) {
-            c0__J1_D1D2_voc1 = _J1_D1D2_voc1;
             c0__J1_D1D2_voc0 = _J1_D1D2_voc0;
+            c0__J1_D1D2_voc1 = _J1_D1D2_voc1;
             c0__J1_D1D2_zt72 = _J1_D1D2_zt72;
+            c0__J1_D1D2_zt44 = _J1_D1D2_zt44;
         } else {
-            c__J1_D1D2_voc1[_k - 1] = _J1_D1D2_voc1 - c0__J1_D1D2_voc1;
             c__J1_D1D2_voc0[_k - 1] = _J1_D1D2_voc0 - c0__J1_D1D2_voc0;
+            c__J1_D1D2_voc1[_k - 1] = _J1_D1D2_voc1 - c0__J1_D1D2_voc1;
             c__J1_D1D2_zt72[_k - 1] = _J1_D1D2_zt72 - c0__J1_D1D2_zt72;
+            c__J1_D1D2_zt44[_k - 1] = _J1_D1D2_zt44 - c0__J1_D1D2_zt44;
         }
     }
     
@@ -381,9 +385,10 @@ vD1D2 = limit_junction_voltage_sym(vD1D2 + (_prev_step), vD1D2, D1N914_vt, vcrit
             }
 
             // --- Newton-Raphson solve (N-port): J1_D1D2
-            const double _J1_D1D2_voc1 = c0__J1_D1D2_voc1 + c__J1_D1D2_voc1[0] * vi + c__J1_D1D2_voc1[1] * zC4 + c__J1_D1D2_voc1[2] * zC12 + c__J1_D1D2_voc1[3] * zR7C6 + c__J1_D1D2_voc1[4] * zC13 + c__J1_D1D2_voc1[5] * zR6C3 + c__J1_D1D2_voc1[6] * zC11 + c__J1_D1D2_voc1[7] * zR8C7 + c__J1_D1D2_voc1[8] * zRdC5 + c__J1_D1D2_voc1[9] * zR9C9;
             const double _J1_D1D2_voc0 = c0__J1_D1D2_voc0 + c__J1_D1D2_voc0[0] * vi + c__J1_D1D2_voc0[1] * zC4 + c__J1_D1D2_voc0[2] * zC12 + c__J1_D1D2_voc0[3] * zR7C6 + c__J1_D1D2_voc0[4] * zC13 + c__J1_D1D2_voc0[5] * zR6C3 + c__J1_D1D2_voc0[6] * zC11 + c__J1_D1D2_voc0[7] * zR8C7 + c__J1_D1D2_voc0[8] * zRdC5 + c__J1_D1D2_voc0[9] * zR9C9;
+            const double _J1_D1D2_voc1 = c0__J1_D1D2_voc1 + c__J1_D1D2_voc1[0] * vi + c__J1_D1D2_voc1[1] * zC4 + c__J1_D1D2_voc1[2] * zC12 + c__J1_D1D2_voc1[3] * zR7C6 + c__J1_D1D2_voc1[4] * zC13 + c__J1_D1D2_voc1[5] * zR6C3 + c__J1_D1D2_voc1[6] * zC11 + c__J1_D1D2_voc1[7] * zR8C7 + c__J1_D1D2_voc1[8] * zRdC5 + c__J1_D1D2_voc1[9] * zR9C9;
             const double _J1_D1D2_zt72 = c0__J1_D1D2_zt72 + c__J1_D1D2_zt72[0] * vi + c__J1_D1D2_zt72[1] * zC4 + c__J1_D1D2_zt72[2] * zC12 + c__J1_D1D2_zt72[3] * zR7C6 + c__J1_D1D2_zt72[4] * zC13 + c__J1_D1D2_zt72[5] * zR6C3 + c__J1_D1D2_zt72[6] * zC11 + c__J1_D1D2_zt72[7] * zR8C7 + c__J1_D1D2_zt72[8] * zRdC5 + c__J1_D1D2_zt72[9] * zR9C9;
+            const double _J1_D1D2_zt44 = c0__J1_D1D2_zt44 + c__J1_D1D2_zt44[0] * vi + c__J1_D1D2_zt44[1] * zC4 + c__J1_D1D2_zt44[2] * zC12 + c__J1_D1D2_zt44[3] * zR7C6 + c__J1_D1D2_zt44[4] * zC13 + c__J1_D1D2_zt44[5] * zR6C3 + c__J1_D1D2_zt44[6] * zC11 + c__J1_D1D2_zt44[7] * zR8C7 + c__J1_D1D2_zt44[8] * zRdC5 + c__J1_D1D2_zt44[9] * zR9C9;
             const double _J1_D1D2_zt36 = (gR6C3 * vi);
             const double _J1_D1D2_zt38 = (gRfR10 * gR9C9);
             const double _J1_D1D2_zt41 = (gRfR10 * zR9C9);
@@ -423,7 +428,6 @@ vD1D2 = limit_junction_voltage_sym(vD1D2 + (_prev_step), vD1D2, D1N914_vt, vcrit
             const double _J1_D1D2_zt39 = (_J1_D1D2_zt40 - _J1_D1D2_zt50);
             const double _J1_D1D2_zt47 = (_J1_D1D2_zt43 * _J1_D1D2_zt39);
             const double _J1_D1D2_zt64 = (_J1_D1D2_zt43 * _J1_D1D2_zt65);
-            const double _J1_D1D2_zt44 = (_J1_D1D2_zt45 + _J1_D1D2_zt47);
             const double _J1_D1D2_zt63 = (_J1_D1D2_zt64 - _J1_D1D2_zt70);
             const double _J1_D1D2_pt0 = (1.0 / 1000.0);
             const double _J1_D1D2_pt11 = (1.0 / D1N914_vt);

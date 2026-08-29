@@ -34,13 +34,14 @@ Backend :: struct {
 
     // optimization stuff
     cpu: CPU_Profile = CPU_PROFILE_GENERIC;  // target CPU for scheduling/extraction cost model
+    block_size: int = DEFAULT_BLOCK_SIZE; // block length used for the affine extraction cost model
     enable_extraction: bool; // basis-vector linear coefficient extraction
     instrument:        bool; // emit Newton iteration/solve counters on State
     opt_port_matrix:   bool; // N-port (Thevenin) formulation of nonlinear clusters
 }
 
 make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE_GENERIC, transcendental_approx: Transcendental_Approx = .{},
-                 enable_extraction := false, instrument := false, opt_port_matrix := false) -> Backend {
+                 enable_extraction := false, instrument := false, opt_port_matrix := false, block_size := DEFAULT_BLOCK_SIZE) -> Backend {
     is_cpp := lang != "c";
     return .{
         is_cpp    = is_cpp,
@@ -48,6 +49,7 @@ make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE
         decl_type = ifx is_cpp then "auto" else type_name,
         const_kw  = ifx is_cpp then "static constexpr" else "static const",
         cpu       = cpu,
+        block_size = block_size,
         transcendental_approx = transcendental_approx,
         enable_extraction = enable_extraction,
         instrument = instrument,
@@ -55,13 +57,20 @@ make_backend :: (lang: string, type_name: string, cpu: CPU_Profile = CPU_PROFILE
     };
 }
 
-// Used for cost modelling... maybe make this a parameter later on?
-ASSUMED_BLOCK_SIZE :: 64;
+// Default for Backend.block_size, overridable via `-block_size`.
+DEFAULT_BLOCK_SIZE :: 64;
 
 // Rough weighted op-cost estimate for a Flop_Count, using a CPU_Profile's
 // per-op latencies. Transcendentals aren't included, but that shouldn't matter.
 estimate_flop_cost :: (flops: Flop_Count, cpu: CPU_Profile) -> float {
     return flops.muls * cpu.mul.latency + flops.divs * cpu.div.latency + flops.adds * cpu.add.latency;
+}
+
+// Resource-bound companion to estimate_flop_cost: total reciprocal throughput.
+//mul/div/add share the same FP ports; memory ops use different ports, so
+// the callers `max` them in later.
+estimate_flop_resource :: (flops: Flop_Count, cpu: CPU_Profile) -> float {
+    return flops.muls * cpu.mul.throughput + flops.divs * cpu.div.throughput + flops.adds * cpu.add.throughput;
 }
 
 // exp/log/pow approximation settings, overridable per netlist via

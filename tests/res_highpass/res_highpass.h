@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen res_highpass.net res_highpass.h
 
 #pragma once
@@ -33,10 +33,14 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t4 = ((gC22 + gR9) * 64.0f);
     const auto _t5 = (gC22 * 64.0f);
     const auto _t3 = (1.0f / ((_t0 * _t4) - (_t5 * _t5)));
-    float c0_tC22;
-    float c_tC22[4];
     float c0_tC21;
     float c_tC21[4];
+    float c0_tC22;
+    float c_tC22[4];
+    float c0_tL1;
+    float c_tL1[4];
+    float c0_vo;
+    float c_vo[4];
     
     for (int _k = 0; _k <= 4; ++_k)
     {
@@ -50,12 +54,17 @@ static void compute (const float* const* input, float** output, int num_channels
         const auto vl = (-(((_t2 * _t4) + (_t5 * _t1)) * _t3));
         const auto tC21 = (gC21 * (vi - vl));
         const auto tC22 = (gC22 * (vl - vo));
+        const auto tL1 = (gL1 * (vl - 0));
         if (_k == 0) {
-            c0_tC22 = tC22;
             c0_tC21 = tC21;
+            c0_tC22 = tC22;
+            c0_tL1 = tL1;
+            c0_vo = vo;
         } else {
-            c_tC22[_k - 1] = tC22 - c0_tC22;
             c_tC21[_k - 1] = tC21 - c0_tC21;
+            c_tC22[_k - 1] = tC22 - c0_tC22;
+            c_tL1[_k - 1] = tL1 - c0_tL1;
+            c_vo[_k - 1] = vo - c0_vo;
         }
     }
     
@@ -68,13 +77,13 @@ static void compute (const float* const* input, float** output, int num_channels
         {
             const auto vi = input[ch][n];
 
-            const auto tC22 = c0_tC22 + c_tC22[0] * vi + c_tC22[1] * zC21 + c_tC22[2] * zC22 + c_tC22[3] * zL1;
             const auto tC21 = c0_tC21 + c_tC21[0] * vi + c_tC21[1] * zC21 + c_tC21[2] * zC22 + c_tC21[3] * zL1;
+            const auto tC22 = c0_tC22 + c_tC22[0] * vi + c_tC22[1] * zC21 + c_tC22[2] * zC22 + c_tC22[3] * zL1;
+            const auto tL1 = c0_tL1 + c_tL1[0] * vi + c_tL1[1] * zC21 + c_tL1[2] * zC22 + c_tL1[3] * zL1;
+            const auto vo = c0_vo + c_vo[0] * vi + c_vo[1] * zC21 + c_vo[2] * zC22 + c_vo[3] * zL1;
             const auto _t1 = (zC22 * 64.0f);
             const auto _t2 = ((zL1 - (((gC21 * vi) - zC21) + zC22)) * 64.0f);
-            const auto vo = (-(((_t0 * _t1) + (_t2 * _t5)) * _t3));
             const auto vl = (-(((_t2 * _t4) + (_t5 * _t1)) * _t3));
-            const auto tL1 = (gL1 * (vl - 0));
             
             zC21 = 2 * tC21 - zC21;
             zC22 = 2 * tC22 - zC22;

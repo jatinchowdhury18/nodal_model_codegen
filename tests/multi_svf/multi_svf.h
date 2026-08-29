@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen multi_svf.net multi_svf.h
 
 #pragma once
@@ -60,12 +60,12 @@ static void compute (const float* const* input, float** output_vh, float** outpu
     const auto _t21 = (_t1 * _t14);
     float c0_tCf2;
     float c_tCf2[3];
+    float c0_tCf1;
+    float c_tCf1[3];
     float c0_vh;
     float c_vh[3];
     float c0_vl;
     float c_vl[3];
-    float c0_tCf1;
-    float c_tCf1[3];
     float c0_vb;
     float c_vb[3];
     
@@ -88,15 +88,15 @@ static void compute (const float* const* input, float** output_vh, float** outpu
         const auto tCf2 = (gCf2 * (0 - vl));
         if (_k == 0) {
             c0_tCf2 = tCf2;
+            c0_tCf1 = tCf1;
             c0_vh = vh;
             c0_vl = vl;
-            c0_tCf1 = tCf1;
             c0_vb = vb;
         } else {
             c_tCf2[_k - 1] = tCf2 - c0_tCf2;
+            c_tCf1[_k - 1] = tCf1 - c0_tCf1;
             c_vh[_k - 1] = vh - c0_vh;
             c_vl[_k - 1] = vl - c0_vl;
-            c_tCf1[_k - 1] = tCf1 - c0_tCf1;
             c_vb[_k - 1] = vb - c0_vb;
         }
     }
@@ -110,9 +110,9 @@ static void compute (const float* const* input, float** output_vh, float** outpu
             const auto vi = input[ch][n];
 
             const auto tCf2 = c0_tCf2 + c_tCf2[0] * vi + c_tCf2[1] * zCf1 + c_tCf2[2] * zCf2;
+            const auto tCf1 = c0_tCf1 + c_tCf1[0] * vi + c_tCf1[1] * zCf1 + c_tCf1[2] * zCf2;
             const auto vh = c0_vh + c_vh[0] * vi + c_vh[1] * zCf1 + c_vh[2] * zCf2;
             const auto vl = c0_vl + c_vl[0] * vi + c_vl[1] * zCf1 + c_vl[2] * zCf2;
-            const auto tCf1 = c0_tCf1 + c_tCf1[0] * vi + c_tCf1[1] * zCf1 + c_tCf1[2] * zCf2;
             const auto vb = c0_vb + c_vb[0] * vi + c_vb[1] * zCf1 + c_vb[2] * zCf2;
             
             zCf1 = 2 * tCf1 - zCf1;

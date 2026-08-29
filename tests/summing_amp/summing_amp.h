@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen summing_amp.net summing_amp.h
 
 #pragma once
@@ -50,6 +50,8 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
     const auto _t0 = ((((((gR1 + gR2) + gR3) + gR4) + gRFCf) * Vbias) - (gR4 * Vdc));
     float c0_vRFCf;
     float c_vRFCf[4];
+    float c0_vo;
+    float c_vo[4];
     
     for (int _k = 0; _k <= 4; ++_k)
     {
@@ -62,8 +64,10 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
         const auto vRFCf = (vo - NINV);
         if (_k == 0) {
             c0_vRFCf = vRFCf;
+            c0_vo = vo;
         } else {
             c_vRFCf[_k - 1] = vRFCf - c0_vRFCf;
+            c_vo[_k - 1] = vo - c0_vo;
         }
     }
     
@@ -77,7 +81,7 @@ static void compute (const float* const* input_vi1, const float* const* input_vi
             const auto vi3 = input_vi3[ch][n];
 
             const auto vRFCf = c0_vRFCf + c_vRFCf[0] * vi1 + c_vRFCf[1] * vi2 + c_vRFCf[2] * vi3 + c_vRFCf[3] * zRFCf;
-            const auto vo = ((_t0 + (zRFCf - (((gR1 * vi1) + (gR2 * vi2)) + (gR3 * vi3)))) / gRFCf);
+            const auto vo = c0_vo + c_vo[0] * vi1 + c_vo[1] * vi2 + c_vo[2] * vi3 + c_vo[3] * zRFCf;
             const auto NINV = Vbias;
             
             zRFCf = gzRFCf * vRFCf - zRFCf; // RC parallel

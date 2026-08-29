@@ -11,6 +11,7 @@ Args :: struct {
     namespace:          string = "";        @"?Wrap generated code in a namespace (C++ only, disabled by default)."
     cpu:                string = "generic"; @"?Target CPU profile for the extraction cost model. Built-in: generic (default), m1, zen4, cortex_a8. Or a path to a custom cpu_profiles/*.txt file."
     no_opt_extract:     bool   = false;     @"?Disable basis-vector linear coefficient extraction."
+    block_size:         int    = DEFAULT_BLOCK_SIZE; @"?Processing block size assumed by the extraction cost model. Larger values make basis-coefficient recovery cheaper to amortize."
     no_opt_port_matrix: bool   = false;     @"?Disable solving nonlinear clusters via N-port (Thevenin) equivalence."
     stats:              bool   = false;     @"?Print netlist_codegen()'s wall time and bytes-allocated to stderr after codegen finishes."
     instrument:         bool   = false;     @"?Emit Newton solve/iteration counters (nr_solves_<cluster>, nr_iters_<cluster>) on the State struct."
@@ -63,6 +64,11 @@ main :: () {
         exit(1);
     }
 
+    if args.block_size < 1 {
+        print("Invalid block size %! Must be at least 1.\n", args.block_size);
+        exit(1);
+    }
+
     if free_args.count < 2 {
         print("Usage: netlist_codegen <netlist_file> <header_file> [options]\n");
         Command_Line.show_help(Args, argument_flags, .[]);
@@ -98,7 +104,8 @@ main :: () {
                                 cpu_profile,
                                 !args.no_opt_extract,
                                 !args.no_opt_port_matrix,
-                                args.instrument);
+                                args.instrument,
+                                args.block_size);
 
     elapsed_seconds := seconds_since_init() - start_time;
     context.allocator = stats.underlying;

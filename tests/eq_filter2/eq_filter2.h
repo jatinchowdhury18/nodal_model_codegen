@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen eq_filter2.net eq_filter2.h -type_name double
 
 #pragma once
@@ -129,16 +129,16 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t40 = (gC11 * _t32);
     double c0_vRf1R18C9;
     double c_vRf1R18C9[5];
-    double c0_vR19Rf2C10;
-    double c_vR19Rf2C10[5];
     double c0_tC11;
     double c_tC11[5];
     double c0_v13;
     double c_v13[5];
-    double c0_v15;
-    double c_v15[5];
+    double c0_vR19Rf2C10;
+    double c_vR19Rf2C10[5];
     double c0_vR12C8;
     double c_vR12C8[5];
+    double c0_v15;
+    double c_v15[5];
     double c0_vo;
     double c_vo[5];
     double c0_vn4;
@@ -170,20 +170,20 @@ static void compute (const float* const* input, float** output, int num_channels
         const auto vR19Rf2C10 = (vn4 - v15);
         if (_k == 0) {
             c0_vRf1R18C9 = vRf1R18C9;
-            c0_vR19Rf2C10 = vR19Rf2C10;
             c0_tC11 = tC11;
             c0_v13 = v13;
-            c0_v15 = v15;
+            c0_vR19Rf2C10 = vR19Rf2C10;
             c0_vR12C8 = vR12C8;
+            c0_v15 = v15;
             c0_vo = vo;
             c0_vn4 = vn4;
         } else {
             c_vRf1R18C9[_k - 1] = vRf1R18C9 - c0_vRf1R18C9;
-            c_vR19Rf2C10[_k - 1] = vR19Rf2C10 - c0_vR19Rf2C10;
             c_tC11[_k - 1] = tC11 - c0_tC11;
             c_v13[_k - 1] = v13 - c0_v13;
-            c_v15[_k - 1] = v15 - c0_v15;
+            c_vR19Rf2C10[_k - 1] = vR19Rf2C10 - c0_vR19Rf2C10;
             c_vR12C8[_k - 1] = vR12C8 - c0_vR12C8;
+            c_v15[_k - 1] = v15 - c0_v15;
             c_vo[_k - 1] = vo - c0_vo;
             c_vn4[_k - 1] = vn4 - c0_vn4;
         }
@@ -200,11 +200,11 @@ static void compute (const float* const* input, float** output, int num_channels
             const auto vi = input[ch][n];
 
             const auto vRf1R18C9 = c0_vRf1R18C9 + c_vRf1R18C9[0] * vi + c_vRf1R18C9[1] * zR12C8 + c_vRf1R18C9[2] * zRf1R18C9 + c_vRf1R18C9[3] * zC11 + c_vRf1R18C9[4] * zR19Rf2C10;
-            const auto vR19Rf2C10 = c0_vR19Rf2C10 + c_vR19Rf2C10[0] * vi + c_vR19Rf2C10[1] * zR12C8 + c_vR19Rf2C10[2] * zRf1R18C9 + c_vR19Rf2C10[3] * zC11 + c_vR19Rf2C10[4] * zR19Rf2C10;
             const auto tC11 = c0_tC11 + c_tC11[0] * vi + c_tC11[1] * zR12C8 + c_tC11[2] * zRf1R18C9 + c_tC11[3] * zC11 + c_tC11[4] * zR19Rf2C10;
             const auto v13 = c0_v13 + c_v13[0] * vi + c_v13[1] * zR12C8 + c_v13[2] * zRf1R18C9 + c_v13[3] * zC11 + c_v13[4] * zR19Rf2C10;
-            const auto v15 = c0_v15 + c_v15[0] * vi + c_v15[1] * zR12C8 + c_v15[2] * zRf1R18C9 + c_v15[3] * zC11 + c_v15[4] * zR19Rf2C10;
+            const auto vR19Rf2C10 = c0_vR19Rf2C10 + c_vR19Rf2C10[0] * vi + c_vR19Rf2C10[1] * zR12C8 + c_vR19Rf2C10[2] * zRf1R18C9 + c_vR19Rf2C10[3] * zC11 + c_vR19Rf2C10[4] * zR19Rf2C10;
             const auto vR12C8 = c0_vR12C8 + c_vR12C8[0] * vi + c_vR12C8[1] * zR12C8 + c_vR12C8[2] * zRf1R18C9 + c_vR12C8[3] * zC11 + c_vR12C8[4] * zR19Rf2C10;
+            const auto v15 = c0_v15 + c_v15[0] * vi + c_v15[1] * zR12C8 + c_v15[2] * zRf1R18C9 + c_v15[3] * zC11 + c_v15[4] * zR19Rf2C10;
             const auto vo = c0_vo + c_vo[0] * vi + c_vo[1] * zR12C8 + c_vo[2] * zRf1R18C9 + c_vo[3] * zC11 + c_vo[4] * zR19Rf2C10;
             const auto vn4 = c0_vn4 + c_vn4[0] * vi + c_vn4[1] * zR12C8 + c_vn4[2] * zRf1R18C9 + c_vn4[3] * zC11 + c_vn4[4] * zR19Rf2C10;
             const auto _t9 = (zRf1R18C9 - zR19Rf2C10);

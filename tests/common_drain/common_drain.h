@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen common_drain.net common_drain.h -type_name double
 
 #pragma once
@@ -61,6 +61,27 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _t3 = (1.0 / ((_t2 * _t4) - (gC13 * gC13)));
     const auto _t5 = (1.0 / (gC12 + gR11));
     const auto _t6 = (1.0 / 1000.0);
+    double c0_tC12;
+    double c_tC12[3];
+    double c0_vg;
+    double c_vg[3];
+    
+    for (int _k = 0; _k <= 3; ++_k)
+    {
+        const auto vi = (_k == 1) ? 1.0 : 0.0;
+        const auto zC12 = (_k == 2) ? 1.0 : 0.0;
+        const auto zC13 = (_k == 3) ? 1.0 : 0.0;
+        const auto vg = (-((zC12 - (gC12 * vi)) * _t5));
+        const auto tC12 = (gC12 * (vi - vg));
+        if (_k == 0) {
+            c0_tC12 = tC12;
+            c0_vg = vg;
+        } else {
+            c_tC12[_k - 1] = tC12 - c0_tC12;
+            c_vg[_k - 1] = vg - c0_vg;
+        }
+    }
+    
     const auto _J1_zt1 = (gC13 + gRL);
     const auto _J1_zt0 = (((gR13 + gC13) * _J1_zt1) - (gC13 * gC13));
     const auto _J1_Z0_0 = (-((_J1_zt1 * 1.0) / _J1_zt0));
@@ -117,11 +138,11 @@ vGSJ1 = limit_jfet_vgs(vGSJ1 + (_prev_step), _2N5485_vp);
                 
             }
 
+            const auto tC12 = c0_tC12 + c_tC12[0] * vi + c_tC12[1] * zC12 + c_tC12[2] * zC13;
+            const auto vg = c0_vg + c_vg[0] * vi + c_vg[1] * zC12 + c_vg[2] * zC13;
             const auto _t1 = ((vGSJ1 - _2N5485_vp) + _t6);
             const auto _t0 = ((_2N5485_Beta * (_t1 * _t1)) + zC13);
             const auto vo = (((_t0 * gC13) - (_t2 * zC13)) * _t3);
-            const auto vg = (-((zC12 - (gC12 * vi)) * _t5));
-            const auto tC12 = (gC12 * (vi - vg));
             const auto vs = (((_t0 * _t4) - (gC13 * zC13)) * _t3);
             const auto tC13 = (gC13 * (vs - vo));
             

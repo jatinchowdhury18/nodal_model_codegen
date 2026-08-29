@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen rc_lowpass.net rc_lowpass_c.h -lang c
 
 #pragma once
@@ -24,6 +24,8 @@ static void compute (const float* const* input, float** output, int num_channels
     const float _t0 = (1.0f / (gR1 + gC1));
     float c0_tC1;
     float c_tC1[2];
+    float c0_vo;
+    float c_vo[2];
     
     for (int _k = 0; _k <= 2; ++_k)
     {
@@ -33,8 +35,10 @@ static void compute (const float* const* input, float** output, int num_channels
         const float tC1 = (gC1 * (vo - 0));
         if (_k == 0) {
             c0_tC1 = tC1;
+            c0_vo = vo;
         } else {
             c_tC1[_k - 1] = tC1 - c0_tC1;
+            c_vo[_k - 1] = vo - c0_vo;
         }
     }
     
@@ -46,7 +50,7 @@ static void compute (const float* const* input, float** output, int num_channels
             const float vi = input[ch][n];
 
             const float tC1 = c0_tC1 + c_tC1[0] * vi + c_tC1[1] * zC1;
-            const float vo = (((gR1 * vi) + zC1) * _t0);
+            const float vo = c0_vo + c_vo[0] * vi + c_vo[1] * zC1;
             
             zC1 = 2 * tC1 - zC1;
 

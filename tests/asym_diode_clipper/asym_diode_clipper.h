@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen asym_diode_clipper.net asym_diode_clipper.h
 
 #pragma once
@@ -125,6 +125,16 @@ static void compute (const float* const* input, float** output, int num_channels
     const auto _D3_D1D2_Z1_1 = (-_D3_D1D2_zt0);
     float c0__D3_D1D2_voc1;
     float c__D3_D1D2_voc1[2];
+    float c0__D3_D1D2_zt6;
+    float c__D3_D1D2_zt6[2];
+    float c0__D3_D1D2_voc0;
+    float c__D3_D1D2_voc0[2];
+    float c0__D3_D1D2_zt4;
+    float c__D3_D1D2_zt4[2];
+    float c0__D3_D1D2_zt7;
+    float c__D3_D1D2_zt7[2];
+    float c0__D3_D1D2_zt5;
+    float c__D3_D1D2_zt5[2];
     
     for (int _k = 0; _k <= 2; ++_k)
     {
@@ -134,11 +144,22 @@ static void compute (const float* const* input, float** output, int num_channels
         const auto _D3_D1D2_zt7 = (_D3_D1D2_zt5 + zC1);
         const auto _D3_D1D2_zt4 = (-_D3_D1D2_zt7);
         const auto _D3_D1D2_zt6 = (_D3_D1D2_zt4 / _D3_D1D2_zt3);
+        const auto _D3_D1D2_voc0 = _D3_D1D2_zt6;
         const auto _D3_D1D2_voc1 = (-_D3_D1D2_zt6);
         if (_k == 0) {
             c0__D3_D1D2_voc1 = _D3_D1D2_voc1;
+            c0__D3_D1D2_zt6 = _D3_D1D2_zt6;
+            c0__D3_D1D2_voc0 = _D3_D1D2_voc0;
+            c0__D3_D1D2_zt4 = _D3_D1D2_zt4;
+            c0__D3_D1D2_zt7 = _D3_D1D2_zt7;
+            c0__D3_D1D2_zt5 = _D3_D1D2_zt5;
         } else {
             c__D3_D1D2_voc1[_k - 1] = _D3_D1D2_voc1 - c0__D3_D1D2_voc1;
+            c__D3_D1D2_zt6[_k - 1] = _D3_D1D2_zt6 - c0__D3_D1D2_zt6;
+            c__D3_D1D2_voc0[_k - 1] = _D3_D1D2_voc0 - c0__D3_D1D2_voc0;
+            c__D3_D1D2_zt4[_k - 1] = _D3_D1D2_zt4 - c0__D3_D1D2_zt4;
+            c__D3_D1D2_zt7[_k - 1] = _D3_D1D2_zt7 - c0__D3_D1D2_zt7;
+            c__D3_D1D2_zt5[_k - 1] = _D3_D1D2_zt5 - c0__D3_D1D2_zt5;
         }
     }
     
@@ -162,11 +183,11 @@ vD1D2 = limit_junction_voltage_sym(vD1D2 + (_prev_step), vD1D2, D1N914_vt, vcrit
 
             // --- Newton-Raphson solve (N-port): D3_D1D2
             const auto _D3_D1D2_voc1 = c0__D3_D1D2_voc1 + c__D3_D1D2_voc1[0] * vi + c__D3_D1D2_voc1[1] * zC1;
-            const auto _D3_D1D2_zt5 = (gR1 * vi);
-            const auto _D3_D1D2_zt7 = (_D3_D1D2_zt5 + zC1);
-            const auto _D3_D1D2_zt4 = (-_D3_D1D2_zt7);
-            const auto _D3_D1D2_zt6 = (_D3_D1D2_zt4 / _D3_D1D2_zt3);
-            const auto _D3_D1D2_voc0 = _D3_D1D2_zt6;
+            const auto _D3_D1D2_zt6 = c0__D3_D1D2_zt6 + c__D3_D1D2_zt6[0] * vi + c__D3_D1D2_zt6[1] * zC1;
+            const auto _D3_D1D2_voc0 = c0__D3_D1D2_voc0 + c__D3_D1D2_voc0[0] * vi + c__D3_D1D2_voc0[1] * zC1;
+            const auto _D3_D1D2_zt4 = c0__D3_D1D2_zt4 + c__D3_D1D2_zt4[0] * vi + c__D3_D1D2_zt4[1] * zC1;
+            const auto _D3_D1D2_zt7 = c0__D3_D1D2_zt7 + c__D3_D1D2_zt7[0] * vi + c__D3_D1D2_zt7[1] * zC1;
+            const auto _D3_D1D2_zt5 = c0__D3_D1D2_zt5 + c__D3_D1D2_zt5[0] * vi + c__D3_D1D2_zt5[1] * zC1;
             const auto _D3_D1D2_pt13 = (1.0f / D1N914_vt);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {

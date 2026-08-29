@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen eq73.net eq73.h -type_name float
 
 #pragma once
@@ -170,22 +170,22 @@ static void compute_shelf (const float* const* input, float** output, int num_ch
     float c_v14[8];
     float c0_v45;
     float c_v45[8];
-    float c0_v18;
-    float c_v18[8];
-    float c0_vR13C25;
-    float c_vR13C25[8];
-    float c0_vch;
-    float c_vch[8];
-    float c0_tC47;
-    float c_tC47[8];
-    float c0_vpl;
-    float c_vpl[8];
     float c0_tC46;
     float c_tC46[8];
-    float c0_vib;
-    float c_vib[8];
+    float c0_tC47;
+    float c_tC47[8];
+    float c0_vR13C25;
+    float c_vR13C25[8];
+    float c0_vpl;
+    float c_vpl[8];
+    float c0_v18;
+    float c_v18[8];
+    float c0_vch;
+    float c_vch[8];
     float c0_vph;
     float c_vph[8];
+    float c0_vib;
+    float c_vib[8];
     
     for (int _k = 0; _k <= 8; ++_k)
     {
@@ -286,14 +286,14 @@ static void compute_shelf (const float* const* input, float** output, int num_ch
             c0_vR1mC26 = vR1mC26;
             c0_v14 = v14;
             c0_v45 = v45;
-            c0_v18 = v18;
-            c0_vR13C25 = vR13C25;
-            c0_vch = vch;
-            c0_tC47 = tC47;
-            c0_vpl = vpl;
             c0_tC46 = tC46;
-            c0_vib = vib;
+            c0_tC47 = tC47;
+            c0_vR13C25 = vR13C25;
+            c0_vpl = vpl;
+            c0_v18 = v18;
+            c0_vch = vch;
             c0_vph = vph;
+            c0_vib = vib;
         } else {
             c_tC36[_k - 1] = tC36 - c0_tC36;
             c_tC35[_k - 1] = tC35 - c0_tC35;
@@ -302,14 +302,14 @@ static void compute_shelf (const float* const* input, float** output, int num_ch
             c_vR1mC26[_k - 1] = vR1mC26 - c0_vR1mC26;
             c_v14[_k - 1] = v14 - c0_v14;
             c_v45[_k - 1] = v45 - c0_v45;
-            c_v18[_k - 1] = v18 - c0_v18;
-            c_vR13C25[_k - 1] = vR13C25 - c0_vR13C25;
-            c_vch[_k - 1] = vch - c0_vch;
-            c_tC47[_k - 1] = tC47 - c0_tC47;
-            c_vpl[_k - 1] = vpl - c0_vpl;
             c_tC46[_k - 1] = tC46 - c0_tC46;
-            c_vib[_k - 1] = vib - c0_vib;
+            c_tC47[_k - 1] = tC47 - c0_tC47;
+            c_vR13C25[_k - 1] = vR13C25 - c0_vR13C25;
+            c_vpl[_k - 1] = vpl - c0_vpl;
+            c_v18[_k - 1] = v18 - c0_v18;
+            c_vch[_k - 1] = vch - c0_vch;
             c_vph[_k - 1] = vph - c0_vph;
+            c_vib[_k - 1] = vib - c0_vib;
         }
     }
     
@@ -333,14 +333,14 @@ static void compute_shelf (const float* const* input, float** output, int num_ch
             const auto vR1mC26 = c0_vR1mC26 + c_vR1mC26[0] * vis + c_vR1mC26[1] * zC47 + c_vR1mC26[2] * zR13C25 + c_vR1mC26[3] * zC46 + c_vR1mC26[4] * zC35 + c_vR1mC26[5] * zC36 + c_vR1mC26[6] * zC45 + c_vR1mC26[7] * zR1mC26;
             const auto v14 = c0_v14 + c_v14[0] * vis + c_v14[1] * zC47 + c_v14[2] * zR13C25 + c_v14[3] * zC46 + c_v14[4] * zC35 + c_v14[5] * zC36 + c_v14[6] * zC45 + c_v14[7] * zR1mC26;
             const auto v45 = c0_v45 + c_v45[0] * vis + c_v45[1] * zC47 + c_v45[2] * zR13C25 + c_v45[3] * zC46 + c_v45[4] * zC35 + c_v45[5] * zC36 + c_v45[6] * zC45 + c_v45[7] * zR1mC26;
-            const auto v18 = c0_v18 + c_v18[0] * vis + c_v18[1] * zC47 + c_v18[2] * zR13C25 + c_v18[3] * zC46 + c_v18[4] * zC35 + c_v18[5] * zC36 + c_v18[6] * zC45 + c_v18[7] * zR1mC26;
-            const auto vR13C25 = c0_vR13C25 + c_vR13C25[0] * vis + c_vR13C25[1] * zC47 + c_vR13C25[2] * zR13C25 + c_vR13C25[3] * zC46 + c_vR13C25[4] * zC35 + c_vR13C25[5] * zC36 + c_vR13C25[6] * zC45 + c_vR13C25[7] * zR1mC26;
-            const auto vch = c0_vch + c_vch[0] * vis + c_vch[1] * zC47 + c_vch[2] * zR13C25 + c_vch[3] * zC46 + c_vch[4] * zC35 + c_vch[5] * zC36 + c_vch[6] * zC45 + c_vch[7] * zR1mC26;
-            const auto tC47 = c0_tC47 + c_tC47[0] * vis + c_tC47[1] * zC47 + c_tC47[2] * zR13C25 + c_tC47[3] * zC46 + c_tC47[4] * zC35 + c_tC47[5] * zC36 + c_tC47[6] * zC45 + c_tC47[7] * zR1mC26;
-            const auto vpl = c0_vpl + c_vpl[0] * vis + c_vpl[1] * zC47 + c_vpl[2] * zR13C25 + c_vpl[3] * zC46 + c_vpl[4] * zC35 + c_vpl[5] * zC36 + c_vpl[6] * zC45 + c_vpl[7] * zR1mC26;
             const auto tC46 = c0_tC46 + c_tC46[0] * vis + c_tC46[1] * zC47 + c_tC46[2] * zR13C25 + c_tC46[3] * zC46 + c_tC46[4] * zC35 + c_tC46[5] * zC36 + c_tC46[6] * zC45 + c_tC46[7] * zR1mC26;
-            const auto vib = c0_vib + c_vib[0] * vis + c_vib[1] * zC47 + c_vib[2] * zR13C25 + c_vib[3] * zC46 + c_vib[4] * zC35 + c_vib[5] * zC36 + c_vib[6] * zC45 + c_vib[7] * zR1mC26;
+            const auto tC47 = c0_tC47 + c_tC47[0] * vis + c_tC47[1] * zC47 + c_tC47[2] * zR13C25 + c_tC47[3] * zC46 + c_tC47[4] * zC35 + c_tC47[5] * zC36 + c_tC47[6] * zC45 + c_tC47[7] * zR1mC26;
+            const auto vR13C25 = c0_vR13C25 + c_vR13C25[0] * vis + c_vR13C25[1] * zC47 + c_vR13C25[2] * zR13C25 + c_vR13C25[3] * zC46 + c_vR13C25[4] * zC35 + c_vR13C25[5] * zC36 + c_vR13C25[6] * zC45 + c_vR13C25[7] * zR1mC26;
+            const auto vpl = c0_vpl + c_vpl[0] * vis + c_vpl[1] * zC47 + c_vpl[2] * zR13C25 + c_vpl[3] * zC46 + c_vpl[4] * zC35 + c_vpl[5] * zC36 + c_vpl[6] * zC45 + c_vpl[7] * zR1mC26;
+            const auto v18 = c0_v18 + c_v18[0] * vis + c_v18[1] * zC47 + c_v18[2] * zR13C25 + c_v18[3] * zC46 + c_v18[4] * zC35 + c_v18[5] * zC36 + c_v18[6] * zC45 + c_v18[7] * zR1mC26;
+            const auto vch = c0_vch + c_vch[0] * vis + c_vch[1] * zC47 + c_vch[2] * zR13C25 + c_vch[3] * zC46 + c_vch[4] * zC35 + c_vch[5] * zC36 + c_vch[6] * zC45 + c_vch[7] * zR1mC26;
             const auto vph = c0_vph + c_vph[0] * vis + c_vph[1] * zC47 + c_vph[2] * zR13C25 + c_vph[3] * zC46 + c_vph[4] * zC35 + c_vph[5] * zC36 + c_vph[6] * zC45 + c_vph[7] * zR1mC26;
+            const auto vib = c0_vib + c_vib[0] * vis + c_vib[1] * zC47 + c_vib[2] * zR13C25 + c_vib[3] * zC46 + c_vib[4] * zC35 + c_vib[5] * zC36 + c_vib[6] * zC45 + c_vib[7] * zR1mC26;
             
             zC47 = 2 * tC47 - zC47;
             zR13C25 = gR13C25 * (1 - gnR13C25) * vR13C25 + gnR13C25 * zR13C25; // RC series
@@ -500,20 +500,20 @@ static void compute_bell (const float* const* input, float** output, int num_cha
     const auto _t38 = (_t20 * _t26);
     const auto _t39 = (_t20 * _t33);
     const auto _t40 = (_t20 * _t23);
+    float c0_tC60;
+    float c_tC60[4];
     float c0_tCf;
     float c_tCf[4];
     float c0_tLf;
     float c_tLf[4];
+    float c0_vb;
+    float c_vb[4];
     float c0_vpt;
     float c_vpt[4];
     float c0_vc;
     float c_vc[4];
     float c0_vl;
     float c_vl[4];
-    float c0_tC60;
-    float c_tC60[4];
-    float c0_vb;
-    float c_vb[4];
     
     for (int _k = 0; _k <= 4; ++_k)
     {
@@ -546,21 +546,21 @@ static void compute_bell (const float* const* input, float** output, int num_cha
         const auto vl = ((((_t22 * (_t20 * _t37)) - (_t0 * ((_t12 * _t23) - (_t25 * _t37)))) + (_t18 * _t40)) * _t21);
         const auto tLf = (gLf * (vc - vl));
         if (_k == 0) {
+            c0_tC60 = tC60;
             c0_tCf = tCf;
             c0_tLf = tLf;
+            c0_vb = vb;
             c0_vpt = vpt;
             c0_vc = vc;
             c0_vl = vl;
-            c0_tC60 = tC60;
-            c0_vb = vb;
         } else {
+            c_tC60[_k - 1] = tC60 - c0_tC60;
             c_tCf[_k - 1] = tCf - c0_tCf;
             c_tLf[_k - 1] = tLf - c0_tLf;
+            c_vb[_k - 1] = vb - c0_vb;
             c_vpt[_k - 1] = vpt - c0_vpt;
             c_vc[_k - 1] = vc - c0_vc;
             c_vl[_k - 1] = vl - c0_vl;
-            c_tC60[_k - 1] = tC60 - c0_tC60;
-            c_vb[_k - 1] = vb - c0_vb;
         }
     }
     
@@ -573,13 +573,13 @@ static void compute_bell (const float* const* input, float** output, int num_cha
         {
             const auto vib = input[ch][n];
 
+            const auto tC60 = c0_tC60 + c_tC60[0] * vib + c_tC60[1] * zC60 + c_tC60[2] * zCf + c_tC60[3] * zLf;
             const auto tCf = c0_tCf + c_tCf[0] * vib + c_tCf[1] * zC60 + c_tCf[2] * zCf + c_tCf[3] * zLf;
             const auto tLf = c0_tLf + c_tLf[0] * vib + c_tLf[1] * zC60 + c_tLf[2] * zCf + c_tLf[3] * zLf;
+            const auto vb = c0_vb + c_vb[0] * vib + c_vb[1] * zC60 + c_vb[2] * zCf + c_vb[3] * zLf;
             const auto vpt = c0_vpt + c_vpt[0] * vib + c_vpt[1] * zC60 + c_vpt[2] * zCf + c_vpt[3] * zLf;
             const auto vc = c0_vc + c_vc[0] * vib + c_vc[1] * zC60 + c_vc[2] * zCf + c_vc[3] * zLf;
             const auto vl = c0_vl + c_vl[0] * vib + c_vl[1] * zC60 + c_vl[2] * zCf + c_vl[3] * zLf;
-            const auto tC60 = c0_tC60 + c_tC60[0] * vib + c_tC60[1] * zC60 + c_tC60[2] * zCf + c_tC60[3] * zLf;
-            const auto vb = c0_vb + c_vb[0] * vib + c_vb[1] * zC60 + c_vb[2] * zCf + c_vb[3] * zLf;
             
             zC60 = 2 * tC60 - zC60;
             zCf = 2 * tCf - zCf;
@@ -680,6 +680,8 @@ static void compute_hpf (const float* const* input, float** output, int num_chan
     float c_tC22[4];
     float c0_tL1;
     float c_tL1[4];
+    float c0_vo;
+    float c_vo[4];
     
     for (int _k = 0; _k <= 4; ++_k)
     {
@@ -692,6 +694,7 @@ static void compute_hpf (const float* const* input, float** output, int num_chan
         const auto _t8 = (_t1 * _t2);
         const auto _t3 = (_t4 * _t5);
         const auto _t0 = (_t8 - _t3);
+        const auto vo = ((_t9 * _t0) * _t10);
         const auto vl2 = (((_t1 * _t4) - (_t7 * _t5)) * _t11);
         const auto vnh = (_t0 * _t11);
         const auto tC22 = (gC22 * (vl2 - vnh));
@@ -699,9 +702,11 @@ static void compute_hpf (const float* const* input, float** output, int num_chan
         if (_k == 0) {
             c0_tC22 = tC22;
             c0_tL1 = tL1;
+            c0_vo = vo;
         } else {
             c_tC22[_k - 1] = tC22 - c0_tC22;
             c_tL1[_k - 1] = tL1 - c0_tL1;
+            c_vo[_k - 1] = vo - c0_vo;
         }
     }
     
@@ -716,12 +721,12 @@ static void compute_hpf (const float* const* input, float** output, int num_chan
 
             const auto tC22 = c0_tC22 + c_tC22[0] * vb + c_tC22[1] * zC22 + c_tC22[2] * zL1 + c_tC22[3] * zR27C21;
             const auto tL1 = c0_tL1 + c_tL1[0] * vb + c_tL1[1] * zC22 + c_tL1[2] * zL1 + c_tL1[3] * zR27C21;
+            const auto vo = c0_vo + c_vo[0] * vb + c_vo[1] * zC22 + c_vo[2] * zL1 + c_vo[3] * zR27C21;
             const auto _t1 = (zC22 * 4.0f);
             const auto _t5 = (((zC22 - zL1) + ((gR27C21 * vb) - zR27C21)) * 4.0f);
             const auto _t8 = (_t1 * _t2);
             const auto _t3 = (_t4 * _t5);
             const auto _t0 = (_t8 - _t3);
-            const auto vo = ((_t9 * _t0) * _t10);
             const auto vl2 = (((_t1 * _t4) - (_t7 * _t5)) * _t11);
             const auto vnh = (_t0 * _t11);
             const auto vR27C21 = (vb - vl2);

@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen eq_filter.net eq_filter.h -namespace nodal::eq_filter
 
 #pragma once
@@ -105,10 +105,10 @@ static void compute (const float* const* input, float** output, int num_channels
     float c_vR42C17C16[4];
     float c0_v33;
     float c_v33[4];
-    float c0_vn9;
-    float c_vn9[4];
     float c0_vo;
     float c_vo[4];
+    float c0_vn9;
+    float c_vn9[4];
     float c0_v36;
     float c_v36[4];
     
@@ -139,14 +139,14 @@ static void compute (const float* const* input, float** output, int num_channels
         if (_k == 0) {
             c0_vR42C17C16 = vR42C17C16;
             c0_v33 = v33;
-            c0_vn9 = vn9;
             c0_vo = vo;
+            c0_vn9 = vn9;
             c0_v36 = v36;
         } else {
             c_vR42C17C16[_k - 1] = vR42C17C16 - c0_vR42C17C16;
             c_v33[_k - 1] = v33 - c0_v33;
-            c_vn9[_k - 1] = vn9 - c0_vn9;
             c_vo[_k - 1] = vo - c0_vo;
+            c_vn9[_k - 1] = vn9 - c0_vn9;
             c_v36[_k - 1] = v36 - c0_v36;
         }
     }
@@ -162,8 +162,8 @@ static void compute (const float* const* input, float** output, int num_channels
 
             const auto vR42C17C16 = c0_vR42C17C16 + c_vR42C17C16[0] * vi + c_vR42C17C16[1] * zR45C20 + c_vR42C17C16[2] * zR42C17C16 + c_vR42C17C16[3] * zR43C18C19;
             const auto v33 = c0_v33 + c_v33[0] * vi + c_v33[1] * zR45C20 + c_v33[2] * zR42C17C16 + c_v33[3] * zR43C18C19;
-            const auto vn9 = c0_vn9 + c_vn9[0] * vi + c_vn9[1] * zR45C20 + c_vn9[2] * zR42C17C16 + c_vn9[3] * zR43C18C19;
             const auto vo = c0_vo + c_vo[0] * vi + c_vo[1] * zR45C20 + c_vo[2] * zR42C17C16 + c_vo[3] * zR43C18C19;
+            const auto vn9 = c0_vn9 + c_vn9[0] * vi + c_vn9[1] * zR45C20 + c_vn9[2] * zR42C17C16 + c_vn9[3] * zR43C18C19;
             const auto v36 = c0_v36 + c_v36[0] * vi + c_v36[1] * zR45C20 + c_v36[2] * zR42C17C16 + c_v36[3] * zR43C18C19;
             const auto _t6 = ((zR42C17C16 + zR43C18C19) * 16384.0f);
             const auto _t7 = (zR45C20 * 1024.0f);

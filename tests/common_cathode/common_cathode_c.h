@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen common_cathode.net common_cathode_c.h -lang c -type_name double
 
 #pragma once
@@ -135,6 +135,8 @@ static void compute (const float* const* input, float** output, int num_channels
     double c__X1_voc1[4];
     double c0__X1_zt15;
     double c__X1_zt15[4];
+    double c0__X1_zt17;
+    double c__X1_zt17[4];
     
     for (int _k = 0; _k <= 4; ++_k)
     {
@@ -154,10 +156,12 @@ static void compute (const float* const* input, float** output, int num_channels
             c0__X1_voc0 = _X1_voc0;
             c0__X1_voc1 = _X1_voc1;
             c0__X1_zt15 = _X1_zt15;
+            c0__X1_zt17 = _X1_zt17;
         } else {
             c__X1_voc0[_k - 1] = _X1_voc0 - c0__X1_voc0;
             c__X1_voc1[_k - 1] = _X1_voc1 - c0__X1_voc1;
             c__X1_zt15[_k - 1] = _X1_zt15 - c0__X1_zt15;
+            c__X1_zt17[_k - 1] = _X1_zt17 - c0__X1_zt17;
         }
     }
     
@@ -185,11 +189,11 @@ vGKX1 = vGKX1 + (_prev_step);
             const double _X1_voc0 = c0__X1_voc0 + c__X1_voc0[0] * vi + c__X1_voc0[1] * zCin + c__X1_voc0[2] * zCout + c__X1_voc0[3] * zRkCk;
             const double _X1_voc1 = c0__X1_voc1 + c__X1_voc1[0] * vi + c__X1_voc1[1] * zCin + c__X1_voc1[2] * zCout + c__X1_voc1[3] * zRkCk;
             const double _X1_zt15 = c0__X1_zt15 + c__X1_zt15[0] * vi + c__X1_zt15[1] * zCin + c__X1_zt15[2] * zCout + c__X1_zt15[3] * zRkCk;
+            const double _X1_zt17 = c0__X1_zt17 + c__X1_zt17[0] * vi + c__X1_zt17[1] * zCin + c__X1_zt17[2] * zCout + c__X1_zt17[3] * zRkCk;
             const double _X1_zt16 = (gCout * zRkCk);
             const double _X1_zt18 = (gCout * _X1_zt16);
             const double _X1_zt20 = (_X1_zt14 * zRkCk);
             const double _X1_zt19 = (_X1_zt10 * _X1_zt20);
-            const double _X1_zt17 = (_X1_zt18 - _X1_zt19);
             const double _X1_pt12 = (_12AX7_DEMPWOLF_Xi - 1.0);
             const double _X1_pt17 = (_12AX7_DEMPWOLF_Gamma - 1.0);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)

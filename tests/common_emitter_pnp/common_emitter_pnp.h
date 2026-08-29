@@ -1,4 +1,4 @@
-// Auto-generated with netlist_codegen version cba4c65.
+// Auto-generated with netlist_codegen version 58e1e0e.
 // Command: netlist_codegen common_emitter_pnp.net common_emitter_pnp.h
 
 #pragma once
@@ -143,6 +143,10 @@ static void compute (const float* const* input, float** output, int num_channels
     float c__Q1_zt9[3];
     float c0__Q1_zt10;
     float c__Q1_zt10[3];
+    float c0__Q1_zt11;
+    float c__Q1_zt11[3];
+    float c0__Q1_zt13;
+    float c__Q1_zt13[3];
     
     for (int _k = 0; _k <= 3; ++_k)
     {
@@ -161,11 +165,15 @@ static void compute (const float* const* input, float** output, int num_channels
             c0__Q1_voc1 = _Q1_voc1;
             c0__Q1_zt9 = _Q1_zt9;
             c0__Q1_zt10 = _Q1_zt10;
+            c0__Q1_zt11 = _Q1_zt11;
+            c0__Q1_zt13 = _Q1_zt13;
         } else {
             c__Q1_voc0[_k - 1] = _Q1_voc0 - c0__Q1_voc0;
             c__Q1_voc1[_k - 1] = _Q1_voc1 - c0__Q1_voc1;
             c__Q1_zt9[_k - 1] = _Q1_zt9 - c0__Q1_zt9;
             c__Q1_zt10[_k - 1] = _Q1_zt10 - c0__Q1_zt10;
+            c__Q1_zt11[_k - 1] = _Q1_zt11 - c0__Q1_zt11;
+            c__Q1_zt13[_k - 1] = _Q1_zt13 - c0__Q1_zt13;
         }
     }
     
@@ -193,9 +201,9 @@ vEBQ1 = limit_junction_voltage(vEBQ1 + (_prev_step), vEBQ1, Q2N5087_vt, vcrit_Q2
             const auto _Q1_voc1 = c0__Q1_voc1 + c__Q1_voc1[0] * vi + c__Q1_voc1[1] * zC1 + c__Q1_voc1[2] * zC2;
             const auto _Q1_zt9 = c0__Q1_zt9 + c__Q1_zt9[0] * vi + c__Q1_zt9[1] * zC1 + c__Q1_zt9[2] * zC2;
             const auto _Q1_zt10 = c0__Q1_zt10 + c__Q1_zt10[0] * vi + c__Q1_zt10[1] * zC1 + c__Q1_zt10[2] * zC2;
+            const auto _Q1_zt11 = c0__Q1_zt11 + c__Q1_zt11[0] * vi + c__Q1_zt11[1] * zC1 + c__Q1_zt11[2] * zC2;
+            const auto _Q1_zt13 = c0__Q1_zt13 + c__Q1_zt13[0] * vi + c__Q1_zt13[1] * zC1 + c__Q1_zt13[2] * zC2;
             const auto _Q1_zt12 = (gR1 * VEE);
-            const auto _Q1_zt13 = (gC1 * vi);
-            const auto _Q1_zt11 = (_Q1_zt13 - zC1);
             for (int newton_iter = 0; newton_iter < newton_max_iter; ++newton_iter)
             {
                 const auto _Q1_pt0 = (vEBQ1 / Q2N5087_vt);
