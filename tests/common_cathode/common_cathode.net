@@ -52,7 +52,7 @@ Cpk 1 3 {CPK}
 Escale1 vi_scaled 0 value = {V(vi)*0.2} ; netlist_skip
 Escale2 vo_scaled 0 value = {V(vo)*0.004} ; netlist_skip
 
-.tran 0 20m 0 20.0u
+.tran 0 20m 0 1.0u
 .wav "vin.wav" 32 48k V(vi_scaled)
 .wav "vout.wav" 32 48k V(vo_scaled)
 .options plotwinsize=0

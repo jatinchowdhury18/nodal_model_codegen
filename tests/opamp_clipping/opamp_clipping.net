@@ -14,7 +14,7 @@ Eop vo 0 value={max(min(1e5*(0-V(n1)),4.5),-4.5)} ; nodal_model: CLIPPED pos=0 n
 
 Escaled vo_scaled 0 value = {V(vo)*0.1} ; netlist_skip
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo_scaled)
 .options plotwinsize=0

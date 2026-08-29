@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version 5608cd2.
-// Command: netlist_codegen common_drain.net common_drain.h -opt_port_matrix -type_name double
+// Auto-generated with netlist_codegen version cba4c65.
+// Command: netlist_codegen common_drain.net common_drain.h -type_name double
 
 #pragma once
 

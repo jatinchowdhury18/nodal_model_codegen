@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version 5608cd2.
-// Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2_c.h -opt_port_matrix -lang c -type_name float
+// Auto-generated with netlist_codegen version cba4c65.
+// Command: netlist_codegen dc_coupled_x2.net dc_coupled_x2_c.h -lang c -type_name float
 
 #pragma once
 

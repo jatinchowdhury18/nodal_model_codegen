@@ -25,7 +25,7 @@ R3x vo2 0 10k
 * sub-circuit: stage1 vi vo1
 * sub-circuit: stage2 vo1 vo2
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 Escale1 vo_scaled 0 value = {V(vo2)*0.1} ; netlist_skip
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo_scaled)

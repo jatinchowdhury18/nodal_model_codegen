@@ -38,7 +38,7 @@ E5 v20 0 0 vn5 1e6
 Escaled vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip
 
 * .ac oct 100 20 20k
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 .wav "vin.wav" 32 96k V(vi)
 .wav "vout.wav" 32 96k V(vo_scaled)
 .options plotwinsize=0

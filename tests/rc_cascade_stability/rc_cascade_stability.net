@@ -26,7 +26,7 @@ C9 n9 0 10p IC=0
 R10 n9 vo 1MEG
 C10 vo 0 10p IC=0
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo)
 .options plotwinsize=0

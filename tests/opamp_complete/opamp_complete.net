@@ -17,7 +17,7 @@ Rout_lm vclip vo 75 ; netlist_skip
 
 Escaled vo_scaled 0 value = {V(vo)*0.05} ; netlist_skip
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo_scaled)
 .options plotwinsize=0

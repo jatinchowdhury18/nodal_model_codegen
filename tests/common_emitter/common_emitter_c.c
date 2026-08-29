@@ -58,9 +58,7 @@ int main()
         .RL = 1.0e+05,
     };
     State state = {0};
-    // vi's PULSE() source starts at -0.1V (not 0V/silence) -- match LTspice's
-    // .op analysis, which solves the DC operating point using that value.
-    reset (params, &state, 1, fs, -0.1f);
+    reset (params, &state, 1, fs, 0.0f);
     compute ((const float* const*) &input, &output, 1, (int) count, params, &state, fs);
 
     write_data (output, count);

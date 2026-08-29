@@ -24,7 +24,7 @@ E3 vl 0 0 z3n 1e6
 
 Escaled vh_scaled 0 value = {V(vh)*0.5} ; netlist_skip
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 * .ac dec 100 10 20k
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout_hp.wav" 32 48k V(vh_scaled)

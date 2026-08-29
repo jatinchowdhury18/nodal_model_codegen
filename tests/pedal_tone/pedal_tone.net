@@ -11,7 +11,7 @@ R5 n2  0 22k
 Rtp n2 vo 70k
 Rtm n1 vo 30k
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 * .ac dec 100 10 20k
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo)

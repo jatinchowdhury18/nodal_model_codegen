@@ -64,7 +64,7 @@ Eout vo 0 voh vnh 1e6
 
 Escaled vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip
 
-.tran 0 80m 0 20.0u uic
+.tran 0 80m 0 1.0u uic
 .wav "vin.wav" 32 96k V(vis)
 .wav "vout.wav" 32 96k V(vo_scaled)
 .options plotwinsize=0

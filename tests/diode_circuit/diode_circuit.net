@@ -8,7 +8,7 @@ D1 vo  0 D1N914   ; diode to ground
 * 1N914 diode model (typical)
 .model D1N914 D (IS=2.52E-9 N=1.752)
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo)
 .options plotwinsize=0

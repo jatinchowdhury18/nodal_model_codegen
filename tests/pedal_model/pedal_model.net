@@ -54,7 +54,7 @@ J1 vpp vg vs 2N5485
 * Newton-Raphson solver config
 * nr_solve(max_iter=20, tol=1.0e-6)
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo)
 .options plotwinsize=0

@@ -28,7 +28,7 @@ J1 vd vg vs 2N5485
 Escale1 vi_scaled 0 value = {V(vi)*0.1} ; netlist_skip
 Escale2 vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip
 
-.tran 0 100m 0 20.0u
+.tran 0 100m 0 1.0u
 .wav "vin.wav" 32 48k V(vi_scaled)
 .wav "vout.wav" 32 48k V(vo_scaled)
 .options plotwinsize=0

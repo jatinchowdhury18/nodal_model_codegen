@@ -28,7 +28,7 @@ E10 vo10 0 va10 0 1e6
 
 Escaled vo_scaled 0 value = {V(vo)*0.5} ; netlist_skip
 
-.tran 0 80m 0 20.0u
+.tran 0 80m 0 1.0u
 * .ac dec 100 10 20k
 .wav "vin.wav" 32 48k V(vi)
 .wav "vout.wav" 32 48k V(vo_scaled)

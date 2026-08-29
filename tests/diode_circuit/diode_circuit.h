@@ -1,5 +1,5 @@
-// Auto-generated with netlist_codegen version 5608cd2.
-// Command: netlist_codegen diode_circuit.net diode_circuit.h -opt_port_matrix
+// Auto-generated with netlist_codegen version cba4c65.
+// Command: netlist_codegen diode_circuit.net diode_circuit.h
 
 #pragma once
 
