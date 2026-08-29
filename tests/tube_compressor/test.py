@@ -22,7 +22,7 @@ vout_peak = np.max(np.abs(vout[skip:]))
 rel_err = (cpp_vout[skip:] - vout[skip:]) / vout_peak
 max_err = np.max(np.abs(rel_err))
 print(f"Max Error: {max_err}")
-assert max_err < 1
+assert max_err < 0.15
 
 # Plot
 if "plot" in sys.argv:

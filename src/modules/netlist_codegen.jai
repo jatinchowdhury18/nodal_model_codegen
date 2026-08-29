@@ -65,6 +65,12 @@ Model_Def :: struct {
     xi_val:    float32; // grid-current exponent
     cg_val:    float32; // grid-current softplus adaption factor
     ig0_val:   float32; // grid-current stability offset
+
+    // TRIODE-only interelectrode parasitic capacitances (Farads). Zero by
+    // default (matches plain SPICE TRIODE .model cards with no CGK/CPG/CPK).
+    cgk_val: float32; // grid-cathode
+    cpg_val: float32; // plate-grid (Miller)
+    cpk_val: float32; // plate-cathode
 }
 
 // Standard SPICE default model parameters.
@@ -154,6 +160,9 @@ parse_model_line :: (line: string) -> Model_Def {
                 case "XI";    model.xi_val = val;
                 case "CG";    model.cg_val = val;
                 case "IG0";   model.ig0_val = val;
+                case "CGK";   model.cgk_val = val;
+                case "CPG";   model.cpg_val = val;
+                case "CPK";   model.cpk_val = val;
             }
         }
     }
@@ -748,6 +757,23 @@ parse_netlist :: (netlist_str: string) -> Netlist_Info {
                             gg_name = gg_name, xi_name = xi_name, cg_name = cg_name, ig0_name = ig0_name,
                         };
                         array_add(*elements, element);
+
+                        // Optional interelectrode parasitic capacitances.
+                        plate, grid, cathode := terminals[0], terminals[1], terminals[2];
+                        parasitic_caps: [3] struct { val: float32; suffix: string; a: string; b: string; } = .[
+                            .{ model.cgk_val, "Cgk", grid,  cathode },
+                            .{ model.cpg_val, "Cpg", plate, grid    },
+                            .{ model.cpk_val, "Cpk", plate, cathode },
+                        ];
+                        for pc : parasitic_caps {
+                            if pc.val <= 0  continue;
+                            cname := tprint("%_%", name, pc.suffix);
+                            add_value_once(*values, *value_index, cname, pc.val);
+                            cel := Element.{ name = cname, type = .CAPACITOR, no_combine = true };
+                            array_add(*cel.terminals, pc.a);
+                            array_add(*cel.terminals, pc.b);
+                            array_add(*elements, cel);
+                        }
                 }
                 continue;
             case;

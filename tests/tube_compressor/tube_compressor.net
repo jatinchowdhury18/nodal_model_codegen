@@ -42,7 +42,7 @@ Rfb venv vk1 47k
 .model D1N914 D (IS=2.52E-9 N=1.752)
 
 * Triode model
-.model 12AX7_DEMPWOLF TRIODE(GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40 GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8)
+.model 12AX7_DEMPWOLF TRIODE(GK=2.242e-3 MU=103.2 GAMMA=1.26 CK=3.40 GG=6.177e-4 XI=1.314 CG=9.901 IG0=8.025e-8 CPG=2.4p)
 .lib 12AX7.lib
 
 Escale1 vi_scaled 0 value = {V(vi)*0.2} ; netlist_skip
